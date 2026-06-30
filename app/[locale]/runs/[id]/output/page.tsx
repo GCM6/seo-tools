@@ -17,25 +17,6 @@ type BrandFact = Awaited<ReturnType<typeof getBrandFacts>>[number]
 // Drafts and rejected recs never reach the output screen.
 const GATED = new Set(['accepted', 'edited'])
 
-// Seed/sample execution prompt composed from the recommendation plus the
-// verified brand facts (only `verified` facts may be injected — §6.2). This is a
-// directional seed for V0; the real prompt-generation pipeline lands later.
-function buildPromptText(rec: Recommendation, facts: BrandFact[], domain: string): string {
-  const lines = [
-    `你是资深 SEO+GEO 专家。请为 ${domain} 执行以下已确认的优化建议：`,
-    rec.what,
-    '',
-  ]
-  if (rec.why) lines.push(`【为什么】${rec.why}`)
-  if (rec.expectedImpact) lines.push(`【预期影响】${rec.expectedImpact}`)
-  if (rec.validationMethod) lines.push(`【验证方法】${rec.validationMethod}`)
-  if (facts.length > 0) {
-    lines.push('', '【必须真实使用、不得编造的品牌事实】')
-    for (const f of facts) lines.push(`- ${f.factText}`)
-  }
-  return lines.join('\n')
-}
-
 export default async function OutputPage({
   params,
 }: {
@@ -44,6 +25,22 @@ export default async function OutputPage({
   const { locale, id } = await params
   setRequestLocale(locale)
   const t = await getTranslations('screen4')
+
+  // Seed/sample execution prompt composed from the recommendation plus the
+  // verified brand facts (only `verified` facts may be injected — §6.2). This is
+  // a directional seed for V0; the real prompt-generation pipeline lands later.
+  // All scaffolding copy comes from `screen4.promptTpl` so it switches locale.
+  const buildPromptText = (rec: Recommendation, facts: BrandFact[], domain: string): string => {
+    const lines = [t('promptTpl.system', { domain }), rec.what, '']
+    if (rec.why) lines.push(`${t('promptTpl.why')}${rec.why}`)
+    if (rec.expectedImpact) lines.push(`${t('promptTpl.impact')}${rec.expectedImpact}`)
+    if (rec.validationMethod) lines.push(`${t('promptTpl.validation')}${rec.validationMethod}`)
+    if (facts.length > 0) {
+      lines.push('', t('promptTpl.brandFacts'))
+      for (const f of facts) lines.push(`- ${f.factText}`)
+    }
+    return lines.join('\n')
+  }
 
   const run = await getRun(id)
   const projectId = run?.projectId ?? DEMO_PROJECT_ID

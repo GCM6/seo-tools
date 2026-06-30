@@ -91,6 +91,9 @@
       "why": "为什么",
       "evidence": "证据",
       "impact": "预期影响",
+      "effort": "工作量",
+      "risk": "风险",
+      "validation": "验证方法",
       "confidence": "置信度"
     },
     "recSsrTitle": "把 /features 改为服务端渲染，降低非渲染抓取链路的可读性风险",
@@ -116,6 +119,13 @@
     "meta": "已确认 3 条 · 左侧复制提示词去执行，右侧导出报告",
     "promptForContent": "对应建议 · 新增小团队选型对比内容",
     "promptForSsr": "对应建议 · /features 服务端渲染改造",
+    "promptTpl": {
+      "system": "你是资深 SEO+GEO 专家。请为 {domain} 执行以下已确认的优化建议：",
+      "why": "【为什么】",
+      "impact": "【预期影响】",
+      "validation": "【验证方法】",
+      "brandFacts": "【必须真实使用、不得编造的品牌事实】"
+    },
     "reportTitle": "分析报告",
     "reportMeta": "teamflow.cn · 实测于 2026-06-29 · 可导出 PDF / 分享链接",
     "report": {

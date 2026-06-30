@@ -91,6 +91,9 @@
       "why": "Why",
       "evidence": "Evidence",
       "impact": "Expected impact",
+      "effort": "Effort",
+      "risk": "Risk",
+      "validation": "Validation",
       "confidence": "Confidence"
     },
     "recSsrTitle": "Make /features server-rendered to reduce readability risk on the non-rendered crawl path",
@@ -116,6 +119,13 @@
     "meta": "3 confirmed · copy prompts on the left to execute, export the report on the right",
     "promptForContent": "For recommendation · new small-team comparison content",
     "promptForSsr": "For recommendation · /features server-rendering rework",
+    "promptTpl": {
+      "system": "You are a senior SEO + GEO expert. Execute the following confirmed optimization recommendation for {domain}:",
+      "why": "[Why] ",
+      "impact": "[Expected impact] ",
+      "validation": "[Validation] ",
+      "brandFacts": "[Brand facts you must use verbatim and never fabricate]"
+    },
     "reportTitle": "Analysis report",
     "reportMeta": "teamflow.cn · measured on 2026-06-29 · exportable as PDF / share link",
     "report": {

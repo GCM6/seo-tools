@@ -34,6 +34,9 @@ export default async function RecommendationsPage({
             why: r.why || undefined,
             evidence: r.evidenceRefs.length ? r.evidenceRefs.join(' · ') : undefined,
             impact: r.expectedImpact || undefined,
+            effort: r.effort || undefined,
+            risk: r.risk || undefined,
+            validationMethod: r.validationMethod || undefined,
             confidence: r.confidence || undefined,
           }}
           editDraft={r.why}

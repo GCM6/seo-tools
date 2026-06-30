@@ -13,6 +13,9 @@ export interface RecCardFields {
   why?: string
   evidence?: string
   impact?: string
+  effort?: string
+  risk?: string
+  validationMethod?: string
   confidence?: string
 }
 
@@ -46,35 +49,38 @@ export function RecCard({
     (_current, next) => next,
   )
 
-  const [editing, setEditing] = useState(initialStatus === 'edited')
   const [draft, setDraft] = useState(editDraft)
 
-  // Optimistically reflect the new status, fire the PATCH, then commit.
+  // Optimistically reflect the new status, fire the PATCH, then commit ONLY when
+  // the server accepted it. On a non-ok response or a thrown error we leave the
+  // confirmed `status` untouched, so `useOptimistic` reverts the overlay back to
+  // it once the transition settles — i.e. the card rolls back to the prior state.
   const patch = (next: RecStatus) => {
     startTransition(async () => {
       setOptimisticStatus(next)
       try {
-        await fetch(`/api/recommendations/${id}`, {
+        const res = await fetch(`/api/recommendations/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: next }),
         })
-      } finally {
-        setStatus(next)
+        if (res.ok) setStatus(next)
+      } catch {
+        // Network error — keep the persisted status; optimistic state rolls back.
       }
     })
   }
 
   const accepted = optimisticStatus === 'accepted'
   const rejected = optimisticStatus === 'rejected'
+  // `editing` is derived from the (optimistic) status so accept/reject/edit stay
+  // mutually exclusive: rejecting or accepting clears the edit textarea, and a
+  // failed PATCH rolls the textarea back together with the status.
+  const editing = optimisticStatus === 'edited'
 
   const onAccept = () => patch(accepted ? 'draft' : 'accepted')
   const onReject = () => patch('rejected')
-  const onEdit = () => {
-    const next = !editing
-    setEditing(next)
-    if (next) patch('edited')
-  }
+  const onEdit = () => patch(editing ? 'draft' : 'edited')
 
   return (
     <div className={`card rec${editing ? ' editing' : ''}`}>
@@ -144,6 +150,24 @@ export function RecCard({
               <div className="field-block">
                 <div className="fb-l">{t('screen3.label.impact')}</div>
                 <p>{fields.impact}</p>
+              </div>
+            ) : null}
+            {fields.effort ? (
+              <div className="field-block">
+                <div className="fb-l">{t('screen3.label.effort')}</div>
+                <p>{fields.effort}</p>
+              </div>
+            ) : null}
+            {fields.risk ? (
+              <div className="field-block">
+                <div className="fb-l">{t('screen3.label.risk')}</div>
+                <p>{fields.risk}</p>
+              </div>
+            ) : null}
+            {fields.validationMethod ? (
+              <div className="field-block">
+                <div className="fb-l">{t('screen3.label.validation')}</div>
+                <p>{fields.validationMethod}</p>
               </div>
             ) : null}
             {fields.confidence ? (
