@@ -116,7 +116,7 @@
   },
   "screen4": {
     "title": "Output",
-    "meta": "3 confirmed · copy prompts on the left to execute, export the report on the right",
+    "meta": "{count} confirmed · copy prompts on the left to execute, export the report on the right",
     "promptForContent": "For recommendation · new small-team comparison content",
     "promptForSsr": "For recommendation · /features server-rendering rework",
     "promptTpl": {
@@ -136,7 +136,7 @@
       "issuesTitle": "Key issues (by priority)",
       "issuesBody": "P1 landing page not AI-crawlable; P1 absent from all selection-intent prompts; P2 quick win on 12 high-impression, low-CTR queries. Each with evidence.",
       "recsTitle": "Recommendations & expectations",
-      "recsBody": "3 accepted, matching execution prompts generated; plan to fix crawlability first + 1 comparison piece, retest SoV in 4–6 weeks.",
+      "recsBody": "2 accepted, matching execution prompts generated; plan to fix crawlability first + 1 comparison piece, retest SoV in 4–6 weeks.",
       "retestTitle": "Retest plan",
       "retestTag": "Next round",
       "retestBody": "Re-run the same 20 prompts in 6 weeks, measure the SoV delta, write into the living vertical playbook."

@@ -116,7 +116,7 @@
   },
   "screen4": {
     "title": "输出",
-    "meta": "已确认 3 条 · 左侧复制提示词去执行，右侧导出报告",
+    "meta": "已确认 {count} 条 · 左侧复制提示词去执行，右侧导出报告",
     "promptForContent": "对应建议 · 新增小团队选型对比内容",
     "promptForSsr": "对应建议 · /features 服务端渲染改造",
     "promptTpl": {
@@ -136,7 +136,7 @@
       "issuesTitle": "关键问题（按优先级）",
       "issuesBody": "P1 落地页不可被 AI 抓取；P1 选型类提问全缺席；P2 高曝光低 CTR 快赢 12 词。每条附证据。",
       "recsTitle": "建议与预期",
-      "recsBody": "已接受 3 条，生成对应执行提示词；预计先修可抓取性 + 1 篇选型内容，4–6 周后回测 SoV。",
+      "recsBody": "已接受 2 条，生成对应执行提示词；预计先修可抓取性 + 1 篇选型内容，4–6 周后回测 SoV。",
       "retestTitle": "回测计划",
       "retestTag": "下一轮",
       "retestBody": "6 周后重跑同 20 提问，量 SoV delta，写入行业活手册。"
