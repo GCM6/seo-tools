@@ -1,12 +1,21 @@
-// Placeholder home page — just enough to make `next build` succeed.
-// Real dashboard / i18n copy land in later tasks.
-export default function LocaleHome() {
+import { setRequestLocale } from 'next-intl/server'
+import { Shell } from '@/components/Shell'
+import { NewAnalysisForm } from '@/components/NewAnalysisForm'
+
+// Screen 1 — new analysis. Server Component: await params (Next 16),
+// pin the request locale for static rendering, then hand the interactive
+// form (chips / toggle state) to a client leaf.
+export default async function NewAnalysisPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>
+}) {
+  const { locale } = await params
+  setRequestLocale(locale)
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-2 p-8">
-      <h1 className="text-2xl font-semibold">Veris</h1>
-      <p className="text-sm text-zinc-500">
-        Evidence-based SEO + GEO diagnostic workbench
-      </p>
-    </main>
+    <Shell active={1} locale={locale} runId="run_demo">
+      <NewAnalysisForm locale={locale} />
+    </Shell>
   )
 }
