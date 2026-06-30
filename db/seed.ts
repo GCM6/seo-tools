@@ -11,6 +11,7 @@ import {
   brandFacts,
 } from './schema'
 import { assertFindingClaimEvidence } from '@/lib/repositories/validators'
+import type { ClaimType, EvidenceLevel } from '@/lib/types'
 import { DEMO_PROJECT_ID, DEMO_RUN_ID, DEMO_DOMAIN, DEMO_PROMPTS } from '@/lib/fixtures'
 
 const hash = (s: string): string => createHash('sha256').update(s).digest('hex')
@@ -62,7 +63,8 @@ async function seed() {
       source: 'fixed_set_v0',
       market: 'CN',
       language: 'zh',
-      priority: p.present ? 1 : 0,
+      // 中性排序值（数组序），不复用探针 present 结果；UI 出现态读 DEMO_PROMPTS.present
+      priority: i,
     })),
   )
 
@@ -83,7 +85,7 @@ async function seed() {
     accuracy: 'accurate',
   }
 
-  await db.insert(evidenceArtifacts).values([
+  const evidenceRows: (typeof evidenceArtifacts.$inferInsert)[] = [
     {
       id: EV_RENDER,
       projectId: DEMO_PROJECT_ID,
@@ -136,17 +138,17 @@ async function seed() {
       rawHash: hash(JSON.stringify(probeBrandPayload)),
       parserVersion: 'v0',
     },
-  ])
+  ]
 
-  // ---- 5) findings（measured 入库前过 assertFindingClaimEvidence） ----
-  // F1: JS 渲染 — technical / measured_hard / render_check L4
-  assertFindingClaimEvidence({ claimType: 'measured_hard', evidenceLevels: ['L4'] })
-  // F2: 选型类缺席 — geo / measured_sample / ai_answer L3
-  assertFindingClaimEvidence({ claimType: 'measured_sample', evidenceLevels: ['L3'] })
-  // F4: 品牌词正面 — geo / measured_sample / ai_answer L3
-  assertFindingClaimEvidence({ claimType: 'measured_sample', evidenceLevels: ['L3'] })
+  await db.insert(evidenceArtifacts).values(evidenceRows)
 
-  await db.insert(findings).values([
+  // 从实际插入的证据行派生 { artifactId: claimLevel }，不另抄一份硬编码常量。
+  const evidenceLevelById = Object.fromEntries(
+    evidenceRows.map((e) => [e.id, e.claimLevel]),
+  ) as Record<string, EvidenceLevel>
+
+  // ---- 5) findings（measured 入库前过 assertFindingClaimEvidence，证据等级来自真实证据行） ----
+  const findingRows: (typeof findings.$inferInsert)[] = [
     {
       id: F_JS_RENDER,
       runId: DEMO_RUN_ID,
@@ -198,7 +200,22 @@ async function seed() {
       evidenceRefs: [EV_PROBE_BRAND],
       status: 'open',
     },
-  ])
+  ]
+
+  // 证据守卫：measured_* finding 的证据等级从其 evidenceRefs 解析真实证据行得到。
+  // 若某 ref 解析不到（证据缺失），暴露为真实 bug；若证据等级被降级而 claimType 不变，断言会抛。
+  for (const f of findingRows) {
+    const claimType = f.claimType as ClaimType
+    if (claimType !== 'measured_hard' && claimType !== 'measured_sample') continue
+    const refs = f.evidenceRefs ?? []
+    const missing = refs.filter((ref) => evidenceLevelById[ref] === undefined)
+    if (missing.length > 0)
+      throw new Error(`finding ${f.id} 引用了不存在的证据 artifact: ${missing.join(', ')}`)
+    const evidenceLevels = refs.map((ref) => evidenceLevelById[ref])
+    assertFindingClaimEvidence({ claimType, evidenceLevels })
+  }
+
+  await db.insert(findings).values(findingRows)
 
   // ---- 6) recommendations（人在环内：accepted/edited/draft） ----
   await db.insert(recommendations).values([
