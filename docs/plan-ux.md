@@ -125,14 +125,16 @@
 
 ### 4.1 技术栈
 
+> **注：技术栈已于 SP1 收敛为单一 TS 全栈 + Vercel，详见 `docs/superpowers/specs/2026-06-30-sp1-frontend-scaffold-design.md`。** 原 Python/FastAPI + PostgreSQL 方案已废弃，下表为收敛后的实际选型。
+
 | 层 | V0 选型 | V1/V2 扩展 | 说明 |
 |---|---|---|---|
-| 前端 | React + Vite 或 Next | 组件库 / 报告导出 | 内部工具先重交互，不做营销页 |
-| 后端 | Python + FastAPI | worker 服务拆分 | Python 更适合爬取、Playwright、数据处理和 SDK 编排 |
-| 异步 | FastAPI background task + jobs 表 | RQ/Celery/Temporal | V0 先少引入基础设施 |
-| 数据库 | PostgreSQL | pgvector / 分区表 | JSONB 存原始证据，关系表做约束 |
-| 缓存 | PG cache table | Redis | V0 用 PG 足够；模型探针规模化再上 Redis |
-| 页面检测 | httpx + BeautifulSoup + Playwright | 多 UA / 截图归档 | 比较初始 HTML 和渲染后正文 |
+| 前端 | Next.js 16 全栈 | 组件库 / 报告导出 | 内部工具先重交互，不做营销页 |
+| 后端 | 同前端（Next Route Handlers / Server Actions） | worker 服务拆分 | 单一 TS 全栈，省去跨语言边界 |
+| 异步 | Inngest（Vercel） | 队列扩容 / 多步编排 | Serverless 友好，承载长任务 / 重试 |
+| 数据库 | libSQL (Turso) | 副本 / 向量扩展 | JSON 存原始证据，关系表做约束 |
+| 缓存 | libSQL 表 / Vercel 边缘 | Redis | V0 用 DB 足够；模型探针规模化再上 Redis |
+| 页面检测 | 托管浏览器 API（Vercel 不能自带 chromium） | 多 UA / 截图归档 | 比较初始 HTML 和渲染后正文 |
 | AI 探针 | Perplexity + 1 个通用模型 | OpenAI / Anthropic / Google / Gemini | 统一 provider adapter |
 | GSC | Google OAuth readonly | GA4 / BigQuery | GSC 是第一优先级真实数据 |
 
@@ -142,9 +144,9 @@
 Frontend
   新建项目 / 运行进度 / 诊断仪表台 / 建议审阅 / 输出 / 回测
       |
-FastAPI
+Next（Route Handlers / Server Actions）
   Project API
-  Run Orchestrator
+  Run Orchestrator（长任务走 Inngest）
   Evidence Collector
   Finding Generator
   Recommendation Generator
@@ -159,7 +161,7 @@ Tools
   serp_snapshot(optional)
   trends/autocomplete(optional)
       |
-PostgreSQL
+libSQL (Turso)
   projects / runs / evidence_artifacts / probe_results / findings
   recommendations / brand_facts / generated_prompts / retest_snapshots
 ```

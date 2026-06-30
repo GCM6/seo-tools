@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 编码前必读（强制）
 
-**写、改、review 任何 `.ts` / `.tsx` / `.py` 代码之前,必须先调用 `veris-coding` skill。** 它钉死了本项目的版本约定(React 19 + Next.js 16 App Router、FastAPI)和项目铁律。模型默认会写出 Next ≤14 / React ≤18 的旧写法(如 `forwardRef`、同步 `cookies()`),不读该 skill 会反复出错。每次编码都要命中,不要跳过。
+**写、改、review 任何 `.ts` / `.tsx` 代码之前,必须先调用 `veris-coding` skill。** 它钉死了本项目的版本约定(React 19 + Next.js 16 App Router、Next 全栈后端、libSQL/Drizzle、Vercel)和项目铁律。模型默认会写出 Next ≤14 / React ≤18 的旧写法(如 `forwardRef`、同步 `cookies()`),不读该 skill 会反复出错。每次编码都要命中,不要跳过。
 
 ## Project status
 
@@ -32,11 +32,14 @@ It is explicitly **not** a rank tracker, **not** an auto-content generator, and 
 
 ## Planned architecture (from `docs/plan-ux.md` §4, §6, §7)
 
-- **Frontend:** React + Vite (or Next) — an internal tool, interaction-first, no marketing pages.
-- **Backend:** Python + FastAPI (chosen for crawling, Playwright, data processing, and SDK orchestration).
-- **Async:** V0 uses FastAPI background tasks + a `jobs` table; defer RQ/Celery/Temporal.
-- **DB:** PostgreSQL — raw evidence stored as JSONB, relational tables enforce constraints. No Redis in V0.
-- **Page inspection:** httpx + BeautifulSoup + Playwright, comparing initial HTML vs. rendered main-text.
+> **Stack converged in SP1:** a single TypeScript fullstack on Vercel. The original Python/FastAPI + PostgreSQL plan is superseded — see `docs/superpowers/specs/2026-06-30-sp1-frontend-scaffold-design.md`.
+
+- **Frontend:** Next.js 16 App Router + React 19 — an internal tool, interaction-first, no marketing pages.
+- **Backend:** same Next app — Route Handlers + Server Actions (TypeScript). No separate Python service.
+- **Async:** long-running jobs run on Inngest (Vercel-friendly); avoid in-process background tasks for anything long.
+- **DB:** libSQL (Turso) via Drizzle — raw evidence stored as JSON, relational tables enforce constraints. No Redis in V0.
+- **Page inspection:** a hosted browser API (Vercel cannot bundle its own chromium), comparing initial HTML vs. rendered main-text.
+- **Deploy:** Vercel. No long-lived servers; design within serverless/edge limits (timeouts, no local chromium, ephemeral filesystem).
 - **AI probes:** a unified provider adapter over Perplexity / OpenAI / Anthropic / Google. Always persist the full raw response.
 - **GSC:** Google OAuth read-only — the first-priority real-data source.
 

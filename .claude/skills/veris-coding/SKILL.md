@@ -1,19 +1,19 @@
 ---
 name: veris-coding
-description: Use when writing, editing, or reviewing ANY code in this repository (the Veris SEO+GEO diagnostic project) — every .ts/.tsx/.py change, frontend or backend, new file or edit. Frontend is React 19 + Next.js 16 App Router; backend is Python + FastAPI. Triggers include: creating components/pages/routes, server actions, data fetching, API endpoints, AI probes, evidence/finding/recommendation logic.
+description: Use when writing, editing, or reviewing ANY code in this repository (the Veris SEO+GEO diagnostic project) — every .ts/.tsx change, frontend or backend, new file or edit. The stack is a single TypeScript fullstack: React 19 + Next.js 16 App Router, backend = Next Route Handlers / Server Actions, libSQL (Turso) via Drizzle, deployed on Vercel. Triggers include: creating components/pages/routes, server actions, data fetching, API endpoints, AI probes, evidence/finding/recommendation logic.
 ---
 
-# Veris 编码规范（React 19 · Next.js 16 · FastAPI）
+# Veris 编码规范（React 19 · Next.js 16 · TS 全栈）
 
 ## 概述
 
-本仓库（代号 **Veris**，证据化 SEO + GEO 诊断台）的所有编码都必须命中本规范。前端固定 **React 19 + Next.js 16（App Router）**，后端 **Python + FastAPI**。模型训练数据里大量是 Next.js ≤14 / React ≤18 的旧写法，**默认会写错版本** —— 编码前先对照本规范。
+本仓库（代号 **Veris**，证据化 SEO + GEO 诊断台）的所有编码都必须命中本规范。整套是**单一 TypeScript 全栈**：前端固定 **React 19 + Next.js 16（App Router）**，后端就是同一个 Next 应用（Route Handlers / Server Actions），数据库 **libSQL (Turso) + Drizzle**，部署在 **Vercel**。模型训练数据里大量是 Next.js ≤14 / React ≤18 的旧写法，**默认会写错版本** —— 编码前先对照本规范。
 
 技术栈与数据模型的权威来源是 `docs/plan-ux.md` 与根目录 `CLAUDE.md`，本 skill 不重复，只补「怎么写代码」。
 
 ## 何时使用
 
-- 新建或修改任意 `.tsx` / `.ts` / `.py` 文件
+- 新建或修改任意 `.tsx` / `.ts` 文件
 - 写页面、组件、Server Action、Route Handler、API、AI 探针、证据/finding/建议逻辑
 - review 已有代码是否符合版本约定
 
@@ -83,12 +83,17 @@ export function Input({ ref, ...props }: InputHTMLAttributes<HTMLInputElement> &
 }
 ```
 
-## 后端 FastAPI 规范
+## 后端规范（Next Route Handlers / Server Actions · TS）
 
+后端 = 同一个 Next 应用,没有独立 Python 服务。约束:
+
+- 后端逻辑写在 **Route Handlers**(`app/**/route.ts`)或 **Server Actions**(`'use server'`),不另起进程 / 框架。
 - 证据采集走工具层(`fetch_page` / `render_check` / `parse_schema` / `gsc_query` / `ai_probe` / `serp_snapshot`),业务逻辑不直接发外部请求。
+- 页面渲染检测走**托管浏览器 API**(Vercel serverless 不能自带 chromium,别 `import playwright` 直接跑)。
+- **长任务用 Inngest**(Vercel serverless 有超时):采集 / 多模型探针 / 回测这类长流程别堵在请求里,丢给 Inngest 跑。
 - AI 探针每次落库完整协议字段(provider、model_id、版本、参数、prompts、market、run_idx、raw_response、citations、各 hash、parser_version)。原始响应**原样存**,不要只存解析结果。
-- Pydantic model 校验 LLM 输出;校验失败即拒绝入库,不静默补默认值。
-- 原始证据用 JSONB 存,关系表做约束;PostgreSQL,V0 不引入 Redis。
+- 用 **Zod**(或等价 schema)校验 LLM 输出;校验失败即拒绝入库,不静默补默认值。
+- 数据库 **libSQL (Turso) + Drizzle**:原始证据用 JSON 列存,关系表 + migration 做约束;V0 不引入 Redis。约束(`findings.evidence_refs` 非空、`measured_hard` 必须有 L4 证据等)写进 Drizzle migration,不靠应用层兜底。
 - GSC 一律 OAuth **read-only**。
 
 ## 速查表（每次编码前自检）
