@@ -32,6 +32,7 @@
   --ds-body:  #424245;
   --ds-muted: #86868b;
   --ds-ghost: #aeaeb2;
+  --ds-on-ink: #ffffff;   /* text on --ds-ink / --ds-body filled controls (theme-aware) */
 
   --selection-bg:         #005bb5;
   --selection-foreground: #ffffff;
@@ -143,6 +144,7 @@
   --ds-body:  #a1a1a6;
   --ds-muted: #6e6e73;
   --ds-ghost: #48484a;
+  --ds-on-ink: #15131a;   /* dark: --ds-ink flips near-white, so on-ink text is dark */
 
   --selection-bg:         #8bd9ff;
   --selection-foreground: #08131d;
@@ -402,12 +404,12 @@ button {
 }
 .step.active {
   background: var(--ds-ink);
-  color: #fff;
+  color: var(--ds-on-ink);
 }
 .step.active .n {
   background: rgba(255, 255, 255, 0.16);
   border-color: transparent;
-  color: #fff;
+  color: var(--ds-on-ink);
 }
 
 /* ---- generic card ---- */
@@ -596,7 +598,7 @@ button {
 .run-btn {
   margin-top: var(--sp-lg);
   background: var(--ds-ink);
-  color: #fff;
+  color: var(--ds-on-ink);
   border: 0;
   padding: 14px 26px;
   border-radius: var(--rd-lg);
@@ -605,7 +607,7 @@ button {
   font-family: var(--font-sans);
 }
 .run-btn:hover {
-  background: #000;
+  filter: brightness(0.9);
 }
 
 /* ---- step2 stat strip ---- */
@@ -683,7 +685,7 @@ button {
 .tip {
   position: fixed;
   background: var(--ds-ink);
-  color: #fff;
+  color: var(--ds-on-ink);
   font-size: 12px;
   padding: 6px 9px;
   border-radius: var(--rd-sm);
@@ -902,7 +904,7 @@ button {
   padding: 3px var(--sp-xs);
   border-radius: var(--rd-sm);
   background: var(--ds-ink);
-  color: #fff;
+  color: var(--ds-on-ink);
   flex: none;
 }
 .prio.p2 {
@@ -1080,7 +1082,7 @@ button {
   margin-top: var(--sp-base);
   width: 100%;
   background: var(--ds-ink);
-  color: #fff;
+  color: var(--ds-on-ink);
   border: 0;
   padding: var(--sp-sm);
   border-radius: var(--rd-md);
