@@ -1,49 +1,275 @@
 @import "tailwindcss";
 
+/* =========================================================================
+   炼图术 Studio — 主题 CSS 变量 (Light / Dark)  ·  来源: docs/d.md 第三节
+   基座层 (--ds-* / --sp-* / --rd-* / --shadow-* / --transition-* / --layout-*)
+   ========================================================================= */
+
 :root {
-  --paper: #EEF2F4;
-  --surface: #FFFFFF;
-  --surface-2: #F5F8F9;
-  --ink: #15191F;
-  --ink-soft: #5C6672;
-  --ink-faint: #8B96A3;
-  --line: #D9E0E6;
-  --line-soft: #E8EDF1;
-  --measured: #0B6E74;
+  /* ── 3.1 品牌与强调色 (Light) ── */
+  --ds-primary:        #0071e3;
+  --ds-primary-hover:  #0077ed;
+  --ds-primary-active: #005bb5;
+  --ds-primary-muted:  rgba(0, 113, 227, 0.08);
+  --ds-primary-ring:   rgba(0, 113, 227, 0.15);
+  --ds-on-primary:     #ffffff;
+
+  --ds-mystic:         #6366f1;
+  --ds-mystic-hover:   #5558e0;
+  --ds-mystic-muted:   rgba(99, 102, 241, 0.08);
+  --ds-mystic-ring:    rgba(99, 102, 241, 0.15);
+  --ds-on-mystic:      #ffffff;
+
+  /* ── 3.2 画布与表面色 (Light) ── */
+  --ds-canvas:           #ffffff;
+  --ds-surface-1:        #f5f5f7;
+  --ds-surface-2:        #e8e8ed;
+  --ds-surface-3:        #d2d2d7;
+  --ds-surface-elevated: #ffffff;
+
+  /* ── 3.3 文字层级 (Light) ── */
+  --ds-ink:   #1d1d1f;
+  --ds-body:  #424245;
+  --ds-muted: #86868b;
+  --ds-ghost: #aeaeb2;
+
+  --selection-bg:         #005bb5;
+  --selection-foreground: #ffffff;
+
+  /* ── 3.4 边框色 (Light) ── */
+  --ds-border:         #d2d2d7;
+  --ds-border-subtle:  #e8e8ed;
+  --ds-border-strong:  #aeaeb2;
+  --ds-border-primary: rgba(0, 113, 227, 0.25);
+  --ds-border-mystic:  rgba(99, 102, 241, 0.25);
+
+  /* ── 3.5 语义色 ── */
+  --ds-success:       #30d158;
+  --ds-success-muted: rgba(48, 209, 88, 0.10);
+  --ds-error:         #ff3b30;
+  --ds-error-muted:   rgba(255, 59, 48, 0.10);
+  --ds-warning:       #ff9f0a;
+  --ds-warning-muted: rgba(255, 159, 10, 0.10);
+  --ds-info:          #64d2ff;
+  --ds-info-muted:    rgba(100, 210, 255, 0.10);
+
+  /* ── 3.6 间距系统 (4px 步进) ── */
+  --sp-xxs:     4px;
+  --sp-xs:      8px;
+  --sp-sm:      12px;
+  --sp-base:    16px;
+  --sp-md:      20px;
+  --sp-lg:      24px;
+  --sp-xl:      32px;
+  --sp-2xl:     40px;
+  --sp-3xl:     48px;
+  --sp-section: 64px;
+  --sp-hero:    80px;
+
+  /* ── 3.7 圆角系统 ── */
+  --rd-none: 0px;
+  --rd-xs:   4px;
+  --rd-sm:   6px;
+  --rd-md:   8px;
+  --rd-lg:   12px;
+  --rd-xl:   16px;
+  --rd-2xl:  20px;
+  --rd-pill: 9999px;
+
+  /* ── 3.8 阴影系统 (Light) ── */
+  --shadow-card:       0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-dropdown:   0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-dialog:     0 8px 32px rgba(0, 0, 0, 0.12);
+  --shadow-toast:      0 4px 24px rgba(0, 0, 0, 0.10);
+
+  /* ── 3.9 过渡效果 ── */
+  --transition-fast:    150ms ease;
+  --transition-default: 200ms ease;
+  --transition-smooth:  300ms ease-out;
+  --transition-page:    400ms cubic-bezier(0.25, 1, 0.5, 1);
+
+  /* ── 3.10 常用布局尺寸 ── */
+  --layout-sidebar-width: 240px;
+  --layout-topnav-height: 56px;
+  --layout-max-content:   1120px;
+
+  /* =======================================================================
+     证据等级语义层 (产品护城河) — 独立于炼图术语义色，名字保持不变。
+     L3/L4 实测=measured(青)，inferred(橙)，gap(红)，good(绿)。
+     AI/GEO 强调统一走 --ds-mystic，这四色不并入 --ds-success/error/warning。
+     ======================================================================= */
+  --measured:    #0B6E74;
   --measured-bg: #E2F1F1;
-  --inferred: #B26B16;
+  --inferred:    #B26B16;
   --inferred-bg: #F7EEDF;
-  --gap: #B23A48;
-  --gap-bg: #F8E7E9;
-  --good: #2E7D56;
-  --good-bg: #E3F1E9;
-  --radius: 10px;
-  /* Font stacks wired to next/font variables (loaded in app/[locale]/layout.tsx),
-     with Noto Sans SC carrying CJK coverage, matching the docs/plan-d.md prototype. */
-  --display: var(--font-space-grotesk), var(--font-noto-sans-sc), sans-serif;
-  --body: var(--font-inter), var(--font-noto-sans-sc), sans-serif;
-  --mono: var(--font-jetbrains-mono), var(--font-noto-sans-sc), monospace;
+  --gap:         #B23A48;
+  --gap-bg:      #F8E7E9;
+  --good:        #2E7D56;
+  --good-bg:     #E3F1E9;
+
+  /* ── 字体栈 (引用 next/font 注入的 hash 变量；Noto Sans SC 兜底 CJK) ──
+     Geist 无中文字形，故栈内接 next/font 注入的 Noto 变量 (实际加载的 webfont)，
+     literal 'Noto Sans SC' 仅作系统本地字体的额外兜底。 */
+  --font-sans: var(--font-geist-sans), var(--font-noto-sans-sc), 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), var(--font-noto-sans-sc), 'Noto Sans SC', 'JetBrains Mono', monospace;
 }
 
+/* ─── 暗色模式覆盖 ─── */
+.dark {
+  /* ── 品牌与强调色 (Dark) ── */
+  --ds-primary:        #2997ff;
+  --ds-primary-hover:  #2c8eeb;
+  --ds-primary-active: #0071e3;
+  --ds-primary-muted:  rgba(41, 151, 255, 0.12);
+  --ds-primary-ring:   rgba(41, 151, 255, 0.20);
+  --ds-on-primary:     #ffffff;
+
+  --ds-mystic:         #818cf8;
+  --ds-mystic-hover:   #6366f1;
+  --ds-mystic-muted:   rgba(129, 140, 248, 0.12);
+  --ds-mystic-ring:    rgba(129, 140, 248, 0.20);
+  --ds-on-mystic:      #ffffff;
+
+  /* ── 画布与表面色 (Dark) ── */
+  --ds-canvas:           #0f0e14;
+  --ds-surface-1:        #18171f;
+  --ds-surface-2:        #1e1d27;
+  --ds-surface-3:        #252430;
+  --ds-surface-elevated: rgba(24, 23, 31, 0.95);
+
+  /* ── 文字层级 (Dark) ── */
+  --ds-ink:   #f5f5f7;
+  --ds-body:  #a1a1a6;
+  --ds-muted: #6e6e73;
+  --ds-ghost: #48484a;
+
+  --selection-bg:         #8bd9ff;
+  --selection-foreground: #08131d;
+
+  /* ── 边框色 (Dark) ── */
+  --ds-border:         rgba(255, 255, 255, 0.08);
+  --ds-border-subtle:  rgba(255, 255, 255, 0.05);
+  --ds-border-strong:  rgba(255, 255, 255, 0.15);
+  --ds-border-primary: rgba(41, 151, 255, 0.30);
+  --ds-border-mystic:  rgba(129, 140, 248, 0.30);
+
+  /* ── 阴影系统 (Dark) ── */
+  --shadow-card:       0 1px 2px rgba(0, 0, 0, 0.20);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.30);
+  --shadow-dropdown:   0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-dialog:     0 8px 32px rgba(0, 0, 0, 0.50);
+  --shadow-toast:      0 4px 24px rgba(0, 0, 0, 0.40);
+
+  /* ── 证据等级语义层 (Dark) ── */
+  --measured:    #3FB6BC;
+  --measured-bg: rgba(63, 182, 188, 0.12);
+  --inferred:    #E0A33A;
+  --inferred-bg: rgba(224, 163, 58, 0.12);
+  --gap:         #FF6B78;
+  --gap-bg:      rgba(255, 107, 120, 0.12);
+  --good:        #4ED27E;
+  --good-bg:     rgba(78, 210, 126, 0.12);
+}
+
+/* =========================================================================
+   Tailwind v4 注册 (@theme inline) — 来源: docs/d.md §5.2
+   ========================================================================= */
+@theme inline {
+  /* 基础映射 */
+  --color-background: var(--ds-canvas);
+  --color-foreground: var(--ds-ink);
+
+  /* 字体映射 */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* 主题色系映射 */
+  --color-primary:       var(--ds-primary);
+  --color-primary-hover: var(--ds-primary-hover);
+  --color-primary-muted: var(--ds-primary-muted);
+  --color-on-primary:    var(--ds-on-primary);
+
+  --color-mystic:       var(--ds-mystic);
+  --color-mystic-hover: var(--ds-mystic-hover);
+  --color-mystic-muted: var(--ds-mystic-muted);
+  --color-on-mystic:    var(--ds-on-mystic);
+
+  /* 文字颜色映射 */
+  --color-ink:   var(--ds-ink);
+  --color-body:  var(--ds-body);
+  --color-muted: var(--ds-muted);
+  --color-ghost: var(--ds-ghost);
+
+  /* 边框映射 */
+  --color-border:        var(--ds-border);
+  --color-border-subtle: var(--ds-border-subtle);
+  --color-border-strong: var(--ds-border-strong);
+
+  /* 证据层映射 (产品护城河，保持独立) */
+  --color-measured: var(--measured);
+  --color-inferred: var(--inferred);
+  --color-gap:      var(--gap);
+  --color-good:     var(--good);
+
+  /* 圆角映射 */
+  --radius-xs:   var(--rd-xs);
+  --radius-sm:   var(--rd-sm);
+  --radius-md:   var(--rd-md);
+  --radius-lg:   var(--rd-lg);
+  --radius-xl:   var(--rd-xl);
+  --radius-2xl:  var(--rd-2xl);
+  --radius-pill: var(--rd-pill);
+}
+
+/* =========================================================================
+   Base 元素样式
+   ========================================================================= */
 body {
-  background: var(--paper);
-  color: var(--ink);
-  font-family: var(--body);
-  font-size: 14px;
-  line-height: 1.55;
+  background: var(--ds-canvas);
+  color: var(--ds-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--selection-bg);
+  color: var(--selection-foreground);
 }
 
 h1,
 h2,
 h3 {
-  font-family: var(--display);
+  color: var(--ds-ink);
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 .mono {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
+}
+
+/* =========================================================================
+   动效关键帧与工具类 (docs/d.md §4)
+   ========================================================================= */
+@keyframes ds-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes ds-slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: ds-fade-in var(--transition-smooth) forwards;
+}
+
+.animate-slide-up {
+  animation: ds-slide-up var(--transition-page) forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {

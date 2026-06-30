@@ -20,6 +20,7 @@
 - §6.2 约束写进 schema（CHECK/FK）+ 数据访问层校验器，不靠 UI 兜底。
 - 文案：`实测`=L3/L4，`推断`=L2，`疑似`=L1/L2；禁止把 L2 写成确定因果。全部 UI 文案外置到 `messages/{en,zh}.json`，组件不写死中文。
 - 默认 locale = `zh`，支持 `en`；路由走 `app/[locale]/`。
+- **主题基座 = 炼图术 Studio 设计体系（`docs/d.md`）**，由 Task 2R 落地（取代 Task 2 的原型临时主题）。**组件任务（9–14）从 `docs/plan-d.md` 移植结构时，必须把原型旧变量映射到炼图术 token**：`--surface`→`--ds-surface-1`（页面底用 `--ds-canvas`）、`--surface-2`→`--ds-surface-2`、`--ink`→`--ds-ink`、`--ink-soft`→`--ds-body`、`--ink-faint`→`--ds-muted`、`--line`→`--ds-border`、`--line-soft`→`--ds-border-subtle`、`--radius`→`--rd-lg`、圆角小处用 `--rd-md/--rd-sm`、间距用 `--sp-*`、阴影用 `--shadow-card`。**证据等级标签保留 `--measured/--inferred/--gap/--good`（含 `-bg`）原名不变**；AI/GEO 强调用 `--ds-mystic`。字体类 `.mono` 用 `--font-mono`(Geist Mono)。
 
 ---
 
@@ -189,6 +190,42 @@ export default async function LocaleLayout({
 ```
 
 - [ ] **Step 3: 验证**：`npm run dev`，页面背景为 `--paper` 灰。Commit：`style(sp1): prototype theme tokens + fonts shell`。
+
+> **注：Task 2 已执行（原型临时主题）。用户中途换主题为炼图术体系 `docs/d.md`，由 Task 2R 替换。Task 2 的产物被 Task 2R 覆盖。**
+
+---
+
+### Task 2R: 替换主题为炼图术 Studio 设计体系（`docs/d.md`）
+
+**Files:**
+- Modify: `app/globals.css`（整体替换 token 基座）, `app/[locale]/layout.tsx`（字体改 Geist + Noto Sans SC 兜底）
+
+**Interfaces:**
+- Produces: 基座 token（`--ds-*`/`--sp-*`/`--rd-*`/`--shadow-*`/`--transition-*`）+ 证据层 token（`--measured/--inferred/--gap/--good` 及 `-bg`，名字不变）+ `--font-sans/--font-mono`。亮 `:root` + 暗 `.dark` 双套。
+
+- [ ] **Step 1: 重写 `app/globals.css`** —— 照 `docs/d.md` §三把全套 `:root`（亮）+ `.dark`（暗）token 写入：品牌/AI 色、画布/表面、文字层级、语义色、间距(4px 步进)、圆角、阴影、过渡、布局尺寸。Tailwind 用 `@theme inline` 注册（照 `docs/d.md` §5.2）。`--font-sans: var(--font-geist-sans), 'Noto Sans SC', system-ui, sans-serif`；`--font-mono: var(--font-geist-mono), 'Noto Sans SC', monospace`。`body` 用 `--ds-canvas` 底、`--ds-ink` 字、`--font-sans`。base 元素样式（h1-3、.mono、reduced-motion）保留，h1-3 用 `--ds-ink` + 负字间距。
+
+- [ ] **Step 2: 追加证据等级语义层 token**（独立保留，护城河）：
+
+```css
+:root{
+  --measured:#0B6E74; --measured-bg:#E2F1F1;
+  --inferred:#B26B16; --inferred-bg:#F7EEDF;
+  --gap:#B23A48;      --gap-bg:#F8E7E9;
+  --good:#2E7D56;     --good-bg:#E3F1E9;
+}
+.dark{
+  --measured:#3FB6BC; --measured-bg:rgba(63,182,188,.12);
+  --inferred:#E0A33A; --inferred-bg:rgba(224,163,58,.12);
+  --gap:#FF6B78;      --gap-bg:rgba(255,107,120,.12);
+  --good:#4ED27E;     --good-bg:rgba(78,210,126,.12);
+}
+```
+AI/GEO 强调统一用 `--ds-mystic`。
+
+- [ ] **Step 3: 改 `app/[locale]/layout.tsx` 字体** —— 用 `next/font/google` 的 `Geist`、`Geist_Mono`（变量 `--font-geist-sans`/`--font-geist-mono`）+ `Noto_Sans_SC`（`preload:false`，CJK 兜底），移除 Space Grotesk/Inter/JetBrains Mono。font 变量挂 `<html>`。
+
+- [ ] **Step 4: 验证 + Commit**：`npm run build` 成功，`/zh` 底色变为炼图术 `--ds-canvas`(#ffffff)，Geist 字体生效。Commit：`style(sp1): adopt 炼图术 design system (docs/d.md) + evidence-layer tokens`。
 
 ---
 
