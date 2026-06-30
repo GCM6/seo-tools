@@ -1,0 +1,151 @@
+{
+  "common": {
+    "appName": "Veris",
+    "tagline": "SEO · GEO 诊断台",
+    "targetLabel": "分析目标",
+    "steps": {
+      "new": "新建分析",
+      "diagnose": "诊断",
+      "recommend": "优化建议",
+      "output": "输出"
+    },
+    "tag": {
+      "measured": "实测",
+      "inferred": "推断",
+      "suspected": "疑似",
+      "gap": "差距",
+      "good": "已具备",
+      "directional": "方向性样本"
+    },
+    "actions": {
+      "reanalyze": "重新诊断",
+      "copy": "复制提示词",
+      "copied": "已复制 ✓",
+      "export": "导出报告",
+      "accept": "接受",
+      "accepted": "已接受",
+      "edit": "编辑",
+      "editing": "编辑中",
+      "reject": "否决",
+      "collapse": "收起"
+    },
+    "confidence": {
+      "high": "置信 高",
+      "mid": "置信 中",
+      "low": "置信 低"
+    }
+  },
+  "screen1": {
+    "intro": "输入一个网址，Veris 会用真实数据（你的 GSC、各家 AI 的实测回答、页面抓取）做出 SEO + GEO 诊断——每条结论都附可复核的证据。",
+    "urlLabel": "网址",
+    "industryLabel": "行业 / 垂直",
+    "marketLabel": "市场 / 语言",
+    "competitorsLabel": "竞品（自动检测，可手动增删）",
+    "competitorsPlaceholder": "Asana, Monday.com, Notion（自动检测到 3 个，可编辑）",
+    "enginesLabel": "探测引擎（GEO 可见度实测来源）",
+    "dataSourceLabel": "真实数据源",
+    "gscTitle": "连接 Google Search Console（只读）",
+    "gscDesc": "接入后可看到你的真实排名、展示、点击——诊断最准的地面实况",
+    "run": "开始诊断 →",
+    "note": "示例界面。诊断为异步过程：跑完一个提问就在下一屏渐进显示一条结果，无需空等。"
+  },
+  "screen2": {
+    "currentTitle": "现状（客观真实数据）",
+    "currentMeta": "实测于 2026-06-29 · ChatGPT/Perplexity/Gemini 各跑 5 次 · 方向性样本",
+    "stats": {
+      "aiVisibility": "AI 可见度",
+      "aiVisibilityUnit": "/ 20 提问",
+      "avgRank": "平均自然排名",
+      "avgRankUnit": "位",
+      "crawlablePages": "可被 AI 抓取的页面",
+      "competitorVisibility": "竞品平均可见度",
+      "competitorVisibilityUnit": "/ 20"
+    },
+    "statTag": {
+      "sampleMeasured": "样本实测",
+      "gscMeasured": "GSC 实测",
+      "crawlMeasured": "抓取实测",
+      "inferredSample": "推断·样本"
+    },
+    "mapTitle": "答案出现地图",
+    "mapMeta": "20 个高购买意图提问 · 青=你出现 / 灰=你缺席",
+    "legendPresent": "你出现（6）",
+    "legendAbsent": "你缺席（14）",
+    "legendHover": "悬停查看具体提问",
+    "sovTitle": "竞品可见度对比（Share of Voice）",
+    "youSuffix": "（你）",
+    "findingsTitle": "问题清单",
+    "findingsMeta": "点开任意一条查看原始证据",
+    "tabGeo": "GEO（10）",
+    "tabSeo": "SEO（8）",
+    "findingNotMentioned": "在「适合小团队的项目管理工具推荐」样本探针中，你未被提及，竞品 Asana / Notion 多次出现",
+    "findingJsRender": "核心落地页 /features 内容靠 JS 渲染，非渲染抓取链路读不到初始正文",
+    "findingLowCtr": "12 个词已有曝光但 CTR 异常低，疑似受 SERP 特性 / AIO 影响",
+    "findingBrandGood": "「teamflow 怎么样」类品牌词下，AI 描述准确、情绪正面（已具备，维持即可）",
+    "note": "所有数字均可溯源：实测来自 GSC / 真实 AI 回答 / 页面抓取；标「推断」的为模型估算（如竞品平均可见度），已明确区分。"
+  },
+  "screen3": {
+    "title": "优化建议",
+    "meta": "按「影响 × 置信 ÷ 工作量」排序 · 逐条确认后才进入输出",
+    "label": {
+      "why": "为什么",
+      "evidence": "证据",
+      "impact": "预期影响",
+      "confidence": "置信度"
+    },
+    "recSsrTitle": "把 /features 改为服务端渲染，降低非渲染抓取链路的可读性风险",
+    "recSsrWhy": "部分搜索和 AI 抓取链路不会执行完整客户端 JS。内容完全依赖前端渲染时，初始 HTML 缺少核心正文，可能降低被读取、理解和引用的机会。",
+    "recSsrEvidence": "关闭 JS 抓取 /features → 正文 0 字；渲染后 1,840 字。详见诊断页证据。",
+    "recSsrImpact": "使核心卖点内容进入初始 HTML，提高搜索与 AI 抓取链路读取概率；属高影响、可验证的技术问题。",
+    "recSsrConfidence": "硬 · 机制确定",
+    "recContentTitle": "新增一篇「小团队项目管理工具选型」对比内容，争取被 AI 引用",
+    "recContentEditNote": "你正在调整内容角度与要注入的品牌事实，确认后将据此生成精确提示词",
+    "recContentAngleLabel": "内容角度（可编辑）",
+    "recContentAngle": "答案前置 + FAQ 结构；正面对比 Asana/Notion/teamflow 在「小团队、预算有限、需要甘特图」场景下的取舍；用真实功能与定价，不贬低竞品。",
+    "recContentFactsLabel": "注入的品牌真实事实（不得编造）",
+    "recContentFacts": "teamflow：免费档支持 10 人；看板+甘特双视图；中文文档与本地化客服；定价 ¥29/人/月起。",
+    "recFaqTitle": "给高曝光低 CTR 的 12 个词，补 FAQ schema 与答案前置段落",
+    "recFaqWhy": "这些词已有真实曝光，排名 6–8 位但 CTR 不足 1%，疑似受 SERP 特性影响。补答案前置 + FAQ 有机会改善可读性、摘要匹配与点击表现，需回测验证。",
+    "recFaqEvidence": "GSC：团队任务管理软件 展示 8,420 / CTR 0.8% / 排名 6.3。详见诊断页。",
+    "recFaqImpact": "中影响、低工作量的快赢。",
+    "recFaqConfidence": "方向性 · GEO 概率性",
+    "note": "人在环内：工具提议，你拍板。只有「已接受 / 已编辑」的建议进入下一步生成提示词。涉及站外（如知乎/社区）的建议只给话术草稿，不自动执行。"
+  },
+  "screen4": {
+    "title": "输出",
+    "meta": "已确认 3 条 · 左侧复制提示词去执行，右侧导出报告",
+    "promptForContent": "对应建议 · 新增小团队选型对比内容",
+    "promptForSsr": "对应建议 · /features 服务端渲染改造",
+    "reportTitle": "分析报告",
+    "reportMeta": "teamflow.cn · 实测于 2026-06-29 · 可导出 PDF / 分享链接",
+    "report": {
+      "snapshotTitle": "现状快照",
+      "snapshotBody": "AI 可见度 6/20；平均自然排名 14.2；可被 AI 抓取页面 62%。",
+      "gapTitle": "竞品差距",
+      "gapBody": "你 SoV 30%，落后 Asana(70%)、Notion(55%)、Monday(45%)。",
+      "issuesTitle": "关键问题（按优先级）",
+      "issuesBody": "P1 落地页不可被 AI 抓取；P1 选型类提问全缺席；P2 高曝光低 CTR 快赢 12 词。每条附证据。",
+      "recsTitle": "建议与预期",
+      "recsBody": "已接受 3 条，生成对应执行提示词；预计先修可抓取性 + 1 篇选型内容，4–6 周后回测 SoV。",
+      "retestTitle": "回测计划",
+      "retestTag": "下一轮",
+      "retestBody": "6 周后重跑同 20 提问，量 SoV delta，写入行业活手册。"
+    },
+    "note": "「给提示词」而非「自动发布」：生成与发布留给人 + 人审，质量可控、不踩薄内容打压。后续可接 MCP 直写 CMS，但 v1 到精确提示词为止。"
+  },
+  "evidence": {
+    "chatgptAnswer": "证据 · ChatGPT 实测回答原文（第 3/5 次）",
+    "citedSources": "被引用的来源（你可自行复核）",
+    "pageCrawlCompare": "证据 · 页面抓取对比",
+    "gscLast28": "证据 · Google Search Console（近 28 天）",
+    "perplexityAnswer": "证据 · Perplexity 实测回答原文",
+    "evidenceRef": "证据引用",
+    "table": {
+      "query": "查询",
+      "impressions": "展示",
+      "clicks": "点击",
+      "ctr": "CTR",
+      "rank": "排名"
+    }
+  }
+}

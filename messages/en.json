@@ -1,0 +1,151 @@
+{
+  "common": {
+    "appName": "Veris",
+    "tagline": "SEO · GEO Diagnostics",
+    "targetLabel": "Analysis target",
+    "steps": {
+      "new": "New analysis",
+      "diagnose": "Diagnose",
+      "recommend": "Recommendations",
+      "output": "Output"
+    },
+    "tag": {
+      "measured": "Measured",
+      "inferred": "Inferred",
+      "suspected": "Suspected",
+      "gap": "Gap",
+      "good": "OK",
+      "directional": "Directional sample"
+    },
+    "actions": {
+      "reanalyze": "Re-diagnose",
+      "copy": "Copy prompt",
+      "copied": "Copied ✓",
+      "export": "Export report",
+      "accept": "Accept",
+      "accepted": "Accepted",
+      "edit": "Edit",
+      "editing": "Editing",
+      "reject": "Reject",
+      "collapse": "Collapse"
+    },
+    "confidence": {
+      "high": "Confidence: High",
+      "mid": "Confidence: Medium",
+      "low": "Confidence: Low"
+    }
+  },
+  "screen1": {
+    "intro": "Enter a URL and Veris runs an SEO + GEO diagnosis on real data (your GSC, measured answers from each AI engine, page crawls) — every conclusion comes with verifiable evidence.",
+    "urlLabel": "URL",
+    "industryLabel": "Industry / vertical",
+    "marketLabel": "Market / language",
+    "competitorsLabel": "Competitors (auto-detected, editable)",
+    "competitorsPlaceholder": "Asana, Monday.com, Notion (3 auto-detected, editable)",
+    "enginesLabel": "Probe engines (sources for measured GEO visibility)",
+    "dataSourceLabel": "Real data sources",
+    "gscTitle": "Connect Google Search Console (read-only)",
+    "gscDesc": "Once connected, see your real rankings, impressions and clicks — the most accurate ground truth for diagnosis",
+    "run": "Start diagnosis →",
+    "note": "Sample interface. Diagnosis is asynchronous: each probe streams a result onto the next screen as it finishes, no idle waiting."
+  },
+  "screen2": {
+    "currentTitle": "Current state (objective real data)",
+    "currentMeta": "Measured on 2026-06-29 · ChatGPT/Perplexity/Gemini, 5 runs each · directional sample",
+    "stats": {
+      "aiVisibility": "AI visibility",
+      "aiVisibilityUnit": "/ 20 prompts",
+      "avgRank": "Avg. organic rank",
+      "avgRankUnit": "pos.",
+      "crawlablePages": "AI-crawlable pages",
+      "competitorVisibility": "Avg. competitor visibility",
+      "competitorVisibilityUnit": "/ 20"
+    },
+    "statTag": {
+      "sampleMeasured": "Sample-measured",
+      "gscMeasured": "GSC-measured",
+      "crawlMeasured": "Crawl-measured",
+      "inferredSample": "Inferred · sample"
+    },
+    "mapTitle": "Answer presence map",
+    "mapMeta": "20 high-intent prompts · teal = you appear / grey = you're absent",
+    "legendPresent": "You appear (6)",
+    "legendAbsent": "You're absent (14)",
+    "legendHover": "Hover to see the exact prompt",
+    "sovTitle": "Competitor visibility (Share of Voice)",
+    "youSuffix": " (you)",
+    "findingsTitle": "Issue list",
+    "findingsMeta": "Expand any item to see the raw evidence",
+    "tabGeo": "GEO (10)",
+    "tabSeo": "SEO (8)",
+    "findingNotMentioned": "In the sample probe for \"project management tools for small teams,\" you're not mentioned while competitors Asana / Notion appear repeatedly",
+    "findingJsRender": "Key landing page /features renders via JS; the non-rendered crawl path can't read its initial body text",
+    "findingLowCtr": "12 queries have impressions but abnormally low CTR; suspected SERP feature / AIO influence",
+    "findingBrandGood": "For brand queries like \"how is teamflow,\" the AI description is accurate and positive (already solid, just maintain)",
+    "note": "Every number is traceable: \"measured\" comes from GSC / real AI answers / page crawls; items tagged \"inferred\" are model estimates (e.g. average competitor visibility), kept clearly separate."
+  },
+  "screen3": {
+    "title": "Recommendations",
+    "meta": "Ranked by \"impact × confidence ÷ effort\" · each must be confirmed before output",
+    "label": {
+      "why": "Why",
+      "evidence": "Evidence",
+      "impact": "Expected impact",
+      "confidence": "Confidence"
+    },
+    "recSsrTitle": "Make /features server-rendered to reduce readability risk on the non-rendered crawl path",
+    "recSsrWhy": "Some search and AI crawl paths don't execute full client-side JS. When content depends entirely on front-end rendering, the initial HTML lacks the core body text, which can lower the chance of being read, understood and cited.",
+    "recSsrEvidence": "Crawling /features with JS off → 0 words of body text; 1,840 words after rendering. See evidence on the diagnosis page.",
+    "recSsrImpact": "Puts core selling-point content into the initial HTML, raising the read probability for search and AI crawl paths; a high-impact, verifiable technical issue.",
+    "recSsrConfidence": "Hard · mechanism confirmed",
+    "recContentTitle": "Publish a \"project management tools for small teams\" comparison piece to earn AI citations",
+    "recContentEditNote": "You're tuning the content angle and the brand facts to inject; once confirmed, a precise prompt is generated from this",
+    "recContentAngleLabel": "Content angle (editable)",
+    "recContentAngle": "Answer-first + FAQ structure; a fair comparison of Asana/Notion/teamflow for \"small team, limited budget, needs Gantt charts\"; use real features and pricing, don't disparage competitors.",
+    "recContentFactsLabel": "Injected brand facts (must not be fabricated)",
+    "recContentFacts": "teamflow: free tier supports 10 users; dual board + Gantt views; Chinese docs and local support; pricing from ¥29/user/month.",
+    "recFaqTitle": "Add FAQ schema and answer-first paragraphs to the 12 high-impression, low-CTR queries",
+    "recFaqWhy": "These queries already have real impressions, rank 6–8 but with CTR under 1% — suspected SERP feature influence. Adding answer-first + FAQ may improve readability, snippet matching and click performance; verify via retest.",
+    "recFaqEvidence": "GSC: \"team task management software\" impressions 8,420 / CTR 0.8% / rank 6.3. See the diagnosis page.",
+    "recFaqImpact": "A medium-impact, low-effort quick win.",
+    "recFaqConfidence": "Directional · GEO probabilistic",
+    "note": "Human in the loop: the tool proposes, you decide. Only \"accepted / edited\" recommendations advance to prompt generation. Off-site recommendations (e.g. forums) only produce talking-point drafts, never auto-executed."
+  },
+  "screen4": {
+    "title": "Output",
+    "meta": "3 confirmed · copy prompts on the left to execute, export the report on the right",
+    "promptForContent": "For recommendation · new small-team comparison content",
+    "promptForSsr": "For recommendation · /features server-rendering rework",
+    "reportTitle": "Analysis report",
+    "reportMeta": "teamflow.cn · measured on 2026-06-29 · exportable as PDF / share link",
+    "report": {
+      "snapshotTitle": "Current-state snapshot",
+      "snapshotBody": "AI visibility 6/20; avg. organic rank 14.2; AI-crawlable pages 62%.",
+      "gapTitle": "Competitor gap",
+      "gapBody": "Your SoV 30%, behind Asana (70%), Notion (55%), Monday (45%).",
+      "issuesTitle": "Key issues (by priority)",
+      "issuesBody": "P1 landing page not AI-crawlable; P1 absent from all selection-intent prompts; P2 quick win on 12 high-impression, low-CTR queries. Each with evidence.",
+      "recsTitle": "Recommendations & expectations",
+      "recsBody": "3 accepted, matching execution prompts generated; plan to fix crawlability first + 1 comparison piece, retest SoV in 4–6 weeks.",
+      "retestTitle": "Retest plan",
+      "retestTag": "Next round",
+      "retestBody": "Re-run the same 20 prompts in 6 weeks, measure the SoV delta, write into the living vertical playbook."
+    },
+    "note": "\"Give the prompt\" rather than \"auto-publish\": generation and publishing stay with a human + human review, keeping quality controllable and avoiding thin-content penalties. MCP-direct CMS writes can come later, but v1 stops at the precise prompt."
+  },
+  "evidence": {
+    "chatgptAnswer": "Evidence · ChatGPT measured answer, verbatim (run 3/5)",
+    "citedSources": "Cited sources (verify them yourself)",
+    "pageCrawlCompare": "Evidence · page crawl comparison",
+    "gscLast28": "Evidence · Google Search Console (last 28 days)",
+    "perplexityAnswer": "Evidence · Perplexity measured answer, verbatim",
+    "evidenceRef": "Evidence reference",
+    "table": {
+      "query": "Query",
+      "impressions": "Impr.",
+      "clicks": "Clicks",
+      "ctr": "CTR",
+      "rank": "Rank"
+    }
+  }
+}
