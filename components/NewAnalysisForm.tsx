@@ -67,7 +67,7 @@ export function NewAnalysisForm({ locale }: { locale: string }) {
   }
 
   return (
-    <section className="screen">
+    <section className="screen show">
       <p className="intro">{t('intro')}</p>
 
       <form className="card" style={{ padding: '22px' }} onSubmit={handleSubmit}>

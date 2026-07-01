@@ -15,6 +15,19 @@ function renderForm() {
   )
 }
 
+describe('NewAnalysisForm visibility', () => {
+  // globals.css 里 .screen { display:none }，只有 .screen.show 才可见（见屏2）。
+  // 缺 show 会导致整屏表单被 display:none 隐藏——回归此前屏1 空白的 bug。
+  it('renders the screen with the `show` class so it is not display:none', () => {
+    const { container } = render(
+      <NextIntlClientProvider locale="zh" messages={zhMessages}>
+        <NewAnalysisForm locale="zh" />
+      </NextIntlClientProvider>,
+    )
+    expect(container.querySelector('section.screen')).toHaveClass('show')
+  })
+})
+
 describe('NewAnalysisForm submit', () => {
   beforeEach(() => {
     pushMock.mockReset()
