@@ -69,7 +69,9 @@ async function seed() {
   )
 
   // ---- 4) evidence artifacts（finding 落库前必须先有证据） ----
-  const renderPayload = { url: 'https://teamflow.cn/features', rawHtmlMainTextChars: 0, renderedMainTextChars: 1840 }
+  // payload 字段对齐 SP2 真实 render_check（lib/inngest/collect-evidence.ts），
+  // 使 demo run 与真实 run 共用同一套 lib/diagnostics 派生逻辑。
+  const renderPayload = { url: 'https://teamflow.cn/features', initialHtmlMainTextChars: 0, renderedMainTextChars: 1840, mainContentDelta: 1840 }
   const probeSelectPayload = {
     prompt: '适合小团队的项目管理工具推荐',
     n: 5,

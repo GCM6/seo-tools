@@ -639,6 +639,32 @@ button {
 .stat .b {
   margin-top: 9px;
 }
+/* pending（待接入）指标卡：灰态占位，不显示数字 */
+.stat.pending {
+  opacity: 0.62;
+}
+.stat .v.muted {
+  color: var(--ds-muted);
+}
+/* 实测卡内的原始证据抽屉（原生 details，无需 JS） */
+.ev-details {
+  margin-top: 10px;
+  font-size: 12px;
+}
+.ev-details summary {
+  cursor: pointer;
+  color: var(--ds-muted);
+  user-select: none;
+}
+.ev-details[open] summary {
+  margin-bottom: 8px;
+}
+/* 待接入区块（答案地图 / SoV / 空诊断）灰态占位 */
+.pending-block {
+  padding: var(--sp-base);
+  color: var(--ds-muted);
+  font-size: 13px;
+}
 
 /* ---- answer presence map ---- */
 .map-wrap {

@@ -55,22 +55,23 @@
   },
   "screen2": {
     "currentTitle": "现状（客观真实数据）",
-    "currentMeta": "实测于 2026-06-29 · ChatGPT/Perplexity/Gemini 各跑 5 次 · 方向性样本",
+    "currentMeta": "每个维度仅在有对应证据时显示实测值，其余标注为待接入 · 点开实测卡可查看原始证据",
     "stats": {
       "aiVisibility": "AI 可见度",
       "aiVisibilityUnit": "/ 20 提问",
       "avgRank": "平均自然排名",
       "avgRankUnit": "位",
-      "crawlablePages": "可被 AI 抓取的页面",
-      "competitorVisibility": "竞品平均可见度",
-      "competitorVisibilityUnit": "/ 20"
+      "crawlableText": "正文可抓取占比",
+      "schemaCoverage": "结构化数据类型",
+      "schemaCoverageUnit": "类"
     },
-    "statTag": {
-      "sampleMeasured": "样本实测",
-      "gscMeasured": "GSC 实测",
-      "crawlMeasured": "抓取实测",
-      "inferredSample": "推断·样本"
-    },
+    "pending": "待接入 · {dep}",
+    "pendingHint": "该维度依赖 {dep}，尚未接入真实数据源",
+    "viewEvidence": "查看原始证据",
+    "demoBadge": "演示数据",
+    "mapPending": "答案出现地图依赖 AI 探针（SP4），尚未接入",
+    "sovPending": "竞品 Share of Voice 依赖 AI 探针（SP4），尚未接入",
+    "emptyFindings": "本轮已采集页面证据；诊断发现的自动生成将在 SP5 接入",
     "mapTitle": "答案出现地图",
     "mapMeta": "20 个高购买意图提问 · 青=你出现 / 灰=你缺席",
     "legendPresent": "你出现（6）",
@@ -86,7 +87,7 @@
     "findingJsRender": "核心落地页 /features 内容靠 JS 渲染，非渲染抓取链路读不到初始正文",
     "findingLowCtr": "12 个词已有曝光但 CTR 异常低，疑似受 SERP 特性 / AIO 影响",
     "findingBrandGood": "「teamflow 怎么样」类品牌词下，AI 描述准确、情绪正面（已具备，维持即可）",
-    "note": "所有数字均可溯源：实测来自 GSC / 真实 AI 回答 / 页面抓取；标「推断」的为模型估算（如竞品平均可见度），已明确区分。"
+    "note": "实测数字均可点开查看原始证据；依赖 GSC（SP3）/ AI 探针（SP4）的维度尚未接入，已标注「待接入」，绝不以演示数字冒充实测。"
   },
   "screen3": {
     "title": "优化建议",

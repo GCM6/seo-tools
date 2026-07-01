@@ -55,22 +55,23 @@
   },
   "screen2": {
     "currentTitle": "Current state (objective real data)",
-    "currentMeta": "Measured on 2026-06-29 · ChatGPT/Perplexity/Gemini, 5 runs each · directional sample",
+    "currentMeta": "Each dimension shows a measured value only when backed by evidence; the rest are marked pending · open a measured card to view its raw evidence",
     "stats": {
       "aiVisibility": "AI visibility",
       "aiVisibilityUnit": "/ 20 prompts",
       "avgRank": "Avg. organic rank",
       "avgRankUnit": "pos.",
-      "crawlablePages": "AI-crawlable pages",
-      "competitorVisibility": "Avg. competitor visibility",
-      "competitorVisibilityUnit": "/ 20"
+      "crawlableText": "Crawlable body-text share",
+      "schemaCoverage": "Structured-data types",
+      "schemaCoverageUnit": "types"
     },
-    "statTag": {
-      "sampleMeasured": "Sample-measured",
-      "gscMeasured": "GSC-measured",
-      "crawlMeasured": "Crawl-measured",
-      "inferredSample": "Inferred · sample"
-    },
+    "pending": "Pending · {dep}",
+    "pendingHint": "This dimension depends on {dep}; no real data source connected yet",
+    "viewEvidence": "View raw evidence",
+    "demoBadge": "Demo data",
+    "mapPending": "The answer presence map depends on AI probes (SP4), not connected yet",
+    "sovPending": "Competitor Share of Voice depends on AI probes (SP4), not connected yet",
+    "emptyFindings": "Page evidence collected this run; automatic finding generation lands in SP5",
     "mapTitle": "Answer presence map",
     "mapMeta": "20 high-intent prompts · teal = you appear / grey = you're absent",
     "legendPresent": "You appear (6)",
@@ -86,7 +87,7 @@
     "findingJsRender": "Key landing page /features renders via JS; the non-rendered crawl path can't read its initial body text",
     "findingLowCtr": "12 queries have impressions but abnormally low CTR; suspected SERP feature / AIO influence",
     "findingBrandGood": "For brand queries like \"how is teamflow,\" the AI description is accurate and positive (already solid, just maintain)",
-    "note": "Every number is traceable: \"measured\" comes from GSC / real AI answers / page crawls; items tagged \"inferred\" are model estimates (e.g. average competitor visibility), kept clearly separate."
+    "note": "Every measured number opens to its raw evidence; dimensions that depend on GSC (SP3) / AI probes (SP4) are not connected yet and are marked \"pending\" — never demo numbers dressed up as measured."
   },
   "screen3": {
     "title": "Recommendations",
