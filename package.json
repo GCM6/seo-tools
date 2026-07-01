@@ -13,8 +13,11 @@
     "db:seed": "tsx db/seed.ts"
   },
   "dependencies": {
+    "@inngest/realtime": "^0.4.6",
     "@libsql/client": "^0.17.4",
     "drizzle-orm": "^0.45.2",
+    "inngest": "^4.11.0",
+    "linkedom": "^0.18.12",
     "next": "16.2.9",
     "next-intl": "^4.13.0",
     "react": "19.2.4",

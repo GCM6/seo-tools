@@ -43,7 +43,7 @@ export const runs = sqliteTable('runs', {
   finishedAt: text('finished_at'),
 }, (t) => [
   check('runs_type', sql`${t.runType} in ('baseline','retest')`),
-  check('runs_status', sql`${t.status} in ('draft','collecting','diagnosing','reviewing','output','failed')`),
+  check('runs_status', sql`${t.status} in ('draft','collecting','collected','diagnosing','reviewing','output','failed')`),
 ])
 
 export const prompts = sqliteTable('prompts', {

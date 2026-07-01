@@ -7,7 +7,7 @@ export type EvidenceLevel = (typeof EVIDENCE_LEVELS)[number]
 export const RECOMMENDATION_STATUSES = ['draft', 'accepted', 'edited', 'rejected'] as const
 export type RecommendationStatus = (typeof RECOMMENDATION_STATUSES)[number]
 
-export type RunStatus = 'draft' | 'collecting' | 'diagnosing' | 'reviewing' | 'output' | 'failed'
+export type RunStatus = 'draft' | 'collecting' | 'collected' | 'diagnosing' | 'reviewing' | 'output' | 'failed'
 export type FindingSide = 'seo' | 'geo' | 'technical'
 export type EvidenceType = 'gsc' | 'ai_answer' | 'page_fetch' | 'render_check' | 'schema' | 'serp_snapshot' | 'manual'
 export type BrandFactStatus = 'verified' | 'draft' | 'retired'
