@@ -50,7 +50,7 @@
 | | 子项目 | 内容 | 对应文档 |
 |---|---|---|---|
 | **SP1（本轮）** | 前端骨架 + 数据底座 | Next 脚手架、4 屏 UI、libSQL schema(§6)、核心 API 桩 | §9 §6 §7 |
-| SP2 | 证据采集 | 页面抓取 + 托管浏览器渲染对比、schema/robots/meta 检测、evidence 入库 | §5 |
+| SP2 | 证据采集 | 页面抓取 + 托管浏览器渲染对比、schema/robots/meta 检测、evidence 入库 | §5 |（已完成，见 2026-07-01-sp2-evidence-collection-design.md）
 | SP3 | GSC 接入 | Google OAuth 只读、真实查询/展示/CTR/排名 | §4.1 |
 | SP4 | AI 探针 | provider adapter、探针协议留存、presence/citation 指标 | §5.2 §5.3 |
 | SP5 | 诊断与建议 | finding/recommendation 生成、人工闸门状态机、prompt assembler | §3 |
