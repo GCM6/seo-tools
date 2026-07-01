@@ -3,24 +3,23 @@ import { NonRetriableError } from 'inngest'
 import { collectEvidenceHandler } from './collect-evidence'
 import { SsrfBlockedError } from '@/lib/security/ssrf-guard'
 import type { NewEvidenceArtifact } from '@/lib/repositories'
-import type { RunStatus } from '@/lib/types'
 
 function makeDeps(overrides: Record<string, unknown> = {}) {
   return {
     assertPublicUrl: vi.fn(async (u: string) => new URL(u)),
-    fetchPageFacts: vi.fn(async (_url: string) => ({
+    fetchPageFacts: vi.fn(async () => ({
       rawHtml: '<html><body>hi</body></html>',
       mainTextChars: 2,
       canonicalUrl: 'https://teamflow.cn/',
       metaRobots: 'index,follow',
     })),
-    fetchRobotsCheck: vi.fn(async (_url: string) => ({ allowed: true, rawText: '' })),
-    extractSchema: vi.fn((_html: string) => ({ types: ['Organization'], raw: [{ '@type': 'Organization' }] })),
+    fetchRobotsCheck: vi.fn(async () => ({ allowed: true, rawText: '' })),
+    extractSchema: vi.fn(() => ({ types: ['Organization'], raw: [{ '@type': 'Organization' }] })),
     renderProvider: {
-      renderMainText: vi.fn(async (_url: string) => ({ html: '<html>rendered</html>', mainTextChars: 400 })),
+      renderMainText: vi.fn(async () => ({ html: '<html>rendered</html>', mainTextChars: 400 })),
     },
-    createEvidenceArtifact: vi.fn(async (_input: NewEvidenceArtifact) => [_input]),
-    markRunStatus: vi.fn(async (_runId: string, _status: RunStatus, _extra?: { finishedAt?: string }) => undefined),
+    createEvidenceArtifact: vi.fn(async (input: NewEvidenceArtifact) => [input]),
+    markRunStatus: vi.fn(async () => undefined),
     ...overrides,
   }
 }
