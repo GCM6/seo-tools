@@ -42,8 +42,8 @@
     "industryOptions": ["B2B SaaS · Team collaboration", "Cross-border e-commerce", "Local services", "Other…"],
     "marketLabel": "Market / language",
     "marketOptions": ["Chinese · Mainland China", "English · Global", "Southeast Asia"],
-    "competitorsLabel": "Competitors (auto-detected, editable)",
-    "competitorsPlaceholder": "Asana, Monday.com, Notion (3 auto-detected, editable)",
+    "competitorsLabel": "Competitors (optional, enter manually)",
+    "competitorsPlaceholder": "e.g. Asana, Monday.com, Notion (comma-separated)",
     "enginesLabel": "Probe engines (sources for measured GEO visibility)",
     "dataSourceLabel": "Real data sources",
     "gscTitle": "Connect Google Search Console (read-only)",
@@ -92,6 +92,7 @@
   "screen3": {
     "title": "Recommendations",
     "meta": "Ranked by \"impact × confidence ÷ effort\" · each must be confirmed before output",
+    "empty": "No recommendations yet this run; automatic finding-to-recommendation generation lands in SP5",
     "label": {
       "why": "Why",
       "evidence": "Evidence",
@@ -122,6 +123,7 @@
   "screen4": {
     "title": "Output",
     "meta": "{count} confirmed · copy prompts on the left to execute, export the report on the right",
+    "emptyGated": "No accepted / edited recommendations to generate execution prompts yet — confirm them on the Recommendations screen first",
     "promptForContent": "For recommendation · new small-team comparison content",
     "promptForSsr": "For recommendation · /features server-rendering rework",
     "promptTpl": {

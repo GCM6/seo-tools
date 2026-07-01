@@ -8,7 +8,6 @@ import {
   getProject,
   getBrandFacts,
 } from '@/lib/repositories'
-import { DEMO_PROJECT_ID, DEMO_DOMAIN } from '@/lib/fixtures'
 
 type Recommendation = Awaited<ReturnType<typeof getRecommendations>>[number]
 type BrandFact = Awaited<ReturnType<typeof getBrandFacts>>[number]
@@ -42,15 +41,15 @@ export default async function OutputPage({
     return lines.join('\n')
   }
 
+  // 真实 run 才有 project；不存在的 run 不再回退 demo 项目（那会显示 teamflow 演示事实，误导）。
   const run = await getRun(id)
-  const projectId = run?.projectId ?? DEMO_PROJECT_ID
-  const project = await getProject(projectId)
-  const domain = project?.domain ?? DEMO_DOMAIN
+  const project = run ? await getProject(run.projectId) : undefined
+  const domain = project?.domain ?? ''
 
   const recommendations = await getRecommendations(id)
   const gated = recommendations.filter((r) => GATED.has(r.status))
 
-  const allFacts = await getBrandFacts(projectId)
+  const allFacts = run ? await getBrandFacts(run.projectId) : []
   const verifiedFacts = allFacts.filter((f) => f.status === 'verified')
 
   return (
@@ -62,13 +61,17 @@ export default async function OutputPage({
 
       <div className="out-grid">
         <div>
-          {gated.map((rec) => (
-            <PromptCard
-              key={rec.id}
-              title={rec.what}
-              promptText={buildPromptText(rec, verifiedFacts, domain)}
-            />
-          ))}
+          {gated.length ? (
+            gated.map((rec) => (
+              <PromptCard
+                key={rec.id}
+                title={rec.what}
+                promptText={buildPromptText(rec, verifiedFacts, domain)}
+              />
+            ))
+          ) : (
+            <div className="card pending-block">{t('emptyGated')}</div>
+          )}
         </div>
 
         <ReportPanel facts={verifiedFacts} />

@@ -42,8 +42,8 @@
     "industryOptions": ["B2B SaaS · 项目协作", "跨境电商", "本地服务", "其他…"],
     "marketLabel": "市场 / 语言",
     "marketOptions": ["中文 · 中国大陆", "English · Global", "东南亚"],
-    "competitorsLabel": "竞品（自动检测，可手动增删）",
-    "competitorsPlaceholder": "Asana, Monday.com, Notion（自动检测到 3 个，可编辑）",
+    "competitorsLabel": "竞品（可选，手动填写）",
+    "competitorsPlaceholder": "如 Asana, Monday.com, Notion（逗号分隔）",
     "enginesLabel": "探测引擎（GEO 可见度实测来源）",
     "dataSourceLabel": "真实数据源",
     "gscTitle": "连接 Google Search Console（只读）",
@@ -92,6 +92,7 @@
   "screen3": {
     "title": "优化建议",
     "meta": "按「影响 × 置信 ÷ 工作量」排序 · 逐条确认后才进入输出",
+    "empty": "本轮尚无优化建议；诊断发现的自动生成与转建议将在 SP5 接入",
     "label": {
       "why": "为什么",
       "evidence": "证据",
@@ -122,6 +123,7 @@
   "screen4": {
     "title": "输出",
     "meta": "已确认 {count} 条 · 左侧复制提示词去执行，右侧导出报告",
+    "emptyGated": "尚无「已接受 / 已编辑」的建议可生成执行提示词——请先在优化建议屏逐条确认",
     "promptForContent": "对应建议 · 新增小团队选型对比内容",
     "promptForSsr": "对应建议 · /features 服务端渲染改造",
     "promptTpl": {

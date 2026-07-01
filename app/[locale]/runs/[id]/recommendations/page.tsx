@@ -23,25 +23,29 @@ export default async function RecommendationsPage({
         <span className="meta">{t('meta')}</span>
       </div>
 
-      {recs.map((r) => (
-        <RecCard
-          key={r.id}
-          id={r.id}
-          priority={r.priority}
-          title={r.what}
-          initialStatus={r.status as RecStatus}
-          fields={{
-            why: r.why || undefined,
-            evidence: r.evidenceRefs.length ? r.evidenceRefs.join(' · ') : undefined,
-            impact: r.expectedImpact || undefined,
-            effort: r.effort || undefined,
-            risk: r.risk || undefined,
-            validationMethod: r.validationMethod || undefined,
-            confidence: r.confidence || undefined,
-          }}
-          editDraft={r.why}
-        />
-      ))}
+      {recs.length ? (
+        recs.map((r) => (
+          <RecCard
+            key={r.id}
+            id={r.id}
+            priority={r.priority}
+            title={r.what}
+            initialStatus={r.status as RecStatus}
+            fields={{
+              why: r.why || undefined,
+              evidence: r.evidenceRefs.length ? r.evidenceRefs.join(' · ') : undefined,
+              impact: r.expectedImpact || undefined,
+              effort: r.effort || undefined,
+              risk: r.risk || undefined,
+              validationMethod: r.validationMethod || undefined,
+              confidence: r.confidence || undefined,
+            }}
+            editDraft={r.why}
+          />
+        ))
+      ) : (
+        <div className="card pending-block">{t('empty')}</div>
+      )}
 
       <div className="note">{t('note')}</div>
     </Shell>
