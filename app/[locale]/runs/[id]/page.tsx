@@ -8,7 +8,7 @@ import { EvidenceDrawer, type EvidenceView } from '@/components/EvidenceDrawer'
 import { getRun, getProject, getFindings, getEvidence, getRunEvidence } from '@/lib/repositories'
 import { provenanceForClaim } from '@/lib/evidence'
 import { deriveStatCards } from '@/lib/diagnostics'
-import { DEMO_PROMPTS, DEMO_SOV, DEMO_RUN_ID } from '@/lib/fixtures'
+import { DEMO_PROMPTS, DEMO_SOV, isDemoRun } from '@/lib/fixtures'
 import type { ClaimType } from '@/lib/types'
 
 // Screen 2 — diagnosis dashboard. Server Component (Next 16): await params,
@@ -26,13 +26,12 @@ export default async function RunDiagnosisPage({
   setRequestLocale(locale)
 
   const t = await getTranslations()
-  const run = await getRun(id)
+  // 三者都只依赖 id，并行取；project 依赖 run.projectId，随后单独取。
+  const [run, findings, evidenceRows] = await Promise.all([getRun(id), getFindings(id), getRunEvidence(id)])
   const project = run ? await getProject(run.projectId) : undefined
-  const findings = await getFindings(id)
-  const isDemo = id === DEMO_RUN_ID
+  const isDemo = isDemoRun(id)
 
   // 从当前 run 的真实证据派生指标卡；measured 卡可点开对应证据原文。
-  const evidenceRows = await getRunEvidence(id)
   const cards = deriveStatCards(
     evidenceRows.map((e) => ({ id: e.id, type: e.type, claimLevel: e.claimLevel, payload: e.payload })),
   )
@@ -43,7 +42,11 @@ export default async function RunDiagnosisPage({
   const items: FindingItem[] = await Promise.all(
     findings.map(async (f): Promise<FindingItem> => {
       const prov = provenanceForClaim(f.claimType as ClaimType)
-      const artifacts = await Promise.all((f.evidenceRefs ?? []).map((ref) => getEvidence(ref)))
+      // 证据已随 evidenceRows 一次性载入 evidenceById，同 run 的引用直接命中，
+      // 只有跨 run 的引用（数据异常时）才回落到单独查询，避免 N+1。
+      const artifacts = await Promise.all(
+        (f.evidenceRefs ?? []).map((ref) => evidenceById[ref] ?? getEvidence(ref)),
+      )
       return {
         id: f.id,
         side: f.side as FindingItem['side'],

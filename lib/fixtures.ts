@@ -6,6 +6,12 @@ export const DEMO_RUN_ID = 'run_demo'
 export const DEMO_PROJECT_ID = 'teamflow'
 export const DEMO_DOMAIN = 'teamflow.cn'
 
+// demo/seed run 的唯一判定入口——集中一处，避免 'run_demo' 字符串等值判断散落在组件里。
+// 后续若把「样本 run」建成数据属性（runType 加 'demo' 或 isSample 列），只改这里。
+export function isDemoRun(runId: string): boolean {
+  return runId === DEMO_RUN_ID
+}
+
 export interface DemoPrompt {
   text: string
   present: boolean

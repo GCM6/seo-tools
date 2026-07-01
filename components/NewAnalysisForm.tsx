@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { useState, startTransition } from 'react'
+import { useActionState, useState } from 'react'
 
 // Probe engines are proper nouns (brand names), not translatable copy.
 // ChatGPT / Perplexity / Gemini are on by default; Google AI Overviews off —
@@ -24,23 +24,18 @@ export function NewAnalysisForm({ locale }: { locale: string }) {
   const marketOptions = t.raw('marketOptions') as string[]
   const [engines, setEngines] = useState<Record<string, boolean>>(DEFAULT_ENGINES)
   const [gsc, setGsc] = useState(true)
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   function toggleEngine(name: string) {
     setEngines((prev) => ({ ...prev, [name]: !prev[name] }))
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const domain = String(form.get('url') ?? '')
-    const industry = String(form.get('industry') ?? '')
-    const market = String(form.get('market') ?? '')
-
-    setError(null)
-    setPending(true)
-    startTransition(async () => {
+  // React 19 Actions：提交态用 useActionState 的 isPending，不手搓 loading 布尔。
+  // action 返回错误文案（或 null）作为下一个 state。
+  const [error, submitAction, pending] = useActionState<string | null, FormData>(
+    async (_prev, form) => {
+      const domain = String(form.get('url') ?? '')
+      const industry = String(form.get('industry') ?? '')
+      const market = String(form.get('market') ?? '')
       try {
         const projectRes = await fetch('/api/projects', {
           method: 'POST',
@@ -59,18 +54,19 @@ export function NewAnalysisForm({ locale }: { locale: string }) {
         const run = await runRes.json()
 
         router.push(`/${locale}/runs/${run.id}`)
+        return null
       } catch {
-        setError(t('submitError'))
-        setPending(false)
+        return t('submitError')
       }
-    })
-  }
+    },
+    null,
+  )
 
   return (
     <section className="screen show">
       <p className="intro">{t('intro')}</p>
 
-      <form className="card" style={{ padding: '22px' }} onSubmit={handleSubmit}>
+      <form className="card" style={{ padding: '22px' }} action={submitAction}>
         <div className="field">
           <label>{t('urlLabel')}</label>
           <input

@@ -65,13 +65,17 @@
       "schemaCoverage": "Structured-data types",
       "schemaCoverageUnit": "types"
     },
-    "pending": "Pending · {dep}",
-    "pendingHint": "This dimension depends on {dep}; no real data source connected yet",
+    "pendingSource": "Pending · {source}",
+    "pendingHint": "This dimension depends on {source}; no real data source connected yet",
+    "uncollected": "Not yet collected",
+    "uncollectedHint": "The crawl source is ready; this run hasn't collected evidence for this dimension yet",
+    "sourceAiProbe": "AI probes",
+    "sourceGsc": "GSC",
     "viewEvidence": "View raw evidence",
     "demoBadge": "Demo data",
-    "mapPending": "The answer presence map depends on AI probes (SP4), not connected yet",
-    "sovPending": "Competitor Share of Voice depends on AI probes (SP4), not connected yet",
-    "emptyFindings": "Page evidence collected this run; automatic finding generation lands in SP5",
+    "mapPending": "The answer presence map depends on AI probes, not connected yet",
+    "sovPending": "Competitor Share of Voice depends on AI probes, not connected yet",
+    "emptyFindings": "Page evidence collected this run; automatic finding generation is not connected yet",
     "mapTitle": "Answer presence map",
     "mapMeta": "20 high-intent prompts · teal = you appear / grey = you're absent",
     "legendPresent": "You appear (6)",
@@ -87,12 +91,12 @@
     "findingJsRender": "Key landing page /features renders via JS; the non-rendered crawl path can't read its initial body text",
     "findingLowCtr": "12 queries have impressions but abnormally low CTR; suspected SERP feature / AIO influence",
     "findingBrandGood": "For brand queries like \"how is teamflow,\" the AI description is accurate and positive (already solid, just maintain)",
-    "note": "Every measured number opens to its raw evidence; dimensions that depend on GSC (SP3) / AI probes (SP4) are not connected yet and are marked \"pending\" — never demo numbers dressed up as measured."
+    "note": "Every measured number opens to its raw evidence; dimensions that depend on GSC / AI probes are not connected yet and are marked \"pending\" — never demo numbers dressed up as measured."
   },
   "screen3": {
     "title": "Recommendations",
     "meta": "Ranked by \"impact × confidence ÷ effort\" · each must be confirmed before output",
-    "empty": "No recommendations yet this run; automatic finding-to-recommendation generation lands in SP5",
+    "empty": "No recommendations yet this run; automatic finding-to-recommendation generation is not connected yet",
     "label": {
       "why": "Why",
       "evidence": "Evidence",

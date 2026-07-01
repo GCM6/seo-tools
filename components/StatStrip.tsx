@@ -1,9 +1,8 @@
 import { getTranslations } from 'next-intl/server'
 import { ProvenanceTag } from './ProvenanceTag'
 import { EvidenceDrawer, type EvidenceView } from './EvidenceDrawer'
-import { labelKeyForLevel } from '@/lib/evidence'
+import { provenanceForLevel } from '@/lib/evidence'
 import type { StatCard, StatCardKey } from '@/lib/diagnostics'
-import type { EvidenceLevel } from '@/lib/types'
 
 // Screen 2 stat strip — four fixed diagnosis dimensions derived from the
 // current run's evidence (lib/diagnostics). A card is either `measured`
@@ -17,10 +16,6 @@ const UNIT_KEY: Partial<Record<StatCardKey, string>> = {
   schemaCoverage: 'stats.schemaCoverageUnit',
 }
 const UNIT_SUFFIX: Partial<Record<StatCardKey, string>> = { crawlableText: '%' }
-
-function variantForLevel(level: EvidenceLevel): 'm' | 'i' {
-  return level === 'L4' || level === 'L3' ? 'm' : 'i'
-}
 
 export async function StatStrip({
   cards,
@@ -38,12 +33,17 @@ export async function StatStrip({
         const label = t(`stats.${c.key}`)
 
         if (c.state === 'pending') {
+          // uncollected：数据源已就绪、本轮未采到（≠功能未建）；ai_probe/gsc：数据源未接入。
+          const isUncollected = c.reason === 'uncollected'
+          const source = c.reason === 'ai_probe' ? t('sourceAiProbe') : c.reason === 'gsc' ? t('sourceGsc') : ''
+          const tagLabel = isUncollected ? t('uncollected') : t('pendingSource', { source })
+          const hint = isUncollected ? t('uncollectedHint') : t('pendingHint', { source })
           return (
-            <div key={c.key} className="card stat pending" title={t('pendingHint', { dep: c.dependsOn })}>
+            <div key={c.key} className="card stat pending" title={hint}>
               <div className="k">{label}</div>
               <div className="v muted">—</div>
               <div className="b">
-                <ProvenanceTag variant="g" label={t('pending', { dep: c.dependsOn })} />
+                <ProvenanceTag variant="g" label={tagLabel} />
               </div>
             </div>
           )
@@ -52,6 +52,7 @@ export async function StatStrip({
         const unitKey = UNIT_KEY[c.key]
         const unit = UNIT_SUFFIX[c.key] ?? (unitKey ? ` ${t(unitKey)}` : '')
         const ev = evidenceById?.[c.evidenceId]
+        const prov = provenanceForLevel(c.level)
 
         return (
           <div key={c.key} className="card stat">
@@ -61,7 +62,7 @@ export async function StatStrip({
               <small>{unit}</small>
             </div>
             <div className="b">
-              <ProvenanceTag variant={variantForLevel(c.level)} label={tRoot(labelKeyForLevel(c.level))} />
+              <ProvenanceTag variant={prov.variant} label={tRoot(prov.labelKey)} />
             </div>
             {ev ? (
               <details className="ev-details">

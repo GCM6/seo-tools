@@ -16,3 +16,10 @@ export function labelKeyForLevel(level: EvidenceLevel): string {
   if (level === 'L2') return 'common.tag.inferred'
   return 'common.tag.suspected'
 }
+
+// 证据等级 → 出处标签的 variant + labelKey，单一来源（对齐 provenanceForClaim）。
+// StatStrip 等直接用它，避免各处各写一遍「L4/L3→实测」的 cutoff。
+export function provenanceForLevel(level: EvidenceLevel): { variant: Variant; labelKey: string } {
+  const variant: Variant = level === 'L4' || level === 'L3' ? 'm' : 'i'
+  return { variant, labelKey: labelKeyForLevel(level) }
+}

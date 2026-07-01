@@ -35,12 +35,13 @@ describe('deriveStatCards', () => {
     expect(keys).toEqual(['aiVisibility', 'avgRank', 'crawlableText', 'schemaCoverage'])
   })
 
-  it('marks everything pending on the correct SP when there is no evidence', () => {
+  it('marks everything pending with the right reason when there is no evidence', () => {
     const cards = deriveStatCards([])
-    expect(card(cards, 'aiVisibility')).toMatchObject({ state: 'pending', dependsOn: 'SP4' })
-    expect(card(cards, 'avgRank')).toMatchObject({ state: 'pending', dependsOn: 'SP3' })
-    expect(card(cards, 'crawlableText')).toMatchObject({ state: 'pending', dependsOn: 'SP2' })
-    expect(card(cards, 'schemaCoverage')).toMatchObject({ state: 'pending', dependsOn: 'SP2' })
+    expect(card(cards, 'aiVisibility')).toMatchObject({ state: 'pending', reason: 'ai_probe' })
+    expect(card(cards, 'avgRank')).toMatchObject({ state: 'pending', reason: 'gsc' })
+    // 抓取数据源已就绪，缺证据 = 本轮未采集，而非「功能未建」
+    expect(card(cards, 'crawlableText')).toMatchObject({ state: 'pending', reason: 'uncollected' })
+    expect(card(cards, 'schemaCoverage')).toMatchObject({ state: 'pending', reason: 'uncollected' })
   })
 
   it('derives real measured cards from SP2 evidence (render_check + schema)', () => {
@@ -49,9 +50,9 @@ describe('deriveStatCards', () => {
     expect(card(cards, 'crawlableText')).toEqual({ key: 'crawlableText', state: 'measured', value: '90', level: 'L4', evidenceId: 'ev_rc' })
     // 结构化数据类型数 = 2
     expect(card(cards, 'schemaCoverage')).toEqual({ key: 'schemaCoverage', state: 'measured', value: '2', level: 'L4', evidenceId: 'ev_sc' })
-    // AI 可见度 / 平均排名 无对应证据 → 待接入
-    expect(card(cards, 'aiVisibility')).toMatchObject({ state: 'pending', dependsOn: 'SP4' })
-    expect(card(cards, 'avgRank')).toMatchObject({ state: 'pending', dependsOn: 'SP3' })
+    // AI 可见度 / 平均排名 无对应证据 → 待接入对应数据源
+    expect(card(cards, 'aiVisibility')).toMatchObject({ state: 'pending', reason: 'ai_probe' })
+    expect(card(cards, 'avgRank')).toMatchObject({ state: 'pending', reason: 'gsc' })
   })
 
   it('derives avgRank and a 0% crawlable from demo seed evidence', () => {
@@ -59,8 +60,8 @@ describe('deriveStatCards', () => {
     expect(card(cards, 'avgRank')).toEqual({ key: 'avgRank', state: 'measured', value: '6.3', level: 'L2', evidenceId: 'ev_gsc' })
     // initial 0 / rendered 1840 → 0%（正文全靠 JS 渲染，AI 抓不到）
     expect(card(cards, 'crawlableText')).toEqual({ key: 'crawlableText', state: 'measured', value: '0', level: 'L4', evidenceId: 'ev_render' })
-    // demo 没有 schema 证据 → 待接入
-    expect(card(cards, 'schemaCoverage')).toMatchObject({ state: 'pending', dependsOn: 'SP2' })
+    // demo 没有 schema 证据 → 本轮未采集
+    expect(card(cards, 'schemaCoverage')).toMatchObject({ state: 'pending', reason: 'uncollected' })
   })
 
   it('clamps crawlable ratio to 100 when initial exceeds rendered', () => {

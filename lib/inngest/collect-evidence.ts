@@ -137,9 +137,18 @@ export const collectEvidence = inngest.createFunction(
   {
     id: 'collect-evidence',
     retries: 3,
-    onFailure: async ({ event }) => {
-      const original = (event.data as { event: { data: CollectRequestedEventData } }).event
-      await markRunStatus(original.data.runId, 'failed')
+    onFailure: async (ctx) => {
+      const original = (ctx.event.data as { event: { data: CollectRequestedEventData } }).event
+      const runId = original.data.runId
+      await markRunStatus(runId, 'failed')
+      // 重试耗尽的失败（非 SSRF 分支）此前只落 DB 不广播，SSE 消费者拿不到终止帧。
+      // 这里补发 failed，让 /runs/{id}/events 的流能收到终态并关闭。
+      const publish = (ctx as { publish?: (m: unknown) => Promise<void> }).publish
+      try {
+        if (publish) await publish(await runProgressChannel(runId).progress({ type: 'failed', reason: 'collection_failed' }))
+      } catch {
+        // publish 在失败上下文不可用时忽略——DB 状态已是 failed，SSE 路由的终态短路也会兜底。
+      }
     },
   },
   { event: COLLECT_REQUESTED_EVENT },

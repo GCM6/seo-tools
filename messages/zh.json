@@ -65,13 +65,17 @@
       "schemaCoverage": "结构化数据类型",
       "schemaCoverageUnit": "类"
     },
-    "pending": "待接入 · {dep}",
-    "pendingHint": "该维度依赖 {dep}，尚未接入真实数据源",
+    "pendingSource": "待接入 · {source}",
+    "pendingHint": "该维度依赖 {source}，尚未接入真实数据源",
+    "uncollected": "尚未采集",
+    "uncollectedHint": "抓取数据源已就绪，本轮尚未采集到该维度证据",
+    "sourceAiProbe": "AI 探针",
+    "sourceGsc": "GSC",
     "viewEvidence": "查看原始证据",
     "demoBadge": "演示数据",
-    "mapPending": "答案出现地图依赖 AI 探针（SP4），尚未接入",
-    "sovPending": "竞品 Share of Voice 依赖 AI 探针（SP4），尚未接入",
-    "emptyFindings": "本轮已采集页面证据；诊断发现的自动生成将在 SP5 接入",
+    "mapPending": "答案出现地图依赖 AI 探针，尚未接入",
+    "sovPending": "竞品 Share of Voice 依赖 AI 探针，尚未接入",
+    "emptyFindings": "本轮已采集页面证据；诊断发现的自动生成尚未接入",
     "mapTitle": "答案出现地图",
     "mapMeta": "20 个高购买意图提问 · 青=你出现 / 灰=你缺席",
     "legendPresent": "你出现（6）",
@@ -87,12 +91,12 @@
     "findingJsRender": "核心落地页 /features 内容靠 JS 渲染，非渲染抓取链路读不到初始正文",
     "findingLowCtr": "12 个词已有曝光但 CTR 异常低，疑似受 SERP 特性 / AIO 影响",
     "findingBrandGood": "「teamflow 怎么样」类品牌词下，AI 描述准确、情绪正面（已具备，维持即可）",
-    "note": "实测数字均可点开查看原始证据；依赖 GSC（SP3）/ AI 探针（SP4）的维度尚未接入，已标注「待接入」，绝不以演示数字冒充实测。"
+    "note": "实测数字均可点开查看原始证据；依赖 GSC / AI 探针 的维度尚未接入，已标注「待接入」，绝不以演示数字冒充实测。"
   },
   "screen3": {
     "title": "优化建议",
     "meta": "按「影响 × 置信 ÷ 工作量」排序 · 逐条确认后才进入输出",
-    "empty": "本轮尚无优化建议；诊断发现的自动生成与转建议将在 SP5 接入",
+    "empty": "本轮尚无优化建议；诊断发现的自动生成与转建议尚未接入",
     "label": {
       "why": "为什么",
       "evidence": "证据",
