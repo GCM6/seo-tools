@@ -39,7 +39,9 @@
     "intro": "Enter a URL and Veris runs an SEO + GEO diagnosis on real data (your GSC, measured answers from each AI engine, page crawls) — every conclusion comes with verifiable evidence.",
     "urlLabel": "URL",
     "industryLabel": "Industry / vertical",
+    "industryOptions": ["B2B SaaS · Team collaboration", "Cross-border e-commerce", "Local services", "Other…"],
     "marketLabel": "Market / language",
+    "marketOptions": ["Chinese · Mainland China", "English · Global", "Southeast Asia"],
     "competitorsLabel": "Competitors (auto-detected, editable)",
     "competitorsPlaceholder": "Asana, Monday.com, Notion (3 auto-detected, editable)",
     "enginesLabel": "Probe engines (sources for measured GEO visibility)",
@@ -47,6 +49,8 @@
     "gscTitle": "Connect Google Search Console (read-only)",
     "gscDesc": "Once connected, see your real rankings, impressions and clicks — the most accurate ground truth for diagnosis",
     "run": "Start diagnosis →",
+    "starting": "Starting…",
+    "submitError": "Couldn't start the analysis. Please try again.",
     "note": "Sample interface. Diagnosis is asynchronous: each probe streams a result onto the next screen as it finishes, no idle waiting."
   },
   "screen2": {

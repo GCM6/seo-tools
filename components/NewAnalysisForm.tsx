@@ -1,9 +1,8 @@
 'use client'
 
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { useState } from 'react'
-import { DEMO_RUN_ID } from '@/lib/fixtures'
+import { useState, startTransition } from 'react'
 
 // Probe engines are proper nouns (brand names), not translatable copy.
 // ChatGPT / Perplexity / Gemini are on by default; Google AI Overviews off —
@@ -17,25 +16,65 @@ const DEFAULT_ENGINES: Record<string, boolean> = {
 }
 
 // Screen 1 new-analysis form. Client leaf: chip selection + GSC toggle are
-// controlled state. All user-facing copy comes from the `screen1` catalog;
-// the "start diagnosis" action links to the demo run.
+// controlled state; submit creates a real project + run and navigates to it.
 export function NewAnalysisForm({ locale }: { locale: string }) {
   const t = useTranslations('screen1')
+  const router = useRouter()
+  const industryOptions = t.raw('industryOptions') as string[]
+  const marketOptions = t.raw('marketOptions') as string[]
   const [engines, setEngines] = useState<Record<string, boolean>>(DEFAULT_ENGINES)
   const [gsc, setGsc] = useState(true)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   function toggleEngine(name: string) {
     setEngines((prev) => ({ ...prev, [name]: !prev[name] }))
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const domain = String(form.get('url') ?? '')
+    const industry = String(form.get('industry') ?? '')
+    const market = String(form.get('market') ?? '')
+
+    setError(null)
+    setPending(true)
+    startTransition(async () => {
+      try {
+        const projectRes = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ domain, industry, market }),
+        })
+        if (!projectRes.ok) throw new Error('project_create_failed')
+        const project = await projectRes.json()
+
+        const runRes = await fetch('/api/runs', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ projectId: project.id, runType: 'baseline' }),
+        })
+        if (!runRes.ok) throw new Error('run_create_failed')
+        const run = await runRes.json()
+
+        router.push(`/${locale}/runs/${run.id}`)
+      } catch {
+        setError(t('submitError'))
+        setPending(false)
+      }
+    })
   }
 
   return (
     <section className="screen">
       <p className="intro">{t('intro')}</p>
 
-      <div className="card" style={{ padding: '22px' }}>
+      <form className="card" style={{ padding: '22px' }} onSubmit={handleSubmit}>
         <div className="field">
           <label>{t('urlLabel')}</label>
           <input
+            name="url"
             className="url-in"
             defaultValue="https://teamflow.cn"
             aria-label={t('urlLabel')}
@@ -45,19 +84,18 @@ export function NewAnalysisForm({ locale }: { locale: string }) {
         <div className="row2">
           <div className="field">
             <label>{t('industryLabel')}</label>
-            <select className="sel" aria-label={t('industryLabel')}>
-              <option>B2B SaaS</option>
-              <option>E-commerce</option>
-              <option>Local services</option>
-              <option>Other…</option>
+            <select name="industry" className="sel" aria-label={t('industryLabel')}>
+              {industryOptions.map((opt) => (
+                <option key={opt}>{opt}</option>
+              ))}
             </select>
           </div>
           <div className="field">
             <label>{t('marketLabel')}</label>
-            <select className="sel" aria-label={t('marketLabel')}>
-              <option>zh · CN</option>
-              <option>en · Global</option>
-              <option>SEA</option>
+            <select name="market" className="sel" aria-label={t('marketLabel')}>
+              {marketOptions.map((opt) => (
+                <option key={opt}>{opt}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -100,14 +138,11 @@ export function NewAnalysisForm({ locale }: { locale: string }) {
           </div>
         </div>
 
-        <Link
-          className="run-btn"
-          href={`/${locale}/runs/${DEMO_RUN_ID}`}
-          style={{ display: 'inline-block' }}
-        >
-          {t('run')}
-        </Link>
-      </div>
+        <button type="submit" className="run-btn" disabled={pending}>
+          {pending ? t('starting') : t('run')}
+        </button>
+        {error && <p className="note" style={{ color: 'var(--ds-error, red)' }}>{error}</p>}
+      </form>
 
       <div className="note">{t('note')}</div>
     </section>

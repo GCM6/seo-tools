@@ -39,7 +39,9 @@
     "intro": "输入一个网址，Veris 会用真实数据（你的 GSC、各家 AI 的实测回答、页面抓取）做出 SEO + GEO 诊断——每条结论都附可复核的证据。",
     "urlLabel": "网址",
     "industryLabel": "行业 / 垂直",
+    "industryOptions": ["B2B SaaS · 项目协作", "跨境电商", "本地服务", "其他…"],
     "marketLabel": "市场 / 语言",
+    "marketOptions": ["中文 · 中国大陆", "English · Global", "东南亚"],
     "competitorsLabel": "竞品（自动检测，可手动增删）",
     "competitorsPlaceholder": "Asana, Monday.com, Notion（自动检测到 3 个，可编辑）",
     "enginesLabel": "探测引擎（GEO 可见度实测来源）",
@@ -47,6 +49,8 @@
     "gscTitle": "连接 Google Search Console（只读）",
     "gscDesc": "接入后可看到你的真实排名、展示、点击——诊断最准的地面实况",
     "run": "开始诊断 →",
+    "starting": "创建中…",
+    "submitError": "创建分析失败，请重试。",
     "note": "示例界面。诊断为异步过程：跑完一个提问就在下一屏渐进显示一条结果，无需空等。"
   },
   "screen2": {
