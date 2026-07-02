@@ -20,6 +20,7 @@ interface PerplexityBody {
 export function createPerplexityProbeProvider({ apiKey, model, fetchImpl = fetch }: PerplexityConfig): AiProbeProvider {
   const modelId = model || process.env.AI_PROBE_PERPLEXITY_MODEL || DEFAULT_MODEL
   return {
+    webSearchEnabled: true,
     id: 'perplexity',
     modelId,
     isConfigured() {

@@ -159,12 +159,12 @@
     "sourceRenderProvider": "Cloudflare 渲染 API",
     "configHint": {
       "search_provider": "在 .env 配置 GOOGLE_CSE_API_KEY 与 GOOGLE_CSE_CX，重新诊断后出数",
-      "ai_probe": "在 .env 配置任一 AI key（OPENAI_API_KEY / PERPLEXITY_API_KEY / GEMINI_API_KEY），新建分析时勾选对应引擎",
+      "ai_probe": "在 .env 配置任一 AI key（OPENAI_API_KEY / PERPLEXITY_API_KEY / GEMINI_API_KEY / DEEPSEEK_API_KEY），新建分析时勾选对应引擎",
       "gsc": "依赖 Google Search Console OAuth（只读），将在下一期接入",
       "render_provider": "在 .env 配置 CLOUDFLARE_ACCOUNT_ID 与 CLOUDFLARE_API_TOKEN，重新诊断后出数",
       "uncollected": "抓取数据源已就绪，重新诊断即可采集"
     },
-    "probePending": "尚无 AI 探针实测数据 · 在 .env 配置任一 AI key（OPENAI_API_KEY / PERPLEXITY_API_KEY / GEMINI_API_KEY），并在新建分析勾选对应引擎后重新诊断",
+    "probePending": "尚无 AI 探针实测数据 · 在 .env 配置任一 AI key（OPENAI_API_KEY / PERPLEXITY_API_KEY / GEMINI_API_KEY / DEEPSEEK_API_KEY），并在新建分析勾选对应引擎后重新诊断",
     "probePendingRerun": "AI key 已配置（{providers}）；本 run 尚未采集到探针数据，重新诊断后这里会展示真实数据"
   },
   "screen3": {

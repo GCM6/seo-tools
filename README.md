@@ -34,7 +34,7 @@ npx inngest-cli@latest dev   # 另开一个终端：启动 Inngest dev server（
 | Google 收录可见性 | `GOOGLE_CSE_API_KEY` + `GOOGLE_CSE_CX` |
 | 正文可抓取占比 | `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` |
 | 结构化数据类型 | 无需额外配置（页面抓取即可） |
-| AI 可见度 / 答案地图 / 竞品 SoV | 任一 AI key：`OPENAI_API_KEY` / `PERPLEXITY_API_KEY` / `GEMINI_API_KEY`，并在新建分析勾选对应引擎 |
+| AI 可见度 / 答案地图 / 竞品 SoV | 任一 AI key：`OPENAI_API_KEY` / `PERPLEXITY_API_KEY` / `GEMINI_API_KEY` / `DEEPSEEK_API_KEY`，并在新建分析勾选对应引擎（DeepSeek 开放 API 无联网引用，证据如实记录） |
 | 平均自然排名 | GSC OAuth（下一期接入） |
 
 AI 探针为 20 条固定模板 prompt × 每 prompt `n` 次采样 × 已配置 provider 数；本地调试建议设 `AI_PROBE_N=1` 控制成本（生产默认取项目 `probe_n=5`，方向性样本）。

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { createOpenAiProbeProvider } from './openai'
 import { createPerplexityProbeProvider } from './perplexity'
 import { createGeminiProbeProvider } from './gemini'
+import { createDeepseekProbeProvider } from './deepseek'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -79,6 +80,39 @@ describe('Perplexity probe provider', () => {
 
   it('is unconfigured without an api key', () => {
     expect(createPerplexityProbeProvider({ apiKey: '' }).isConfigured()).toBe(false)
+  })
+})
+
+describe('DeepSeek probe provider', () => {
+  it('calls the OpenAI-compatible chat completions endpoint and parses content', async () => {
+    const body = { choices: [{ message: { content: '推荐 Metadocu 和 Notion。' } }] }
+    const fetchMock = vi.fn(async () => jsonResponse(body))
+    const p = createDeepseekProbeProvider({ apiKey: 'ds-x', fetchImpl: fetchMock })
+    const answer = await p.ask('文档工具推荐？')
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown[] as [string, RequestInit]
+    expect(url).toBe('https://api.deepseek.com/chat/completions')
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer ds-x')
+    const reqBody = JSON.parse(init.body as string)
+    expect(reqBody.model).toBe(p.modelId)
+    expect(reqBody.messages).toEqual([{ role: 'user', content: '文档工具推荐？' }])
+
+    expect(answer.answerText).toBe('推荐 Metadocu 和 Notion。')
+    // DeepSeek 开放 API 无联网搜索：无引用，协议如实记 web_search_enabled=false
+    expect(answer.citedUrls).toEqual([])
+    expect(answer.webSearchEnabled).toBe(false)
+    expect(p.webSearchEnabled).toBe(false)
+  })
+
+  it('is unconfigured without an api key and refuses to ask', async () => {
+    const p = createDeepseekProbeProvider({ apiKey: '' })
+    expect(p.isConfigured()).toBe(false)
+    await expect(p.ask('q')).rejects.toThrow('deepseek_not_configured')
+  })
+
+  it('throws with provider and status on non-2xx', async () => {
+    const p = createDeepseekProbeProvider({ apiKey: 'ds-x', fetchImpl: vi.fn(async () => jsonResponse({}, 402)) })
+    await expect(p.ask('q')).rejects.toThrow('deepseek probe failed: 402')
   })
 })
 

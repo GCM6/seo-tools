@@ -5,13 +5,15 @@ import { useTranslations } from 'next-intl'
 import { useActionState, useState } from 'react'
 
 // Probe engines are proper nouns (brand names), not translatable copy.
-// ChatGPT / Perplexity / Gemini are on by default; Google AI Overviews off —
-// mirrors the prototype STEP1 chip state.
-const ENGINES = ['ChatGPT', 'Perplexity', 'Gemini', 'Google AI Overviews'] as const
+// ChatGPT / Perplexity / Gemini / DeepSeek are on by default; Google AI
+// Overviews off — mirrors the prototype STEP1 chip state (DeepSeek added
+// for the zh market; its open API has no web search, evidence records that).
+const ENGINES = ['ChatGPT', 'Perplexity', 'Gemini', 'DeepSeek', 'Google AI Overviews'] as const
 const DEFAULT_ENGINES: Record<string, boolean> = {
   ChatGPT: true,
   Perplexity: true,
   Gemini: true,
+  DeepSeek: true,
   'Google AI Overviews': false,
 }
 

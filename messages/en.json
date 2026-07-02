@@ -159,12 +159,12 @@
     "sourceRenderProvider": "Cloudflare rendering API",
     "configHint": {
       "search_provider": "Set GOOGLE_CSE_API_KEY and GOOGLE_CSE_CX in .env, then re-run the diagnosis",
-      "ai_probe": "Set any AI key in .env (OPENAI_API_KEY / PERPLEXITY_API_KEY / GEMINI_API_KEY) and select the engine when creating an analysis",
+      "ai_probe": "Set any AI key in .env (OPENAI_API_KEY / PERPLEXITY_API_KEY / GEMINI_API_KEY / DEEPSEEK_API_KEY) and select the engine when creating an analysis",
       "gsc": "Depends on Google Search Console OAuth (read-only), coming in the next iteration",
       "render_provider": "Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in .env, then re-run the diagnosis",
       "uncollected": "The crawl source is ready; re-run the diagnosis to collect it"
     },
-    "probePending": "No measured AI probe data yet · set any AI key in .env (OPENAI_API_KEY / PERPLEXITY_API_KEY / GEMINI_API_KEY), select the engine when creating an analysis, then re-run",
+    "probePending": "No measured AI probe data yet · set any AI key in .env (OPENAI_API_KEY / PERPLEXITY_API_KEY / GEMINI_API_KEY / DEEPSEEK_API_KEY), select the engine when creating an analysis, then re-run",
     "probePendingRerun": "AI keys configured ({providers}); this run has no probe data yet — re-run the diagnosis to see real data here"
   },
   "screen3": {

@@ -17,6 +17,7 @@ export function dataSourceStatus(env: Record<string, string | undefined> = proce
   if (env.OPENAI_API_KEY) aiProviders.push('openai')
   if (env.PERPLEXITY_API_KEY) aiProviders.push('perplexity')
   if (env.GEMINI_API_KEY) aiProviders.push('gemini')
+  if (env.DEEPSEEK_API_KEY) aiProviders.push('deepseek')
   return {
     searchProvider: Boolean(env.GOOGLE_CSE_API_KEY && env.GOOGLE_CSE_CX),
     renderProvider: Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN),

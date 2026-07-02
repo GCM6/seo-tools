@@ -11,6 +11,7 @@ const ENGINE_TO_PROVIDER: Record<string, AiProbeProviderId> = {
   ChatGPT: 'openai',
   Perplexity: 'perplexity',
   Gemini: 'gemini',
+  DeepSeek: 'deepseek',
 }
 
 interface CollectStep {
@@ -205,7 +206,7 @@ export async function collectProbesStage(
               source: provider.id,
               request: {
                 ...requestBase,
-                web_search_enabled: true,
+                web_search_enabled: provider.webSearchEnabled,
                 temperature: null,
                 top_p: null,
                 error_code: message,

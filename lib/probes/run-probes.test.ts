@@ -9,6 +9,7 @@ function fakeProvider(id: AiProbeProvider['id'], opts?: { configured?: boolean; 
   return {
     id,
     modelId: `${id}-model`,
+    webSearchEnabled: true,
     isConfigured: () => opts?.configured ?? true,
     ask: vi.fn(async (prompt: string) => {
       if (opts?.fail) throw new Error(`${id} probe failed: 500`)

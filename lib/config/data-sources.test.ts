@@ -23,5 +23,6 @@ describe('dataSourceStatus', () => {
 
   it('lists exactly the AI providers whose keys are set', () => {
     expect(dataSourceStatus({ OPENAI_API_KEY: 'x', GEMINI_API_KEY: 'y' }).aiProviders).toEqual(['openai', 'gemini'])
+    expect(dataSourceStatus({ DEEPSEEK_API_KEY: 'z' }).aiProviders).toEqual(['deepseek'])
   })
 })

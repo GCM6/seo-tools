@@ -25,6 +25,7 @@ interface OpenAiResponsesBody {
 export function createOpenAiProbeProvider({ apiKey, model, fetchImpl = fetch }: OpenAiConfig): AiProbeProvider {
   const modelId = model || process.env.AI_PROBE_OPENAI_MODEL || DEFAULT_MODEL
   return {
+    webSearchEnabled: true,
     id: 'openai',
     modelId,
     isConfigured() {

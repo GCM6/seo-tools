@@ -20,6 +20,7 @@ interface GeminiBody {
 export function createGeminiProbeProvider({ apiKey, model, fetchImpl = fetch }: GeminiConfig): AiProbeProvider {
   const modelId = model || process.env.AI_PROBE_GEMINI_MODEL || DEFAULT_MODEL
   return {
+    webSearchEnabled: true,
     id: 'gemini',
     modelId,
     isConfigured() {
