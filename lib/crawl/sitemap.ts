@@ -20,10 +20,17 @@ export function sitemapUrlsFromRobots(robotsTxt: string): string[] {
 // sitemap 规范要求 <loc> 内的 & < > " ' 转义为 XML 实体，取文本后必须解码，
 // 否则 https://a.com/?a=1&amp;b=2 会被当成含 "amp;" 的错误 URL。
 // 注意 &amp; 必须最后替换，避免 &amp;lt; 被双重解码成 <（正确语义是 &lt;）。
+// 越界码点（> 0x10FFFF）的数字实体会让 fromCodePoint 抛 RangeError；
+// extractLocs 在 discoverSitemaps 的 try/catch 之外调用，一旦抛出会让整个
+// sitemap 发现步骤失败，违反 spec §8「XML 损坏应降级」——故越界时原样保留。
+function codePointOrRaw(raw: string, code: number): string {
+  return code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : raw
+}
+
 function decodeXmlEntities(s: string): string {
   return s
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (m, hex) => codePointOrRaw(m, parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (m, dec) => codePointOrRaw(m, parseInt(dec, 10)))
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')

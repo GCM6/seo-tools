@@ -37,6 +37,11 @@ describe('extractLocs', () => {
     expect(extractLocs('<urlset><url><loc>&amp;lt;</loc></url></urlset>'))
       .toEqual({ isIndex: false, locs: ['&lt;'] })
   })
+
+  it('越界数字实体不抛错，原样保留（守护 spec §8 降级路径）', () => {
+    expect(extractLocs('<urlset><url><loc>https://a.com/&#9999999999;x</loc></url></urlset>'))
+      .toEqual({ isIndex: false, locs: ['https://a.com/&#9999999999;x'] })
+  })
 })
 
 describe('discoverSitemaps', () => {
