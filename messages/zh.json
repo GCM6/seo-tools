@@ -101,6 +101,7 @@
     "sourceSearchProvider": "Google site: 查询",
     "viewEvidence": "查看原始证据",
     "overviewLabel": "诊断工作台",
+  "siteLink": "站点结构 →",
     "overviewBody": "本轮已关联 {evidence} 条证据，生成 {findings} 条问题发现。先复核证据，再进入建议确认。",
     "nextLabel": "下一步",
     "nextReview": "复核问题并确认建议",
@@ -256,6 +257,39 @@
       "clicks": "点击",
       "ctr": "CTR",
       "rank": "排名"
+    }
+  },
+  "site": {
+    "title": "站点结构",
+    "inferredBadge": "推断模板",
+    "statsTitle": "全站健康（实测）",
+    "totalDiscovered": "发现页面",
+    "checked": "已轻检",
+    "http4xx": "4xx 页面",
+    "noindex": "noindex 页面",
+    "canonicalOffsite": "canonical 指向站外",
+    "orphanPages": "孤岛页",
+    "citedPages": "被 AI 引用页",
+    "truncatedNotice": "已达 {maxPages} 页上限，另有 {count} 个 URL 未检查",
+    "templatesTitle": "URL 模板",
+    "pattern": "模板",
+    "pageCount": "页数",
+    "representative": "代表页",
+    "setRepresentative": "设为代表页",
+    "userPinned": "已人工指定",
+    "pagesTitle": "页面清单",
+    "markKeyPage": "标记重点页",
+    "unmarkKeyPage": "取消重点页",
+    "keyPageBadge": "重点页",
+    "nextRunNotice": "更改将在下次 run 生效",
+    "noData": "本次 run 未启用全站爬取或尚未完成采集",
+    "filterAll": "全部",
+    "renderDelta": "渲染差异",
+    "status": {
+      "checked": "已检",
+      "discovered_only": "未检（超上限）",
+      "blocked_by_robots": "robots 禁抓",
+      "error": "失败"
     }
   }
 }

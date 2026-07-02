@@ -101,6 +101,7 @@
     "sourceSearchProvider": "Google site: query",
     "viewEvidence": "View raw evidence",
     "overviewLabel": "Diagnostic workspace",
+    "siteLink": "Site structure →",
     "overviewBody": "This run has {evidence} evidence artifacts and {findings} findings. Review the evidence first, then confirm recommendations.",
     "nextLabel": "Next step",
     "nextReview": "Review issues and confirm recommendations",
@@ -256,6 +257,39 @@
       "clicks": "Clicks",
       "ctr": "CTR",
       "rank": "Rank"
+    }
+  },
+  "site": {
+    "title": "Site structure",
+    "inferredBadge": "Inferred template",
+    "statsTitle": "Site health (measured)",
+    "totalDiscovered": "Pages discovered",
+    "checked": "Light-checked",
+    "http4xx": "4xx pages",
+    "noindex": "Noindex pages",
+    "canonicalOffsite": "Canonical points offsite",
+    "orphanPages": "Orphan pages",
+    "citedPages": "Cited by AI",
+    "truncatedNotice": "Reached the {maxPages}-page cap; {count} URLs left unchecked",
+    "templatesTitle": "URL templates",
+    "pattern": "Template",
+    "pageCount": "Pages",
+    "representative": "Representative page",
+    "setRepresentative": "Set as representative",
+    "userPinned": "Pinned by user",
+    "pagesTitle": "Page list",
+    "markKeyPage": "Mark as key page",
+    "unmarkKeyPage": "Unmark key page",
+    "keyPageBadge": "Key page",
+    "nextRunNotice": "Changes take effect on the next run",
+    "noData": "Site crawl was not enabled for this run or collection has not finished",
+    "filterAll": "All",
+    "renderDelta": "Render delta",
+    "status": {
+      "checked": "Checked",
+      "discovered_only": "Unchecked (over cap)",
+      "blocked_by_robots": "Blocked by robots",
+      "error": "Failed"
     }
   }
 }

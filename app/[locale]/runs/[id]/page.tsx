@@ -1,4 +1,5 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server'
+import Link from 'next/link'
 import { Shell } from '@/components/Shell'
 import { StatStrip } from '@/components/StatStrip'
 import { FindingList, type FindingItem } from '@/components/FindingList'
@@ -113,6 +114,9 @@ export default async function RunDiagnosisPage({
             <div className="ws-label">{t('screen2.overviewLabel')}</div>
             <h1>{project?.domain ?? id}</h1>
             <p>{t('screen2.overviewBody', { findings: items.length, evidence: evidenceRows.length })}</p>
+            <Link href={`/${locale}/runs/${id}/site`} className="text-sm underline underline-offset-2">
+              {t('screen2.siteLink')}
+            </Link>
           </div>
           <div className="ws-next">
             <span>{t('screen2.nextLabel')}</span>
