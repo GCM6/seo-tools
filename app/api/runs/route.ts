@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db/client'
 import { runs } from '@/db/schema'
-import { getProject } from '@/lib/repositories'
+import { getProject, markRunStatus } from '@/lib/repositories'
 import { inngest } from '@/lib/inngest/client'
 import { buildCollectRequestedEvent } from '@/lib/inngest/events'
 
@@ -29,7 +29,18 @@ export async function POST(req: Request) {
     .values({ id: `run_${crypto.randomUUID()}`, projectId, runType, status: 'collecting' })
     .returning()
 
-  await inngest.send(buildCollectRequestedEvent(created, project.domain))
+  // 派发失败（如本地 Inngest dev server 未启动）时不能让 run 卡死在
+  // collecting：标记 failed 并返回可诊断的错误码，而非未处理的 500。
+  try {
+    await inngest.send(buildCollectRequestedEvent(created, project.domain))
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    await markRunStatus(created.id, 'failed', {
+      failureReason: `采集事件派发失败：${reason}`,
+      finishedAt: new Date().toISOString(),
+    })
+    return NextResponse.json({ error: 'dispatch_failed' }, { status: 503 })
+  }
 
   return NextResponse.json(created, { status: 201 })
 }

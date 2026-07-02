@@ -1,0 +1,139 @@
+import { describe, it, expect, vi } from 'vitest'
+import { collectProbesStage, type ProbeStageDeps } from './run-probes'
+import type { AiProbeProvider } from './providers/types'
+
+// step.run 直接执行（与 collect-evidence.test 同法）：编排逻辑与 Inngest 运行时解耦。
+const step = { run: <T,>(_id: string, fn: () => Promise<T> | T) => Promise.resolve(fn()) }
+
+function fakeProvider(id: AiProbeProvider['id'], opts?: { configured?: boolean; fail?: boolean; answer?: string }): AiProbeProvider {
+  return {
+    id,
+    modelId: `${id}-model`,
+    isConfigured: () => opts?.configured ?? true,
+    ask: vi.fn(async (prompt: string) => {
+      if (opts?.fail) throw new Error(`${id} probe failed: 500`)
+      return {
+        answerText: opts?.answer ?? `I recommend Metadocu. (asked: ${prompt})`,
+        citedUrls: ['https://metadocu.com/'],
+        rawResponse: { echo: prompt },
+        webSearchEnabled: true,
+        temperature: null,
+        topP: null,
+      }
+    }),
+  }
+}
+
+function makeDeps(overrides?: Partial<ProbeStageDeps> & { providers?: AiProbeProvider[] }): {
+  deps: ProbeStageDeps
+  created: { prompts: unknown[]; evidence: Record<string, unknown>[]; results: Record<string, unknown>[] }
+} {
+  const created = { prompts: [] as unknown[], evidence: [] as Record<string, unknown>[], results: [] as Record<string, unknown>[] }
+  const deps: ProbeStageDeps = {
+    getProject: async () => ({
+      id: 'proj_1',
+      domain: 'https://metadocu.com/',
+      industry: 'B2B SaaS · 项目协作',
+      market: '中文 · 中国大陆',
+      language: 'zh',
+      competitors: ['Notion'],
+      ownerId: 'local',
+      createdAt: '',
+      updatedAt: '',
+    }),
+    getProjectSettings: async () => ({
+      projectId: 'proj_1',
+      gscConnected: false,
+      defaultModels: ['ChatGPT', 'Perplexity', 'Google AI Overviews'],
+      probeN: 2,
+      marketLocation: '',
+      cachePolicy: 'default',
+    }),
+    buildProviders: () => overrides?.providers ?? [fakeProvider('openai'), fakeProvider('perplexity'), fakeProvider('gemini')],
+    createPrompts: async (rows) => {
+      created.prompts.push(...rows)
+    },
+    createEvidenceArtifact: (async (input: Record<string, unknown>) => {
+      created.evidence.push(input)
+      return [input]
+    }) as unknown as ProbeStageDeps['createEvidenceArtifact'],
+    createAiProbeResult: async (row) => {
+      created.results.push(row as Record<string, unknown>)
+    },
+    ...overrides,
+  }
+  return { deps, created }
+}
+
+function run(deps: ProbeStageDeps) {
+  const emitted: unknown[] = []
+  const emit = async (msg: unknown) => {
+    emitted.push(msg)
+  }
+  return collectProbesStage(
+    { step, emit: emit as never, runId: 'run_1', projectId: 'proj_1', entryUrl: 'https://metadocu.com/' },
+    deps,
+  ).then((out) => ({ out, emitted }))
+}
+
+describe('collectProbesStage', () => {
+  it('probes selected+configured providers only: 20 prompts × n × providers, persists everything', async () => {
+    const { deps, created } = makeDeps()
+    const { out } = await run(deps)
+
+    // 选中 ChatGPT+Perplexity（AI Overviews 非探针引擎，忽略）；gemini 未选中不探
+    expect(out.probedProviders.sort()).toEqual(['openai', 'perplexity'])
+    expect(created.prompts).toHaveLength(20)
+    // 20 prompts × n=2 × 2 providers
+    expect(created.results).toHaveLength(80)
+    expect(created.evidence).toHaveLength(80)
+    const ev = created.evidence[0]
+    expect(ev.type).toBe('ai_answer')
+    expect(ev.claimLevel).toBe('L3')
+    const req = ev.request as Record<string, unknown>
+    expect(req.provider).toBe('openai')
+    expect(req.run_idx).toBe(1)
+    expect(req.user_prompt).toBeTruthy()
+    expect(req.web_search_enabled).toBe(true)
+    const result = created.results[0]
+    expect(result.brandPresent).toBe(true)
+    expect(result.targetDomainCited).toBe(true)
+    expect(result.runId).toBe('run_1')
+  })
+
+  it('skips the whole stage when no selected provider has a key, persisting nothing', async () => {
+    const { deps, created } = makeDeps({
+      providers: [fakeProvider('openai', { configured: false }), fakeProvider('perplexity', { configured: false }), fakeProvider('gemini', { configured: false })],
+    })
+    const { out } = await run(deps)
+    expect(out.probedProviders).toEqual([])
+    expect(created.prompts).toHaveLength(0)
+    expect(created.evidence).toHaveLength(0)
+  })
+
+  it('keeps going when one provider fails: error evidence with error_code, no probe-result row', async () => {
+    const { deps, created } = makeDeps({
+      providers: [fakeProvider('openai', { fail: true }), fakeProvider('perplexity'), fakeProvider('gemini')],
+    })
+    const { out } = await run(deps)
+    expect(out.probedProviders.sort()).toEqual(['openai', 'perplexity'])
+
+    // perplexity 全成功：40 条 result；openai 全失败：0 条 result 但留 40 条 error evidence
+    expect(created.results).toHaveLength(40)
+    expect(created.evidence).toHaveLength(80)
+    const errorEvidence = created.evidence.filter((e) => (e.request as Record<string, unknown>).error_code)
+    expect(errorEvidence).toHaveLength(40)
+    expect((errorEvidence[0].request as Record<string, unknown>).provider).toBe('openai')
+  })
+
+  it('emits per-prompt progress within 65..90 and ai_answer evidence events', async () => {
+    const { deps } = makeDeps()
+    const { emitted } = await run(deps)
+    const progress = (emitted as { type: string; pct?: number }[]).filter((m) => m.type === 'progress')
+    expect(progress.length).toBeGreaterThan(0)
+    expect(progress.every((m) => (m.pct ?? 0) > 65 && (m.pct ?? 0) <= 90)).toBe(true)
+    const evidenceMsgs = (emitted as { type: string; evidenceType?: string }[]).filter((m) => m.type === 'evidence_created')
+    expect(evidenceMsgs).toHaveLength(20)
+    expect(evidenceMsgs[0].evidenceType).toBe('ai_answer')
+  })
+})

@@ -11,6 +11,7 @@ import type { StatCard, StatCardKey } from '@/lib/diagnostics'
 // SP that will supply its data source). No number is ever shown without
 // backing evidence — the product's "证据先于结论" rule made literal.
 const UNIT_KEY: Partial<Record<StatCardKey, string>> = {
+  indexVisibility: 'stats.indexVisibilityUnit',
   aiVisibility: 'stats.aiVisibilityUnit',
   avgRank: 'stats.avgRankUnit',
   schemaCoverage: 'stats.schemaCoverageUnit',
@@ -24,8 +25,7 @@ export async function StatStrip({
   cards: StatCard[]
   evidenceById?: Record<string, EvidenceView>
 }) {
-  const t = await getTranslations('screen2')
-  const tRoot = await getTranslations()
+  const [t, tRoot] = await Promise.all([getTranslations('screen2'), getTranslations()])
 
   return (
     <div className="stats">
@@ -33,11 +33,21 @@ export async function StatStrip({
         const label = t(`stats.${c.key}`)
 
         if (c.state === 'pending') {
-          // uncollected：数据源已就绪、本轮未采到（≠功能未建）；ai_probe/gsc：数据源未接入。
+          // uncollected：数据源已就绪、本轮未采到（≠功能未建）；其余：数据源未接入。
+          // 指引精确到环境变量（内部工具，直接告诉开发者配什么）。
           const isUncollected = c.reason === 'uncollected'
-          const source = c.reason === 'ai_probe' ? t('sourceAiProbe') : c.reason === 'gsc' ? t('sourceGsc') : ''
+          const source =
+            c.reason === 'search_provider'
+              ? t('sourceSearchProvider')
+              : c.reason === 'ai_probe'
+                ? t('sourceAiProbe')
+                : c.reason === 'gsc'
+                  ? t('sourceGsc')
+                  : c.reason === 'render_provider'
+                    ? t('sourceRenderProvider')
+                    : ''
           const tagLabel = isUncollected ? t('uncollected') : t('pendingSource', { source })
-          const hint = isUncollected ? t('uncollectedHint') : t('pendingHint', { source })
+          const hint = t(`configHint.${c.reason}`)
           return (
             <div key={c.key} className="card stat pending" title={hint}>
               <div className="k">{label}</div>
@@ -45,6 +55,7 @@ export async function StatStrip({
               <div className="b">
                 <ProvenanceTag variant="g" label={tagLabel} />
               </div>
+              <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--ds-muted)', marginTop: 6 }}>{hint}</div>
             </div>
           )
         }

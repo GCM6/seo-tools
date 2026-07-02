@@ -39,8 +39,15 @@ export interface GeneratedPrompt {
   id: string; recommendationId: string; promptType: 'content' | 'technical' | 'brief' | 'cms'
   promptText: string; inputFactRefs: string[]; evidenceRefs: string[]
 }
-export interface Project { id: string; domain: string; industry: string; market: string; language: string; ownerId: string }
-export interface Run { id: string; projectId: string; runType: 'baseline' | 'retest'; status: RunStatus; protocolVersion: string }
+export interface Project { id: string; domain: string; industry: string; market: string; language: string; competitors: string[]; ownerId: string }
+export interface Run {
+  id: string
+  projectId: string
+  runType: 'baseline' | 'retest'
+  status: RunStatus
+  protocolVersion: string
+  failureReason: string | null
+}
 export interface AiProbeResult {
   id: string; runId: string; promptId: string; evidenceId: string
   provider: string; modelId: string; runIdx: number

@@ -7,6 +7,8 @@ export const projects = sqliteTable('projects', {
   industry: text('industry').notNull().default(''),
   market: text('market').notNull().default(''),
   language: text('language').notNull().default(''),
+  // 手动填写的竞品清单：SoV 对比与探针回答解析（competitors_mentioned）都从这里取。
+  competitors: text('competitors', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
   ownerId: text('owner_id').notNull().default('local'),
   createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
   updatedAt: text('updated_at').notNull().default(sql`(current_timestamp)`),
@@ -41,6 +43,7 @@ export const runs = sqliteTable('runs', {
   protocolVersion: text('protocol_version').notNull().default('v2'),
   startedAt: text('started_at'),
   finishedAt: text('finished_at'),
+  failureReason: text('failure_reason'),
 }, (t) => [
   check('runs_type', sql`${t.runType} in ('baseline','retest')`),
   check('runs_status', sql`${t.status} in ('draft','collecting','collected','diagnosing','reviewing','output','failed')`),

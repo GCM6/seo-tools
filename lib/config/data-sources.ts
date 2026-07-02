@@ -1,0 +1,26 @@
+import type { AiProbeProviderId } from '@/lib/probes/providers/types'
+
+// 各真实数据源的配置状态（只看 env 是否给了 key，不发请求验证）。
+// 屏 2 的空态用它区分「数据源未接入（配 key）」与「本轮未采集（重新诊断）」，
+// 并给出精确到环境变量的指引。仅在服务端使用——不要把 key 本身传给客户端。
+
+export interface DataSourceStatus {
+  searchProvider: boolean
+  renderProvider: boolean
+  aiProviders: AiProbeProviderId[]
+  // GSC OAuth 尚未实现（下一期），恒为 false
+  gsc: false
+}
+
+export function dataSourceStatus(env: Record<string, string | undefined> = process.env): DataSourceStatus {
+  const aiProviders: AiProbeProviderId[] = []
+  if (env.OPENAI_API_KEY) aiProviders.push('openai')
+  if (env.PERPLEXITY_API_KEY) aiProviders.push('perplexity')
+  if (env.GEMINI_API_KEY) aiProviders.push('gemini')
+  return {
+    searchProvider: Boolean(env.GOOGLE_CSE_API_KEY && env.GOOGLE_CSE_CX),
+    renderProvider: Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN),
+    aiProviders,
+    gsc: false,
+  }
+}

@@ -2,7 +2,11 @@
 
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import type { DemoPrompt } from '@/lib/fixtures'
+
+export interface PresencePrompt {
+  text: string
+  present: boolean
+}
 
 // Answer presence map — one cell per prompt; teal = brand appears, grey = absent.
 // Client leaf: hover/focus shows a fixed-position tooltip with the exact prompt,
@@ -10,11 +14,12 @@ import type { DemoPrompt } from '@/lib/fixtures'
 // imperative DOM mutation.
 type Tip = { text: string; left: number; top: number }
 
-export function PresenceMap({ prompts }: { prompts: DemoPrompt[] }) {
+export function PresenceMap({ prompts }: { prompts: PresencePrompt[] }) {
   const t = useTranslations('screen2')
   const [tip, setTip] = useState<Tip | null>(null)
+  const presentCount = prompts.filter((p) => p.present).length
 
-  function show(p: DemoPrompt, el: HTMLElement) {
+  function show(p: PresencePrompt, el: HTMLElement) {
     const r = el.getBoundingClientRect()
     const prefix = p.present ? '✓ ' : '✗ '
     setTip({
@@ -43,14 +48,14 @@ export function PresenceMap({ prompts }: { prompts: DemoPrompt[] }) {
       <div className="legend">
         <span>
           <span className="sw" style={{ background: 'var(--measured)' }} />
-          {t('legendPresent')}
+          {t('legendPresent', { count: presentCount })}
         </span>
         <span>
           <span
             className="sw"
             style={{ background: 'var(--ds-surface-2)', border: '1px solid var(--ds-border)' }}
           />
-          {t('legendAbsent')}
+          {t('legendAbsent', { count: prompts.length - presentCount })}
         </span>
         <span style={{ color: 'var(--ds-muted)' }}>{t('legendHover')}</span>
       </div>
