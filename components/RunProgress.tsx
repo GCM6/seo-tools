@@ -5,9 +5,15 @@ import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import type { RunStatus } from '@/lib/types'
 
+// 本地镜像 lib/inngest/channels.ts 的 RunProgressMessage。
+// 不直接 import：channels.ts 依赖 @inngest/realtime，import 会把它拉进 client bundle。
 type ProgressMessage =
   | { type: 'progress'; pct: number }
-  | { type: 'evidence_created'; evidenceType: 'serp_snapshot' | 'page_fetch' | 'schema' | 'render_check' | 'ai_answer' }
+  | {
+      type: 'evidence_created'
+      evidenceType: 'serp_snapshot' | 'page_fetch' | 'schema' | 'render_check' | 'ai_answer' | 'sitemap' | 'site_audit'
+    }
+  | { type: 'phase'; phase: 'discover' | 'light_check' | 'cluster' | 'deep_check' | 'probes'; checked?: number; total?: number }
   | { type: 'done' }
   | { type: 'failed'; reason: string }
 

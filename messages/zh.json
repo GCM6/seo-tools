@@ -130,7 +130,9 @@
         "page_fetch": "已保存页面抓取证据",
         "schema": "已保存结构化数据证据",
         "render_check": "已保存渲染对比证据",
-        "ai_answer": "已保存 AI 探针回答证据"
+        "ai_answer": "已保存 AI 探针回答证据",
+        "sitemap": "已保存站点地图证据",
+        "site_audit": "已保存全站审计证据"
       },
       "status": {
         "draft": "尚未开始",

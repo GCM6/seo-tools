@@ -130,7 +130,9 @@
         "page_fetch": "Saved page crawl evidence",
         "schema": "Saved structured-data evidence",
         "render_check": "Saved render comparison evidence",
-        "ai_answer": "Saved AI probe answer evidence"
+        "ai_answer": "Saved AI probe answer evidence",
+        "sitemap": "Saved sitemap evidence",
+        "site_audit": "Saved site-wide audit evidence"
       },
       "status": {
         "draft": "Not started",
