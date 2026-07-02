@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, check } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, check, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
 export const projects = sqliteTable('projects', {
@@ -21,6 +21,9 @@ export const projectSettings = sqliteTable('project_settings', {
   probeN: integer('probe_n').notNull().default(5),
   marketLocation: text('market_location').notNull().default(''),
   cachePolicy: text('cache_policy').notNull().default('default'),
+  crawlEnabled: integer('crawl_enabled', { mode: 'boolean' }).notNull().default(true),
+  crawlMaxPages: integer('crawl_max_pages').notNull().default(200),
+  crawlMaxDepth: integer('crawl_max_depth').notNull().default(3),
 })
 
 export const brandFacts = sqliteTable('brand_facts', {
@@ -49,6 +52,50 @@ export const runs = sqliteTable('runs', {
   check('runs_status', sql`${t.status} in ('draft','collecting','collected','diagnosing','reviewing','output','failed')`),
 ])
 
+// 站点页面：全站轻检的「当前状态」模型（可变）。不可变快照存 site_audit evidence。
+export const sitePages = sqliteTable('site_pages', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  firstSeenRunId: text('first_seen_run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(),
+  discoveredVia: text('discovered_via').notNull(),
+  depth: integer('depth'),
+  httpStatus: integer('http_status'),
+  finalUrl: text('final_url'),
+  title: text('title'),
+  canonicalUrl: text('canonical_url'),
+  metaRobots: text('meta_robots'),
+  mainTextChars: integer('main_text_chars'),
+  contentHash: text('content_hash'),
+  inboundLinkCount: integer('inbound_link_count').notNull().default(0),
+  checkStatus: text('check_status').notNull().default('discovered_only'),
+  errorReason: text('error_reason'),
+  // 与 url_templates.representative_page_id 互为环，SQLite 单侧建 FK，此列存普通 id 字符串。
+  templateId: text('template_id'),
+  isKeyPage: integer('is_key_page', { mode: 'boolean' }).notNull().default(false),
+  lastCheckedAt: text('last_checked_at'),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [
+  uniqueIndex('site_pages_project_url').on(t.projectId, t.url),
+  check('site_pages_via', sql`${t.discoveredVia} in ('entry','sitemap','crawl','both')`),
+  check('site_pages_status', sql`${t.checkStatus} in ('checked','discovered_only','blocked_by_robots','error')`),
+])
+
+// URL 模板：project 级持久，保障同协议重测（代表页被用户改过后启发式不再覆盖）。
+export const urlTemplates = sqliteTable('url_templates', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  pattern: text('pattern').notNull(),
+  pageCount: integer('page_count').notNull().default(0),
+  representativePageId: text('representative_page_id').references(() => sitePages.id, { onDelete: 'set null' }),
+  source: text('source').notNull().default('heuristic'),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+  updatedAt: text('updated_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [
+  uniqueIndex('url_templates_project_pattern').on(t.projectId, t.pattern),
+  check('url_templates_source', sql`${t.source} in ('heuristic','user')`),
+])
+
 export const prompts = sqliteTable('prompts', {
   id: text('id').primaryKey(),
   runId: text('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
@@ -73,8 +120,10 @@ export const evidenceArtifacts = sqliteTable('evidence_artifacts', {
   rawText: text('raw_text').notNull().default(''),
   rawHash: text('raw_hash').notNull(),
   parserVersion: text('parser_version').notNull().default('v0'),
+  // 深检证据挂到具体站点页面；历史行与站点无关的证据留空。
+  sitePageId: text('site_page_id').references(() => sitePages.id, { onDelete: 'set null' }),
 }, (t) => [
-  check('evidence_type', sql`${t.type} in ('gsc','ai_answer','page_fetch','render_check','schema','serp_snapshot','manual')`),
+  check('evidence_type', sql`${t.type} in ('gsc','ai_answer','page_fetch','render_check','schema','serp_snapshot','manual','sitemap','site_audit')`),
   check('evidence_level', sql`${t.claimLevel} in ('L1','L2','L3','L4')`),
 ])
 

@@ -9,7 +9,7 @@ export type RecommendationStatus = (typeof RECOMMENDATION_STATUSES)[number]
 
 export type RunStatus = 'draft' | 'collecting' | 'collected' | 'diagnosing' | 'reviewing' | 'output' | 'failed'
 export type FindingSide = 'seo' | 'geo' | 'technical'
-export type EvidenceType = 'gsc' | 'ai_answer' | 'page_fetch' | 'render_check' | 'schema' | 'serp_snapshot' | 'manual'
+export type EvidenceType = 'gsc' | 'ai_answer' | 'page_fetch' | 'render_check' | 'schema' | 'serp_snapshot' | 'manual' | 'sitemap' | 'site_audit'
 export type BrandFactStatus = 'verified' | 'draft' | 'retired'
 
 export const isMeasured = (c: ClaimType): boolean => c === 'measured_sample' || c === 'measured_hard'
