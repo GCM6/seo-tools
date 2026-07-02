@@ -17,10 +17,26 @@ export function sitemapUrlsFromRobots(robotsTxt: string): string[] {
     .filter(Boolean)
 }
 
+// sitemap 规范要求 <loc> 内的 & < > " ' 转义为 XML 实体，取文本后必须解码，
+// 否则 https://a.com/?a=1&amp;b=2 会被当成含 "amp;" 的错误 URL。
+// 注意 &amp; 必须最后替换，避免 &amp;lt; 被双重解码成 <（正确语义是 &lt;）。
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+}
+
 // XML 里只取 <loc>，容忍 CDATA。sitemap 的 loc 不嵌套，正则解析足够且免依赖。
 export function extractLocs(xml: string): { isIndex: boolean; locs: string[] } {
   const isIndex = /<\s*sitemapindex[\s>]/i.test(xml)
-  const locs = [...xml.matchAll(/<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]]+?)\s*(?:\]\]>)?\s*<\/loc>/gi)].map((m) => m[1].trim())
+  const locs = [...xml.matchAll(/<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]]+?)\s*(?:\]\]>)?\s*<\/loc>/gi)].map((m) =>
+    decodeXmlEntities(m[1].trim()),
+  )
   return { isIndex, locs }
 }
 

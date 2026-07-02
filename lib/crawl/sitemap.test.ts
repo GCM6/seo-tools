@@ -30,6 +30,13 @@ describe('extractLocs', () => {
     expect(extractLocs('<urlset><url><loc><![CDATA[ https://a.com/p ]]></loc></url></urlset>'))
       .toEqual({ isIndex: false, locs: ['https://a.com/p'] })
   })
+
+  it('解码 XML 实体：&amp; 还原为 &，&amp;lt; 只解一层', () => {
+    expect(extractLocs('<urlset><url><loc>https://a.com/?a=1&amp;b=2</loc></url></urlset>'))
+      .toEqual({ isIndex: false, locs: ['https://a.com/?a=1&b=2'] })
+    expect(extractLocs('<urlset><url><loc>&amp;lt;</loc></url></urlset>'))
+      .toEqual({ isIndex: false, locs: ['&lt;'] })
+  })
 })
 
 describe('discoverSitemaps', () => {
