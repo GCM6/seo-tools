@@ -32,7 +32,7 @@
 - 严重度三级（Error / Warning / Notice，Ahrefs/Semrush 通用）+ **Impact × Effort 四象限**排优先级；按受影响流量排序。
 - **关键词缺口的硬约束**：GSC 看不到竞品、无搜索量、无难度、匿名化漏约 50% 长尾——真正的 gap 分析必须有第三方数据。DataForSEO（SERP $0.6/千次、Labs 关键词 $0.0001/条、纯按量无月费）是 BYOK 定位下唯一价格可行的全能源；Ahrefs/Semrush API 门槛 $500-950/月，排除。
 - **竞品识别的客观算法**：对目标词集抓 SERP → 统计各域出现频次与关键词重叠度（Search Overlap）→ 重叠高者即 organic competitors。只依赖 SERP 数据，可自建。
-- 2024-2026 变化：Helpful Content 并入核心系统（内容质量成生死项）；INP 取代 FID；**FAQ/HowTo 富摘要已弃用**（2026-06 起 FAQ 报告也移除），审计清单须剔除；AIO 压 CTR 有多研究支撑（Pew：有 AI 摘要时点击率 8% vs 无时 15%；Ahrefs：P1 CTR -58%；Amsive：总体 -15.5%），但个体归因必须留在 hypothesis/inferred 级。
+- 2024-2026 变化：Helpful Content 并入核心系统（内容质量成生死项）；INP 取代 FID；**FAQ/HowTo 富摘要已弃用**（官方 changelog：HowTo 2023-09 移除；FAQ 2023-08 起仅限权威政府/健康站、**2026-05-07 起对所有站点停止展示**、2026-06 官方文档移除），审计清单须剔除；AIO 压 CTR 有多研究支撑（Pew：有 AI 摘要时点击率 8% vs 无时 15%；Ahrefs：P1 CTR -58%；Amsive：总体 -15.5%），但个体归因必须留在 hypothesis/inferred 级。
 
 **GEO（2025-2026）**
 - **证据最硬的优化项只有三类**：① 内容加统计数据/权威引述/来源引用（KDD 2024 对照实验，+28%~+41%）；② 保证无 JS 可提取（GPTBot/ClaudeBot/PerplexityBot 不执行 JS，机制性实证）；③ 第三方权威语料存在（Reddit/Wikipedia/YouTube/评测站主导引用，6.8 亿引用分析；品牌网络提及与 AI 可见性相关 0.664，强于外链 0.218）。
@@ -189,7 +189,7 @@ JSON-LD 校验组（C05a-d）实现说明：**不依赖外部验证服务**（Go
 - skill 的 BLOCKERS 红线（关键词堆砌、精准锚文本批量外链、无人工终审的 AI 内容、Schema 与前端不一致等）作为**建议生成器的否定约束**：任何生成的建议不得违反。
 
 **冲突处理（按 skill 自身规则"与官方政策冲突时以官方为准，并提示用户"）**：
-- skill 称"FAQ Schema 性价比高且当前稳定生效"——与 Google 官方冲突：FAQ 富摘要 2023-08 起仅限权威政府/健康站点，2026-06 起搜索外观与报告全面移除。本设计按官方处理（C05a 标 FAQ"无富摘要收益"），FAQPage 标记本身无害可保留；skill 真源文档建议同步更新。
+- skill 称"FAQ Schema 性价比高且当前稳定生效"——与 Google 官方冲突（2026-07-03 已抓取官方文档核实）：FAQ 富摘要 2023-08 起仅限权威政府/健康站点，**2026-05-07 起对所有站点停止展示，2026-06 官方文档已删除**（developers.google.com/search/updates changelog）。本设计按官方处理（C05a 标 FAQ"无富摘要收益"），FAQPage 标记本身无害可保留（仍是有效 schema.org 类型，且可能利于 AI 引擎理解问答结构——后者属 GEO 弱证据层）；skill 真源文档建议同步更新。
 - skill 称"内容占排名权重 70-80%、外链 20-30%"——无官方依据的经验估计，报告中不得作为事实引用，仅可在建议话术中以"实践经验认为"表述。
 
 ```
