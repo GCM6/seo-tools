@@ -64,7 +64,7 @@
 | AI 探针 ×3（已有） | 按 token | P5 分引擎可见性 | 已有降级 |
 | **GSC OAuth（新）** | 免费 | P3 自站真实查询/展示/点击/排名（L4） | 关键词现状仅剩 DataForSEO 估算（L3，降置信）或空态指引 |
 | **DataForSEO（新）** | 按量（单次全站诊断约 $1-3，见 §8.4） | P3 搜索量/难度/gap、P4 竞品识别、P5 外链概况、Bing SERP | 竞品=手填、无 gap、无搜索量；报告明示"缺口分析未启用" |
-| **PageSpeed Insights API（新）** | 免费（可选 key 提配额） | P1 CWV 字段数据（CrUX） | CWV 卡空态 |
+| **PageSpeed Insights API（新）** | 免费（可选 key 提配额） | P1 性能：CrUX 字段数据（CWV，L4）+ 同次调用带回的 Lighthouse 实验室诊断（修复线索，inferred） | CWV 卡空态；小流量站无 CrUX 数据时降级为仅实验室诊断（见 T09） |
 | Wikipedia/Reddit 公开 API（新） | 免费 | P5 第三方语料存在度 | 该项标"未检测" |
 
 ### 3.2 市场约束
@@ -88,8 +88,12 @@
 | T06 | 重定向链/循环（轻检补跟踪 redirect chain，新字段） | warning | measured_hard |
 | T07 | sitemap 缺失 / 与实际页面集偏差大 | warning | measured_hard |
 | T08 | HTTPS/混合内容（轻检补协议字段） | error | measured_hard |
-| T09 | CWV 字段数据不达标（LCP>2.5s / INP>200ms / CLS>0.1，P75，CrUX） | warning | measured_hard |
+| T09a | CWV 字段数据不达标（LCP>2.5s / INP>200ms / CLS>0.1，P75，CrUX；**移动/桌面分列**，origin 级 + 重点页/代表页页面级） | warning | measured_hard |
+| T09b | 性能修复线索：代表页 Lighthouse 审计 top 机会（渲染阻塞资源/图片体积/JS 主线程），作为 T09a 建议的修复清单；Lighthouse 0-100 分可展示但**恒标"实验室模拟分，非 Google 排名输入"** | notice | inferred |
+| T09c | 服务器响应过慢影响抓取效率（TTFB/响应时间超阈值 + 轻检实测响应耗时；Google 官方：响应速度影响 crawl budget，进而影响收录覆盖与时效，对大站尤甚） | warning | measured_hard |
 | T10 | 渲染依赖：初始 HTML 正文占渲染后 <30%（模板级） | error | measured_hard |
+
+性能检查组（T09a-c）的定位说明：Google 排名使用的是 **CrUX 字段数据的 CWV**（轻量级信号，内容相关性主导）；**Lighthouse 分数不是排名因子**，仅作诊断；性能对"收录"的帮助路径是**服务器响应速度 → 抓取预算/抓取速率**（Google crawl budget 官方文档）。降级链：有 CrUX → T09a 定级（L4）；无 CrUX（小流量站常态）→ 仅出 T09b/T09c，finding 上限 inferred，UI 明示"真实用户数据不足，性能对排名的影响无法实测"。
 
 ### P2 内容与页面（证据：light_check 扩展字段 / page_fetch / schema）
 
@@ -237,7 +241,7 @@ overall = 加权平均（P1 30% / P2 20% / P3 20% / P4 10% / P5 20%）
 
 1. **执行摘要**（≤1 屏）：总分 + 五支柱分、3 个最高影响发现（按 impact 排）、一段白话结论（LLM 起草、人工可编辑、恒标"由规则结果归纳"）。
 2. **方法与范围**：采集时间、页面数/截断、数据源清单及各自 claim 等级、探针协议（模型/n/prompt 版本）、**未启用的数据源明示**。
-3. **五支柱明细**：各支柱 findings 按严重度分组，每条带证据抽屉（沿用既有 evidence drawer）。
+3. **五支柱明细**：各支柱 findings 按严重度分组，每条带证据抽屉（沿用既有 evidence drawer）。P1 小节下含"性能"子块：CWV 三指标 × 移动/桌面 × 达标状态 + Lighthouse 修复清单（标注实验室数据）。
 4. **关键词现状与缺口表**：现状（Top 词、机会词 K01/K02）+ 缺口（K03/K04 按 opportunity_score 排序，含搜索量/难度/竞品位次）。
 5. **竞品对比**：确认竞品 ×（Share of SERP / AI SoV 分引擎 / 引荐域数）矩阵。
 6. **优先级矩阵**：Impact×Effort 四象限散点 + Quick Wins 清单（预期 1 周内可上线项）。
@@ -255,7 +259,7 @@ overall = 加权平均（P1 30% / P2 20% / P3 20% / P4 10% / P5 20%）
 | Phase | 内容 | 交付判据 |
 |---|---|---|
 | **A 诊断引擎骨架** | 规则注册表 + generateFindings Inngest 链 + 基于**既有证据**的规则（T01-T05/T07/T10、C01-C05、G01/G03；T06/T08 需轻检补 redirect/协议字段，随本期一并补）+ 推荐生成 + prompt assembler 补 `<stub>` + FindingList/RecCard 通真数据 | 现有采集跑完即出 findings/建议/prompt，四屏不再空 |
-| **B GSC 接入** | OAuth readonly + Search Analytics 拉数（query/page 双维）+ keywords/keyword_metrics 落库 + K01/K02/K06 规则 + avgRank 卡通真；附带 PSI 免费采集器 + T09 | 连接 GSC 后关键词现状 tab 有真数据（L4） |
+| **B GSC 接入** | OAuth readonly + Search Analytics 拉数（query/page 双维）+ keywords/keyword_metrics 落库 + K01/K02/K06 规则 + avgRank 卡通真；附带 PSI 免费采集器 + 性能检查组 T09a-c（轻检补响应耗时字段） | 连接 GSC 后关键词现状 tab 有真数据（L4） |
 | **C DataForSEO 接入** | provider 适配（SERP/Labs/Backlinks/Bing）+ 竞品识别链 + 人工确认闸门 + K03-K05、Q01-Q03、A01、G04 规则 + keyword_gaps | 配 key 后自动出候选竞品与缺口词表 |
 | **D GEO 深化** | G02 UA 探测采集器 + G07 第三方语料采集 + G08 llms.txt 探测 + prompt 集 v2 + 分引擎报告 + C07/C08 内容特征 | GEO findings 覆盖可达/可提取/收录/语料/可见性五层 |
 | **E 综合报告** | 健康分 + report 页八板块 + Markdown 导出 + 优先级矩阵 UI + retest delta 扩展（关键词/竞品维度） | 一键导出完整专业报告 |
@@ -289,7 +293,7 @@ overall = 加权平均（P1 30% / P2 20% / P3 20% / P4 10% / P5 20%）
 
 ## 11. 参考文献（调研来源，节选）
 
-- Google：AI features 指南、Search Analytics API、structured data updates（FAQ/HowTo 弃用）、INP（web.dev）、Quality Rater Guidelines 2025-09
+- Google：AI features 指南、Search Analytics API、structured data updates（FAQ/HowTo 弃用）、INP（web.dev）、Quality Rater Guidelines 2025-09、crawl budget 管理文档（响应速度影响抓取速率）、"page experience 非独立排名系统"澄清（2023）；Web Almanac 2025（移动端仅 48% 全通过 CWV）
 - Ahrefs：SEO audit / technical audit 方法论、Health Score 定义、AIO CTR 研究（P1 -58%）、75K 品牌 AI 相关性研究（提及 0.664 vs 外链 0.218）、llms.txt 137K 域名研究、AIO 引用 Top-10 占比 76%→38%
 - Semrush：Keyword Gap、Site Audit 检查项与 Total Score、AI Toolkit 指标
 - Pew Research 2025-07：AI 摘要下点击 8% vs 15%；Amsive：70 万词 AIO CTR -15.49%
