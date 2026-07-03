@@ -92,12 +92,18 @@
 | T09b | 性能修复线索：代表页 Lighthouse 审计 top 机会（渲染阻塞资源/图片体积/JS 主线程），作为 T09a 建议的修复清单；Lighthouse 0-100 分可展示但**恒标"实验室模拟分，非 Google 排名输入"** | notice | inferred |
 | T09c | 服务器响应过慢影响抓取效率（TTFB/响应时间超阈值 + 轻检实测响应耗时；Google 官方：响应速度影响 crawl budget，进而影响收录覆盖与时效，对大站尤甚） | warning | measured_hard |
 | T10 | 渲染依赖：初始 HTML 正文占渲染后 <30%（模板级） | error | measured_hard |
+| T11 | 重点页/聚合页内链支撑不足（inboundLinkCount 低于阈值，核心转化页应有多篇相关内容内链支撑） | warning | measured_hard |
+| T12 | 重点页点击深度 >3 层（爬虫 depth 数据；层级过深权重传递与抓取效率差） | warning | measured_hard |
+| T13 | 移动端适配缺失（viewport meta 缺失 + PSI 移动端数据异常；移动优先索引下为必查项） | error | measured_hard |
+| T14 | hreflang 声明缺失/互指不一致/缺 x-default（多市场/多语言站必查；单语言站跳过） | warning | measured_hard |
+| T15 | 低价值语言页泛滥（URL 模板聚类发现大量语言路径模板 × GSC 零展示交叉验证；翻译插件批量生成页耗抓取预算、稀释权重） | warning | inferred |
+| T16 | 抓取预算浪费（GSC 近 90 天零展示零点击页占比超阈值 + tag/参数/分类页泛滥 + 过长重定向链聚合） | warning | inferred |
 
 性能检查组（T09a-c）的定位说明：Google 排名使用的是 **CrUX 字段数据的 CWV**（轻量级信号，内容相关性主导）；**Lighthouse 分数不是排名因子**，仅作诊断；性能对"收录"的帮助路径是**服务器响应速度 → 抓取预算/抓取速率**（Google crawl budget 官方文档）。降级链：有 CrUX → T09a 定级（L4）；无 CrUX（小流量站常态）→ 仅出 T09b/T09c，finding 上限 inferred，UI 明示"真实用户数据不足，性能对排名的影响无法实测"。
 
 ### P2 内容与页面（证据：light_check 扩展字段 / page_fetch / schema）
 
-轻检 `fetchLightCheck` 扩展抽取：`metaDescription / h1 / h1Count / titleLength / wordCount / hasAuthorByline / datePublished / outboundCitations（外链引用数）/ statsDensity（数字/数据点密度，启发式）`。
+轻检 `fetchLightCheck` 扩展抽取：`metaDescription / h1 / h1Count / titleLength / wordCount / hasAuthorByline / datePublished / outboundCitations（外链引用数）/ statsDensity（数字/数据点密度，启发式）/ imgCount / imgAltMissingCount / hasViewportMeta / hreflangEntries / responseTimeMs`。page_fetch 证据需保留完整 JSON-LD 原文（现有 schema-extractor 只抽类型清单，需扩展为同时保留原始 JSON-LD 块），供 C05 校验组使用。
 
 | ID | 检查 | 严重度 | claim |
 |---|---|---|---|
@@ -105,10 +111,17 @@
 | C02 | meta description 缺失/重复 | warning | measured_hard |
 | C03 | H1 缺失/多个/与 title 完全重复 | warning | measured_hard |
 | C04 | 薄内容（模板中位正文 < 阈值且该模板承载商业意图词） | warning | inferred |
-| C05 | schema 缺失或仍以弃用类型为主（FAQ/HowTo 标"无富摘要收益"，Product/Article/Organization/Breadcrumb 标推荐） | notice | measured_hard |
+| C05a | JSON-LD 存在性与类型选择：schema 缺失或仍以弃用类型为主（FAQ/HowTo 标"无富摘要收益"，Product/Article/Organization/Breadcrumb 标推荐） | notice | measured_hard |
+| C05b | **JSON-LD 语法与 Schema.org 词汇校验**：JSON 解析失败、`@context` 错误、类型/属性不存在于 Schema.org 词汇表（用 schema.org 官方发布的词汇快照做本地离线校验，快照版本随 RULES_VERSION 固化） | error | measured_hard |
+| C05c | Google 富摘要必填/推荐字段缺失：按 Google 结构化数据文档的类型规则表校验（如 Product 缺 offers/aggregateRating、Article 缺 datePublished），只校验 2026 年仍产出富摘要的类型 | warning | measured_hard |
+| C05d | **结构化数据与前端内容一致性**：JSON-LD 中的文本值（问答/名称/价格）在渲染后正文中不存在 → 违反 Google 规范，有处罚风险 | error | measured_hard |
 | C06 | E-E-A-T 代理信号缺失（作者署名、日期、关于/联系页）——**明确标注为代理指标，非排名因子** | notice | inferred |
 | C07 | GEO 内容特征：重点页缺统计数据/引述/来源引用（KDD 2024 三强项的启发式检测） | warning | inferred |
 | C08 | 答案前置缺失：重点页前 30% 正文不含可独立成答的段落（启发式） | notice | hypothesis |
+| C09 | 图片 alt 缺失率过高（轻检统计 imgCount / imgAltMissingCount，模板级聚合） | warning | measured_hard |
+| C10 | 内容精确重复/高度同质化（contentHash 完全重复为 L4；同模板正文相似度过高为 inferred；批量近似页有内容工厂判定风险） | warning | measured_hard/inferred |
+
+JSON-LD 校验组（C05a-d）实现说明：**不依赖外部验证服务**（Google Rich Results Test 无公开 API），采用三层本地校验——① JSON/`@context` 语法层；② Schema.org 词汇层（官方 releases 的 JSON-LD 词汇文件入库为快照）；③ Google 富摘要字段规则表（从官方结构化数据文档蒸馏，随 RULES_VERSION 版本化）。C05d 一致性校验依赖既有渲染证据（rendered main text），字符串归一化后子串匹配，命中不了的值列入 finding 证据。
 
 ### P3 关键词（证据：gsc / dataforseo_labs — 新证据类型）
 
@@ -119,7 +132,9 @@
 | K03 | 缺口词（missing）：≥2 个已识别竞品排 Top10 而本站无排名，按 搜索量×意图×难度可及性 排序 | — (机会) | measured_sample |
 | K04 | 弱势词（weak）：本站 11-30 名、竞品 Top10 | — (机会) | measured_sample |
 | K05 | 品牌词覆盖：品牌 SERP 首页是否被第三方占位 | warning | measured_sample |
-| K06 | 内容蚕食：多页排同一词且互相压制（GSC page×query 交叉） | warning | inferred |
+| K06 | 关键词蚕食：多页排同一词且互相压制（GSC page×query 交叉；建议模板内置 canonical vs 301 决策表——两页均有独立价值用 canonical，彻底合并用 301，跨域 canonical 无效） | warning | inferred |
+| K07 | 搜索意图错位：目标词 SERP 前排页面类型（信息文/产品页/榜单）与本站承接页类型不匹配（DataForSEO SERP 结果 + 本站页面模板比对） | warning | inferred |
+| K08 | 疑似降权信号：GSC 时序断崖下跌（环比 >50%）/ 收录骤减 / 品牌词 SERP 首页无官网，多信号并发时提示"疑似算法处罚或质量问题"——**恒为 hypothesis 起步，须人工结合 GSC 人工处罚通知确认，工具不下降权结论**（品牌词 SERP 子信号需 DataForSEO，未配置时仅用 GSC 时序信号） | error | hypothesis→inferred |
 
 关键词意图分类（informational/commercial/transactional/navigational）用 DataForSEO Labs 的 intent 字段，缺失时用确定性词面规则，不用 LLM 猜。
 
@@ -143,6 +158,8 @@
 | ID | 检查 | 严重度 | claim |
 |---|---|---|---|
 | A01 | 外链概况：引荐域数 / 域权重与已确认竞品中位数对比（DataForSEO Backlinks summary，只做概况不做逐链审计） | warning | measured_sample |
+| A02 | 锚文本过度优化：精准关键词锚文本占比过高 / dofollow-nofollow 结构单一（DataForSEO Backlinks anchors 数据；过度优化的外链画像有处罚风险） | warning | measured_sample |
+| A03 | 外链增长节奏异常：短窗口内外链激增（Backlinks 历史/new-lost 数据），提示非自然增长风险 | notice | inferred |
 | G01 | **搜索型 AI 爬虫被 robots 屏蔽**（OAI-SearchBot / Claude-SearchBot / PerplexityBot / Google-Extended 分列；训练爬虫屏蔽只给 notice 说明，检索爬虫屏蔽给 error） | error | measured_hard |
 | G02 | **CDN/WAF 层误封检测**：用各 AI 爬虫 UA 实际请求入口页与代表页，对比状态码（403/429/challenge vs 200） | error | measured_hard |
 | G03 | 渲染依赖内容对 AI 不可见（同 T10 证据，GEO 措辞："对不执行 JS 的 AI 抓取链路不可见"） | error | measured_hard |
@@ -158,7 +175,22 @@
 - 默认英语（欧美市场），双语市场生成双轨；模板仍确定性填充（品牌/行业/竞品/市场），版本号 `template_v2`，与 v1 结果不直接对比（协议不同，delta 页明示）。
 - n 默认 5 不变；聚合报告必须展示 `均值 + 样本数 + 波动`（每 prompt 的 presence 二项比例 + Wilson 区间下限，样本小则区间宽，UI 如实显示）。
 
-## 5. 诊断推理层架构
+### 4.2 内部方法论蒸馏（google-seo-expert skill）与冲突处理
+
+仓库内 `.claude/skills/google-seo-expert`（真源 `docs/seo*.md`，外贸 B2B 独立站实战方法论）按两条通道进入本设计，**不与外部调研混级**：
+
+**通道一：可自动化检查 → 进规则表**（证据定级照常，来源标"内部方法论 + 可硬测证据"）：
+内链支撑不足 T11、点击深度 T12、移动端适配 T13、hreflang T14、小语种泛滥 T15、抓取预算浪费 T16、图片 alt C09、内容同质化 C10、Schema 前端一致性 C05d、关键词蚕食处理决策表 K06、意图错位 K07、降权信号 K08、锚文本过度优化 A02、外链节奏 A03——以上均源自 skill 的 S2/S3/S7/S8 清单，且都能落到可复核证据。
+
+**通道二：经验性策略 → 进建议模板/话术库**（不可硬测，恒标"内部方法论·经验级"，claim ≤ inferred）：
+- 内容类 generated_prompts 的 content 模板注入 skill S4 写作 SOP：LSI/NLP 语义覆盖、E-E-A-T 要素（≥1 处实操经验 + ≥1 处权威来源）、B2B 决策导向结构（疑虑解答/应用场景/参数价值）、文末 CTA 与指向聚合页的内链、"AI 初稿必须人工终审"声明。
+- 蚕食/合并类建议模板内置 S7 的 canonical vs 301 决策表与"核心内容先并入聚合页再 301"流程。
+- 行动路线图的节奏建议引用 S5（新站先看展示量再上外链、外链结构混合、增长节奏自然）——**标注为经验级策略，非测量结论**。
+- skill 的 BLOCKERS 红线（关键词堆砌、精准锚文本批量外链、无人工终审的 AI 内容、Schema 与前端不一致等）作为**建议生成器的否定约束**：任何生成的建议不得违反。
+
+**冲突处理（按 skill 自身规则"与官方政策冲突时以官方为准，并提示用户"）**：
+- skill 称"FAQ Schema 性价比高且当前稳定生效"——与 Google 官方冲突：FAQ 富摘要 2023-08 起仅限权威政府/健康站点，2026-06 起搜索外观与报告全面移除。本设计按官方处理（C05a 标 FAQ"无富摘要收益"），FAQPage 标记本身无害可保留；skill 真源文档建议同步更新。
+- skill 称"内容占排名权重 70-80%、外链 20-30%"——无官方依据的经验估计，报告中不得作为事实引用，仅可在建议话术中以"实践经验认为"表述。
 
 ```
 run 状态机补全：collected → diagnosing → reviewing
@@ -171,6 +203,7 @@ Inngest 新增 generateFindings 函数（collectEvidence 完成后触发）：
        禁止新增数字/新增 finding；失败则原样使用规则产物（规则产物本身已可用）
   4. recommendationGenerator：
        每条 finding → 建议模板实例化（what/why/expected_impact/effort/risk/validation_method）
+       内容类模板注入 google-seo-expert skill 的写作 SOP 与 BLOCKERS 否定约束（§4.2）
        Impact×Effort 打分：impact = severity × 受影响页面流量占比（GSC）× 支柱权重
                           effort = 规则声明的固定档位（low/mid/high）
        → priority 四象限（quick_win / strategic / fill_in / low）
@@ -258,9 +291,9 @@ overall = 加权平均（P1 30% / P2 20% / P3 20% / P4 10% / P5 20%）
 
 | Phase | 内容 | 交付判据 |
 |---|---|---|
-| **A 诊断引擎骨架** | 规则注册表 + generateFindings Inngest 链 + 基于**既有证据**的规则（T01-T05/T07/T10、C01-C05、G01/G03；T06/T08 需轻检补 redirect/协议字段，随本期一并补）+ 推荐生成 + prompt assembler 补 `<stub>` + FindingList/RecCard 通真数据 | 现有采集跑完即出 findings/建议/prompt，四屏不再空 |
-| **B GSC 接入** | OAuth readonly + Search Analytics 拉数（query/page 双维）+ keywords/keyword_metrics 落库 + K01/K02/K06 规则 + avgRank 卡通真；附带 PSI 免费采集器 + 性能检查组 T09a-c（轻检补响应耗时字段） | 连接 GSC 后关键词现状 tab 有真数据（L4） |
-| **C DataForSEO 接入** | provider 适配（SERP/Labs/Backlinks/Bing）+ 竞品识别链 + 人工确认闸门 + K03-K05、Q01-Q03、A01、G04 规则 + keyword_gaps | 配 key 后自动出候选竞品与缺口词表 |
+| **A 诊断引擎骨架** | 规则注册表 + generateFindings Inngest 链 + 基于**既有证据**的规则（T01-T05/T07/T10-T12、C01-C04、C05a-d JSON-LD 校验组、C09/C10、G01/G03；T06/T08/T13/T14 需轻检补 redirect/协议/viewport/hreflang/alt 字段，schema-extractor 扩展保留原始 JSON-LD，随本期一并补）+ 建议生成（含 skill 经验级模板与否定约束，§4.2）+ prompt assembler 补 `<stub>` + FindingList/RecCard 通真数据 | 现有采集跑完即出 findings/建议/prompt，四屏不再空 |
+| **B GSC 接入** | OAuth readonly + Search Analytics 拉数（query/page 双维）+ keywords/keyword_metrics 落库 + K01/K02/K06/K08 + T15/T16 规则 + avgRank 卡通真；附带 PSI 免费采集器 + 性能检查组 T09a-c（轻检补响应耗时字段） | 连接 GSC 后关键词现状 tab 有真数据（L4） |
+| **C DataForSEO 接入** | provider 适配（SERP/Labs/Backlinks/Bing）+ 竞品识别链 + 人工确认闸门 + K03-K05/K07、Q01-Q03、A01-A03、G04 规则 + keyword_gaps | 配 key 后自动出候选竞品、缺口词表与外链画像 |
 | **D GEO 深化** | G02 UA 探测采集器 + G07 第三方语料采集 + G08 llms.txt 探测 + prompt 集 v2 + 分引擎报告 + C07/C08 内容特征 | GEO findings 覆盖可达/可提取/收录/语料/可见性五层 |
 | **E 综合报告** | 健康分 + report 页八板块 + Markdown 导出 + 优先级矩阵 UI + retest delta 扩展（关键词/竞品维度） | 一键导出完整专业报告 |
 
@@ -302,3 +335,5 @@ overall = 加权平均（P1 30% / P2 20% / P3 20% / P4 10% / P5 20%）
 - Profound 6.8 亿引用分析；Peec AI 3,000 万来源分析（Reddit/Wikipedia/YouTube 主导）；Seer Interactive 547 万查询（被 AIO 引用 CTR +35%）
 - Vercel / Passionfruit：AI 爬虫不执行 JS 的日志实证；Anagram/GenRank：训练 vs 搜索爬虫区分
 - DataForSEO 定价页（SERP $0.6/千、Labs $0.0001/条）；SerpApi/Serper/ValueSERP 对比；Ahrefs API ≈$949/月、Semrush API $499.95/月起（排除依据）
+- Schema.org 官方词汇 releases（C05b 离线校验快照来源）；Google 结构化数据功能文档（C05c 字段规则表来源）
+- 内部方法论：`.claude/skills/google-seo-expert`（真源 `docs/seo*.md`），蒸馏映射与冲突处理见 §4.2
