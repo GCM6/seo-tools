@@ -36,7 +36,7 @@
 
 **GEO（2025-2026）**
 - **证据最硬的优化项只有三类**：① 内容加统计数据/权威引述/来源引用（KDD 2024 对照实验，+28%~+41%）；② 保证无 JS 可提取（GPTBot/ClaudeBot/PerplexityBot 不执行 JS，机制性实证）；③ 第三方权威语料存在（Reddit/Wikipedia/YouTube/评测站主导引用，6.8 亿引用分析；品牌网络提及与 AI 可见性相关 0.664，强于外链 0.218）。
-- **Schema 属弱证据**（行业推荐但无对照实验，Google 明确称非 AIO 必要条件）；**llms.txt 已被证伪**（97% 从未被读取；Google 官方类比 keywords meta 标签）→ 二者不得作为高权重诊断项。
+- **Schema 对 GEO：机制有官方确认、效果量化无对照实验**——Bing 官方（Fabrice Canel，SMX Munich 2025-03）确认 schema 喂给其 LLM/Copilot 用于内容理解与实体消歧（ChatGPT 检索依赖 Bing 索引，链路成立）；但 Google 明确称非 AIO 必要条件，"提升引用率 X 倍"类数字均为营销话术无对照实验。定级：机制 measured 层、效果 hypothesis 层；**llms.txt 已被证伪**（97% 从未被读取；Google 官方类比 keywords meta 标签）→ 二者不得作为高权重诊断项。
 - **必须区分训练爬虫与搜索爬虫**：屏蔽 GPTBot/ClaudeBot/Google-Extended（训练）合理；屏蔽 OAI-SearchBot / Claude-SearchBot / PerplexityBot 等检索爬虫 = 放弃 AI 引用资格。约 27% 的站在 CDN 层不知情误封（单一来源数字，方向性）。
 - **引擎间引用重叠仅 11%~13.7%** → 必须分引擎测量与报告，不可互推。
 - **AI 引用与 Google 排名解耦中**（AIO 引用来自 Top-10 的占比 76%→38%）→ 不能用排名代理 AI 可见性。
