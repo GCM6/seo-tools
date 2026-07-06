@@ -417,3 +417,42 @@ describe('TA01 主题覆盖浅 / 话题群割裂', () => {
     expect(rule('TA01').evaluate(ctx)).toBeNull()
   })
 })
+
+describe('TA02 话题群缺 Hub 页', () => {
+  it('命中：大话题群无高入度中心页', () => {
+    const ctx = baseCtx()
+    // /docs 群 5 页，最高入度 3（<5）=> 缺 hub
+    const pages = Array.from({ length: 5 }, (_, i) =>
+      page({ url: `https://example.com/docs/p${i}`, inboundLinkCount: i === 0 ? 3 : 1 }),
+    )
+    ctx.siteAudit = audit(pages)
+    const hit = rule('TA02').evaluate(ctx) as RuleHitDraft
+    expect(hit).not.toBeNull()
+    expect(hit.evidenceRefs).toEqual(['sa1'])
+    const detail = hit.detail as { clustersWithoutHub: { pattern: string; maxInbound: number }[] }
+    expect(detail.clustersWithoutHub[0].maxInbound).toBe(3)
+  })
+
+  it('有 Hub 页（高入度中心）不命中', () => {
+    const ctx = baseCtx()
+    const pages = Array.from({ length: 5 }, (_, i) =>
+      page({ url: `https://example.com/docs/p${i}`, inboundLinkCount: i === 0 ? 9 : 1 }),
+    )
+    ctx.siteAudit = audit(pages)
+    expect(rule('TA02').evaluate(ctx)).toBeNull()
+  })
+
+  it('小话题群（<4 页）跳过', () => {
+    const ctx = baseCtx()
+    const pages = Array.from({ length: 3 }, (_, i) =>
+      page({ url: `https://example.com/docs/p${i}`, inboundLinkCount: 0 }),
+    )
+    ctx.siteAudit = audit(pages)
+    expect(rule('TA02').evaluate(ctx)).toBeNull()
+  })
+
+  it('无 siteAudit 时 no-op', () => {
+    const ctx = baseCtx()
+    expect(rule('TA02').evaluate(ctx)).toBeNull()
+  })
+})

@@ -26,6 +26,8 @@ const ANSWER_FRONT_FRACTION = 0.3
 // 「群内内链密度」以站内全站入度均值近似，非严格群内邻接（见切片设计 §2）。
 const TA01_SHALLOW_MAX_PAGES = 2 // 话题群页数 ≤ 此值视为「有话题无深度」
 const TA01_ISOLATED_AVG_INBOUND = 1 // 群内页站内入度均值 < 此值视为孤立
+const TA02_HUB_CLUSTER_MIN_PAGES = 4 // 话题群 ≥ 此页数才谈得上需要 Hub
+const TA02_HUB_MIN_INBOUND = 5 // 群内最高入度 < 此值视为缺 Hub 页
 
 // FAQ/HowTo 富摘要已弃用（2026-05 起谷歌全面停展），永不作为富摘要机会推荐新增。
 const DEPRECATED_SCHEMA = ['FAQPage', 'FAQ', 'HowTo']
@@ -688,4 +690,40 @@ const TA01: Rule = {
   },
 }
 
-export const contentRules: Rule[] = [C01, C02, C03, C05a, C04, C05b, C05c, C05d, C06, C07, C08, C09, C10, C11, TA01]
+// TA02：话题群缺 Hub 页（Pillar-Cluster 结构缺失）。群内最大站内入度 < 阈值即判缺中心页。
+// 「主题权威」系行业经验框架、非官方排名因子，恒作结构性建议、不作排名断言。
+const TA02: Rule = {
+  id: 'TA02',
+  pillar: 'P2',
+  side: 'seo',
+  severity: 'notice',
+  claimType: 'inferred',
+  evaluate(ctx): RuleHitDraft | null {
+    const auditCtx = ctx.siteAudit
+    if (!auditCtx) return null
+    const byUrl = new Map(auditCtx.payload.pages.map((p) => [p.url, p]))
+    const clusters = clusterTemplates(auditCtx.payload.pages.map((p) => p.url)).filter(
+      (c) => !isLanguagePathTemplate(c.pattern),
+    )
+    const noHub: { pattern: string; pageCount: number; maxInbound: number; representativeUrl: string }[] = []
+    for (const c of clusters) {
+      const pages = c.urls.map((u) => byUrl.get(u)).filter((p): p is SiteAuditPage => !!p)
+      if (pages.length < TA02_HUB_CLUSTER_MIN_PAGES) continue
+      const maxInbound = Math.max(...pages.map((p) => p.inboundLinkCount))
+      if (maxInbound < TA02_HUB_MIN_INBOUND) {
+        noHub.push({ pattern: c.pattern, pageCount: pages.length, maxInbound, representativeUrl: pages[0].url })
+      }
+    }
+    if (noHub.length === 0) return null
+
+    return {
+      title: '话题群缺 Hub 页（Pillar-Cluster 结构缺失）',
+      description: `${noHub.length} 个话题群（≥${TA02_HUB_CLUSTER_MIN_PAGES} 页）无高入度中心页，缺 Pillar-Cluster 结构。建议建支柱页并从各子页内链指向（结构性建议，非排名断言）。`,
+      evidenceRefs: [auditCtx.id],
+      scope: 'site',
+      detail: { clustersWithoutHub: noHub },
+    }
+  },
+}
+
+export const contentRules: Rule[] = [C01, C02, C03, C05a, C04, C05b, C05c, C05d, C06, C07, C08, C09, C10, C11, TA01, TA02]

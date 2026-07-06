@@ -443,6 +443,13 @@ export const templates: Record<string, RecommendationTemplate> = {
     validationMethod: '重新统计话题群页数与群内入度均值是否提升；GSC 观察该话题聚合展示是否上升。',
     promptType: 'content',
   },
+  TA02: {
+    what: '为大话题群建立 Pillar（Hub）页作为主题中心，并从各子页内链指向该 Hub，形成 Pillar-Cluster 结构。',
+    whyHint: '大话题群无高入度中心页，缺 Pillar-Cluster 结构（结构性推断，非排名断言）。',
+    effort: 'mid',
+    validationMethod: '重新统计目标话题群是否出现 inboundLinkCount 达标的 Hub 页。',
+    promptType: 'content',
+  },
 }
 
 // 缺省模板：按 finding.side 兜底（技术/内容两档），保证任意规则命中都能出可用建议。
