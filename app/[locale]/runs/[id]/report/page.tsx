@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { setRequestLocale, getTranslations } from 'next-intl/server'
 import { Shell } from '@/components/Shell'
 import { PriorityMatrix } from '@/components/PriorityMatrix'
+import { KeywordTable } from '@/components/KeywordTable'
 import { PrintButton } from './PrintButton'
 import {
   getRun,
@@ -387,68 +388,7 @@ export default async function ReportPage({
           {/* ——— 4. 关键词现状与缺口 ——— */}
           <section id="sec-keywords" className="report-section">
             <h3>{t('toc.keywords')}</h3>
-            {keywordMetrics.length || keywordGaps.length ? (
-              <>
-                <p className="note">{t('keywords.estimateNote')}</p>
-                {keywordMetrics.length ? (
-                  <div className="report-table-wrap">
-                    <table className="report-table">
-                      <thead>
-                        <tr>
-                          <th>{t('keywords.col.keyword')}</th>
-                          <th>{t('keywords.col.clicks')}</th>
-                          <th>{t('keywords.col.impressions')}</th>
-                          <th>{t('keywords.col.ctr')}</th>
-                          <th>{t('keywords.col.position')}</th>
-                          <th>{t('keywords.col.source')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {keywordMetrics.map((m) => (
-                          <tr key={m.id}>
-                            <td>{keywordText.get(m.keywordId)?.text ?? m.keywordId}</td>
-                            <td>{m.clicks ?? '—'}</td>
-                            <td>{m.impressions ?? '—'}</td>
-                            <td>{m.ctr ?? '—'}</td>
-                            <td>{m.position ?? '—'}</td>
-                            <td className="mono">{m.source}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : null}
-                {keywordGaps.length ? (
-                  <div className="report-table-wrap">
-                    <h4>{t('keywords.gapsTitle')}</h4>
-                    <table className="report-table">
-                      <thead>
-                        <tr>
-                          <th>{t('keywords.col.keyword')}</th>
-                          <th>{t('keywords.col.gapType')}</th>
-                          <th>{t('keywords.col.ourPosition')}</th>
-                          <th>{t('keywords.col.opportunity')}</th>
-                          <th>{t('keywords.col.volume')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {keywordGaps.map((gp) => (
-                          <tr key={gp.id}>
-                            <td>{keywordText.get(gp.keywordId)?.text ?? gp.keywordId}</td>
-                            <td>{t(`keywords.gapType.${gp.gapType}`)}</td>
-                            <td>{gp.ourPosition ?? '—'}</td>
-                            <td>{gp.opportunityScore ?? '—'}</td>
-                            <td>{keywordText.get(gp.keywordId)?.volume ?? '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <p className="note">{t('keywords.empty')}</p>
-            )}
+            <KeywordTable keywordMetrics={keywordMetrics} keywordGaps={keywordGaps} keywordText={keywordText} />
           </section>
 
           {/* ——— 5. 竞品对比 ——— */}
