@@ -3,6 +3,9 @@
 # OS
 .DS_Store
 
+# editor
+.vscode/
+
 # dependencies
 /node_modules
 node_modules
