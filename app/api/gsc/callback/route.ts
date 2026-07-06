@@ -3,7 +3,7 @@ import { isGscConfigured, exchangeCodeForTokens } from '@/lib/gsc/oauth'
 import { setGscConnection } from '@/lib/repositories'
 
 // GET /api/gsc/callback?code=...&state=<projectId> — Google 授权回调。
-// 换取 refresh_token 并落库到 project_settings，随后跳回首页并带上连接状态。
+// 换取 refresh_token 并落库到 project_settings，随后跳回设置页并带上连接状态。
 // 未配 env / 用户拒绝授权 / 换令牌失败 → 返回 JSON 错误，不崩溃。
 export async function GET(req: Request) {
   if (!isGscConfigured()) {
