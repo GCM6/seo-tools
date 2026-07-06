@@ -17,6 +17,7 @@ import { collectUaProbe } from '@/lib/collection/ua-probe'
 import { checkThirdPartyPresence } from '@/lib/collection/third-party-presence'
 import { refreshAccessToken } from '@/lib/gsc/oauth'
 import { querySearchAnalytics, mapRowsToKeywordMetrics } from '@/lib/gsc/search-analytics'
+import { impressionWeightedAvgPosition } from '@/lib/gsc/avg-position'
 import { createDataforseoProviderFromEnv, isDataforseoConfigured } from '@/lib/dataforseo'
 import { collectDataforseoStage, type DataforseoStageArgs } from '@/lib/dataforseo/collect-stage'
 import type { DataforseoProvider } from '@/lib/dataforseo/types'
@@ -433,12 +434,13 @@ export async function collectEvidenceHandler(
 
       // query 维证据：K01/K02 的取数锚。keyword_metrics 也引用它作 evidenceId。
       const queryEvId = `ev_${crypto.randomUUID()}`
+      const avgPosition = impressionWeightedAvgPosition(gsc.queryRows)
       const queryRaw = JSON.stringify(gsc.queryRows)
       await step.run('persist-gsc-query', () =>
         deps.createEvidenceArtifact({
           id: queryEvId, projectId, runId, type: 'gsc', claimLevel: 'L4', source: siteUrl,
           request: { dimension: 'query', ...gsc.range },
-          payload: { dimension: 'query', rows: gsc.queryRows },
+          payload: { dimension: 'query', rows: gsc.queryRows, avgPosition },
           rawText: queryRaw, rawHash: sha256Hex(queryRaw),
         }),
       )

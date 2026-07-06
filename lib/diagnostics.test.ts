@@ -119,3 +119,26 @@ describe('deriveStatCards', () => {
     expect(card(cards, 'crawlableText')).toMatchObject({ state: 'measured', value: '100' })
   })
 })
+
+const gscEv = (id: string, payload: unknown): EvidenceLike => ({ id, type: 'gsc', claimLevel: 'L4', payload })
+
+describe('deriveAvgRank', () => {
+  it('gsc 证据带 avgPosition → measured L4', () => {
+    const cards = deriveStatCards([gscEv('ev1', { dimension: 'query', rows: [], avgPosition: 4.2 })])
+    const avg = cards.find((c) => c.key === 'avgRank')!
+    expect(avg.state).toBe('measured')
+    expect(avg).toMatchObject({ state: 'measured', value: '4.2', level: 'L4', evidenceId: 'ev1' })
+  })
+  it('多条 gsc 证据时择带 avgPosition 的那条（queryPage 无 avgPosition）', () => {
+    const cards = deriveStatCards([
+      gscEv('evQP', { dimension: 'queryPage', rows: [] }),
+      gscEv('evQ', { dimension: 'query', rows: [], avgPosition: 3 }),
+    ])
+    expect(cards.find((c) => c.key === 'avgRank')).toMatchObject({ state: 'measured', evidenceId: 'evQ' })
+  })
+  it('无 gsc / 无 avgPosition → pending', () => {
+    expect(deriveStatCards([]).find((c) => c.key === 'avgRank')).toEqual({ key: 'avgRank', state: 'pending', reason: 'gsc' })
+    expect(deriveStatCards([gscEv('e', { dimension: 'query', rows: [] })]).find((c) => c.key === 'avgRank'))
+      .toEqual({ key: 'avgRank', state: 'pending', reason: 'gsc' })
+  })
+})

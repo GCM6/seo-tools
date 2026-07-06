@@ -62,12 +62,13 @@ function deriveAiVisibility(probe: ProbeSummary | null | undefined): StatCard {
   return { key: 'aiVisibility', state: 'pending', reason: 'ai_probe' }
 }
 
-// 平均自然排名来自 GSC。缺少 GSC 证据时，该数据源保持待接入。
+// 平均自然排名来自 GSC。择带 avgPosition 的 gsc 证据（一次采集写 query + queryPage 两条 gsc，仅 query 维带 avgPosition）。
 function deriveAvgRank(evidence: EvidenceLike[]): StatCard {
-  const gsc = pick(evidence, 'gsc')
-  const avgPosition = num(gsc?.payload, 'avgPosition')
-  if (gsc && avgPosition !== undefined)
+  const gsc = evidence.find((e) => e.type === 'gsc' && num(e.payload, 'avgPosition') !== undefined)
+  if (gsc) {
+    const avgPosition = num(gsc.payload, 'avgPosition')!
     return { key: 'avgRank', state: 'measured', value: String(avgPosition), level: gsc.claimLevel as EvidenceLevel, evidenceId: gsc.id }
+  }
   return { key: 'avgRank', state: 'pending', reason: 'gsc' }
 }
 
