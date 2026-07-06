@@ -368,6 +368,7 @@
   },
   "report": {
     "title": "综合诊断报告",
+    "rulesUpgradedBanner": "规则库已从 {from} 升级到 {to}，本报告在旧版规则下生成；受影响规则的前后对比不可直接比较，建议按当前规则重跑。",
     "counts": "{findings} 条发现 · {recs} 条建议（{gated} 条已采纳）",
     "exportMd": "导出 Markdown",
     "print": "打印 / PDF",

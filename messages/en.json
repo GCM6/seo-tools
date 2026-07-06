@@ -368,6 +368,7 @@
   },
   "report": {
     "title": "Comprehensive Diagnostic Report",
+    "rulesUpgradedBanner": "The rule library upgraded from {from} to {to}. This report was generated under the older ruleset; affected rules are not directly comparable — re-run under the current rules.",
     "counts": "{findings} findings · {recs} recommendations ({gated} accepted)",
     "exportMd": "Export Markdown",
     "print": "Print / PDF",

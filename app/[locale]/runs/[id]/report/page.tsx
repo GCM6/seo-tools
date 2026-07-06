@@ -17,7 +17,8 @@ import {
   getRetestSnapshots,
 } from '@/lib/repositories'
 import { buildReport, type ReportFinding, type ReportRecommendation } from '@/lib/diagnosis/report'
-import type { Pillar, FindingSeverity } from '@/lib/diagnosis/types'
+import { rulesVersionDelta } from '@/lib/diagnosis/rule-proposals'
+import { RULES_VERSION, type Pillar, type FindingSeverity } from '@/lib/diagnosis/types'
 import type { ReferenceArtifactRow } from '@/lib/diagnosis/reference-artifacts'
 import type { EvidenceType } from '@/lib/types'
 
@@ -72,6 +73,9 @@ export default async function ReportPage({
 
   const run = await getRun(id)
   if (!run) notFound()
+
+  // 跨版本回测横幅：run 记录的规则版本 ≠ 当前 RULES_VERSION 时提示（V0 同版本 / 旧数据 null → 返回 null，不渲染）。
+  const versionDelta = rulesVersionDelta(run.rulesVersion, RULES_VERSION)
 
   const [
     project,
@@ -208,6 +212,13 @@ export default async function ReportPage({
         </nav>
 
         <div className="report-body">
+          {/* ——— 跨版本回测横幅（规则库升级提示，V0 暂不触发） ——— */}
+          {versionDelta && (
+            <div role="alert" style={{ background: '#fef3c7', border: '1px solid #f59e0b', padding: 12, marginBottom: 16 }}>
+              {t('rulesUpgradedBanner', { from: versionDelta.from, to: versionDelta.to })}
+            </div>
+          )}
+
           {/* ——— 1. 执行摘要 ——— */}
           <section id="sec-summary" className="report-section">
             <h3>{t('toc.summary')}</h3>
