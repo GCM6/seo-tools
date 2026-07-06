@@ -1,6 +1,7 @@
-import { eq, asc, and, inArray, sql } from 'drizzle-orm'
+import { eq, asc, desc, and, isNull, isNotNull, inArray, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
-import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts } from '@/db/schema'
+import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals } from '@/db/schema'
+import { hasValidEvidence, computeArtifactUpdate } from '@/lib/diagnosis/rule-proposals'
 import type { EvidenceType, EvidenceLevel, RunStatus } from '@/lib/types'
 import type { LightCheckExtra } from '@/lib/crawl/light-check'
 
@@ -260,5 +261,98 @@ export const upsertReferenceArtifact = (row: typeof referenceArtifacts.$inferIns
     target: referenceArtifacts.artifactKey,
     set: { version: row.version ?? 'v1', sourceUrl: row.sourceUrl ?? '', lastVerifiedAt: row.lastVerifiedAt ?? null, refreshCadenceDays: row.refreshCadenceDays ?? 90, payload: row.payload ?? null },
   })
+
+// —— Phase F 规则进化：提案 CRUD / 发版 / changelog / F3 统计 ——
+
+export const createRuleChangeProposal = (row: typeof ruleChangeProposals.$inferInsert) => {
+  // 无一手来源不入库（应用层强校验，对齐铁律）。
+  if (!hasValidEvidence(row.evidenceRefs as string[] | null | undefined)) {
+    throw new Error('proposal_evidence_required')
+  }
+  return db.insert(ruleChangeProposals).values(row).returning()
+}
+
+export const getRuleChangeProposals = (status?: 'pending' | 'approved' | 'rejected') =>
+  status
+    ? db.select().from(ruleChangeProposals).where(eq(ruleChangeProposals.status, status)).orderBy(desc(ruleChangeProposals.createdAt))
+    : db.select().from(ruleChangeProposals).orderBy(desc(ruleChangeProposals.createdAt))
+
+export const setProposalStatus = (id: string, status: 'approved' | 'rejected') =>
+  db.update(ruleChangeProposals)
+    .set({ status, reviewedAt: new Date().toISOString() })
+    .where(eq(ruleChangeProposals.id, id))
+    .returning()
+
+// cron 幂等去重键：${source}::${target}，仅 pending。
+export const getPendingProposalKeys = async (): Promise<Set<string>> => {
+  const rows = await db
+    .select({ source: ruleChangeProposals.source, target: ruleChangeProposals.target })
+    .from(ruleChangeProposals)
+    .where(eq(ruleChangeProposals.status, 'pending'))
+  return new Set(rows.map((r) => `${r.source}::${r.target}`))
+}
+
+// 打包发版：所有 approved 且未发布的提案写版本号；update_artifact 类自动落地到 reference_artifacts。
+export const releaseApprovedProposals = async (
+  newVersion: string,
+): Promise<{ released: number; artifactsUpdated: number }> => {
+  const approved = await db
+    .select()
+    .from(ruleChangeProposals)
+    .where(and(eq(ruleChangeProposals.status, 'approved'), isNull(ruleChangeProposals.releasedInRulesVersion)))
+  let artifactsUpdated = 0
+  const now = new Date()
+  for (const p of approved) {
+    if (p.changeType === 'update_artifact') {
+      const artifact = await db.query.referenceArtifacts.findFirst({
+        where: eq(referenceArtifacts.artifactKey, p.target),
+      })
+      if (artifact) {
+        const patch = computeArtifactUpdate(
+          { version: artifact.version, payload: artifact.payload },
+          p.diff as { payload?: unknown } | null,
+          now,
+        )
+        await db.update(referenceArtifacts).set(patch).where(eq(referenceArtifacts.artifactKey, p.target))
+        artifactsUpdated++
+      }
+    }
+    await db.update(ruleChangeProposals).set({ releasedInRulesVersion: newVersion }).where(eq(ruleChangeProposals.id, p.id))
+  }
+  return { released: approved.length, artifactsUpdated }
+}
+
+export const getReleasedProposals = () =>
+  db
+    .select()
+    .from(ruleChangeProposals)
+    .where(and(eq(ruleChangeProposals.status, 'approved'), isNotNull(ruleChangeProposals.releasedInRulesVersion)))
+    .orderBy(desc(ruleChangeProposals.createdAt))
+
+export const getReleasedVersions = async (): Promise<string[]> => {
+  const rows = await db
+    .selectDistinct({ v: ruleChangeProposals.releasedInRulesVersion })
+    .from(ruleChangeProposals)
+    .where(isNotNull(ruleChangeProposals.releasedInRulesVersion))
+  return rows.map((r) => r.v).filter((v): v is string => !!v)
+}
+
+// F3：按 rule_id 聚合的原料。findings 直取；recommendations 经 finding join 取 rule_id。均过滤 rule_id 非空。
+export const getFindingStatRecords = async () => {
+  const rows = await db
+    .select({ id: findings.id, ruleId: findings.ruleId, status: findings.status })
+    .from(findings)
+    .where(isNotNull(findings.ruleId))
+  return rows as { id: string; ruleId: string; status: 'open' | 'dismissed' | 'converted' }[]
+}
+
+export const getRecStatRecords = async () => {
+  const rows = await db
+    .select({ id: recommendations.id, ruleId: findings.ruleId, outcome: recommendations.outcome })
+    .from(recommendations)
+    .innerJoin(findings, eq(recommendations.findingId, findings.id))
+    .where(isNotNull(findings.ruleId))
+  return rows as { id: string; ruleId: string; outcome: 'unknown' | 'effective' | 'ineffective' | 'regressed' }[]
+}
 
 export * from './validators'
