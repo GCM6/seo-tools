@@ -31,6 +31,6 @@ export async function GET(req: Request) {
     )
   }
 
-  // 单项目内部工具无独立项目页，跳回首页并标记已连接，供 UI 提示。
-  return NextResponse.redirect(new URL(`/?gsc=connected&projectId=${encodeURIComponent(projectId)}`, req.url))
+  // 单项目内部工具跳回设置页并标记已连接；设置页用 getPrimaryProject() 解析项目，next-intl 中间件补 locale 前缀。
+  return NextResponse.redirect(new URL('/settings?gsc=connected', req.url))
 }

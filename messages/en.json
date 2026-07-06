@@ -3,6 +3,7 @@
     "appName": "Veris",
     "tagline": "SEO · GEO Diagnostics",
     "targetLabel": "Analysis target",
+    "settingsLink": "Settings",
     "steps": {
       "new": "New analysis",
       "diagnose": "Diagnose",
@@ -37,6 +38,36 @@
       "mid": "Confidence: Medium",
       "low": "Confidence: Low"
     }
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Data-source connection status and GSC authorization (single-user, single-project)",
+    "noProject": "No project yet — create an analysis on the home page first.",
+    "matrixTitle": "Data sources",
+    "col": { "source": "Source", "status": "Status", "detail": "Detail" },
+    "source": {
+      "gsc": "Google Search Console",
+      "googleCse": "Google visibility search (CSE)",
+      "aiProbe": "AI answer-engine probes",
+      "dataforseo": "DataForSEO (keywords/competitors/backlinks)",
+      "render": "Render fetch (Cloudflare)",
+      "psi": "PageSpeed / CWV",
+      "publicCorpora": "Public corpora (Wikipedia/Reddit)"
+    },
+    "statusConnected": "Connected",
+    "statusNotConnected": "Not connected",
+    "statusAppMissing": "OAuth app not configured",
+    "statusConfigured": "Configured",
+    "statusNotConfigured": "Not configured",
+    "gscTitle": "Connect Google Search Console",
+    "connectGsc": "Connect GSC",
+    "reconnectGsc": "Reconnect GSC",
+    "connectedFlash": "GSC connected. Set the site URL below to enable keyword collection.",
+    "siteUrlLabel": "GSC site URL",
+    "siteUrlHint": "Enter sc-domain:example.com or the full https:// site URL (must match the property in GSC).",
+    "saveSiteUrl": "Save site URL",
+    "siteSaved": "Site URL saved.",
+    "siteError": "Save failed, please retry."
   },
   "screen1": {
     "intro": "Enter a URL and Veris runs an SEO + GEO diagnosis on real data (your GSC, measured answers from each AI engine, page crawls) — every conclusion comes with verifiable evidence.",

@@ -211,9 +211,19 @@ export const createKeywordGaps = (rows: (typeof keywordGaps.$inferInsert)[]) =>
 export const getRunKeywordGaps = (runId: string) =>
   db.select().from(keywordGaps).where(eq(keywordGaps.runId, runId))
 
+// 单项目 V0：取唯一/首个项目（按创建时间）。无项目返回 null。
+export const getPrimaryProject = async () => {
+  const rows = await db.select().from(projects).orderBy(asc(projects.createdAt)).limit(1)
+  return rows[0] ?? null
+}
+
 // GSC OAuth 令牌存取（Phase B）
 export const setGscConnection = (projectId: string, data: { gscConnected: boolean; gscRefreshToken?: string | null; gscSiteUrl?: string | null }) =>
   db.update(projectSettings).set(data).where(eq(projectSettings.projectId, projectId))
+
+// GSC 站点 URL 单独写（连接后设，闭合采集器 gscConnected+refreshToken+siteUrl 条件）。
+export const setGscSiteUrl = (projectId: string, siteUrl: string) =>
+  db.update(projectSettings).set({ gscSiteUrl: siteUrl }).where(eq(projectSettings.projectId, projectId))
 
 export const getSiteAuditEvidence = async (runId: string) => {
   const rows = await db.select().from(evidenceArtifacts)

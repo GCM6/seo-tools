@@ -3,6 +3,7 @@
     "appName": "Veris",
     "tagline": "SEO · GEO 诊断台",
     "targetLabel": "分析目标",
+    "settingsLink": "设置",
     "steps": {
       "new": "新建分析",
       "diagnose": "诊断",
@@ -37,6 +38,36 @@
       "mid": "置信 中",
       "low": "置信 低"
     }
+  },
+  "settings": {
+    "title": "设置",
+    "subtitle": "数据源连接状态与 GSC 授权（单用户单项目）",
+    "noProject": "还没有项目——先在首页创建一次分析。",
+    "matrixTitle": "数据源状态",
+    "col": { "source": "数据源", "status": "状态", "detail": "详情" },
+    "source": {
+      "gsc": "Google Search Console",
+      "googleCse": "Google 可见性检索 (CSE)",
+      "aiProbe": "AI 答案引擎探针",
+      "dataforseo": "DataForSEO（关键词/竞品/外链）",
+      "render": "渲染抓取 (Cloudflare)",
+      "psi": "PageSpeed / CWV",
+      "publicCorpora": "公开语料 (Wikipedia/Reddit)"
+    },
+    "statusConnected": "已连接",
+    "statusNotConnected": "未连接",
+    "statusAppMissing": "环境未配 OAuth",
+    "statusConfigured": "已配置",
+    "statusNotConfigured": "未配置",
+    "gscTitle": "连接 Google Search Console",
+    "connectGsc": "连接 GSC",
+    "reconnectGsc": "重新连接 GSC",
+    "connectedFlash": "GSC 已连接。请在下方设置站点 URL 以启用关键词采集。",
+    "siteUrlLabel": "GSC 站点 URL",
+    "siteUrlHint": "填 sc-domain:example.com 或完整 https:// 站点 URL（须与 GSC 中的资源一致）。",
+    "saveSiteUrl": "保存站点 URL",
+    "siteSaved": "站点 URL 已保存。",
+    "siteError": "保存失败，请重试。"
   },
   "screen1": {
     "intro": "输入一个网址，Veris 会用真实数据（你的 GSC、各家 AI 的实测回答、页面抓取）做出 SEO + GEO 诊断——每条结论都附可复核的证据。",

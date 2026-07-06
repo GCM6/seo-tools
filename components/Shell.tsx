@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server'
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { LocaleSwitch } from './LocaleSwitch'
 import { Stepper } from './Stepper'
@@ -37,6 +38,7 @@ export async function Shell({
               <span className="dom mono">{domain}</span>
             </>
           ) : null}
+          <Link href={`/${locale}/settings`} className="settings-link">{t('settingsLink')}</Link>
           <LocaleSwitch />
         </div>
       </div>
