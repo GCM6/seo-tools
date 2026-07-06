@@ -378,3 +378,42 @@ describe('C11 scannability', () => {
     expect(rule('C11').evaluate(ctx)).toBeNull()
   })
 })
+
+describe('TA01 主题覆盖浅 / 话题群割裂', () => {
+  it('命中：浅覆盖群 + 孤立群', () => {
+    const ctx = baseCtx()
+    // /blog 群 5 页但入度全 0（孤立）；/about 群 1 页（浅）
+    const pages = [
+      ...Array.from({ length: 5 }, (_, i) => page({ url: `https://example.com/blog/p${i}`, inboundLinkCount: 0 })),
+      page({ url: 'https://example.com/about/x', inboundLinkCount: 8 }),
+    ]
+    ctx.siteAudit = audit(pages)
+    const hit = rule('TA01').evaluate(ctx) as RuleHitDraft
+    expect(hit).not.toBeNull()
+    expect(hit.evidenceRefs).toEqual(['sa1'])
+    const detail = hit.detail as { shallowClusters: unknown[]; isolatedClusters: unknown[] }
+    expect(detail.shallowClusters.length).toBeGreaterThanOrEqual(1) // /about 1 页
+    expect(detail.isolatedClusters.length).toBeGreaterThanOrEqual(1) // /blog 入度 0
+  })
+
+  it('语言路径群不计入话题群', () => {
+    const ctx = baseCtx()
+    // 只有 /de 语言群 1 页，应被排除 => 无话题群 => null
+    ctx.siteAudit = audit([page({ url: 'https://example.com/de/p0', inboundLinkCount: 0 })])
+    expect(rule('TA01').evaluate(ctx)).toBeNull()
+  })
+
+  it('深且互链的话题群不命中', () => {
+    const ctx = baseCtx()
+    const pages = Array.from({ length: 6 }, (_, i) =>
+      page({ url: `https://example.com/guide/p${i}`, inboundLinkCount: 5 }),
+    )
+    ctx.siteAudit = audit(pages)
+    expect(rule('TA01').evaluate(ctx)).toBeNull()
+  })
+
+  it('无 siteAudit 时 no-op', () => {
+    const ctx = baseCtx()
+    expect(rule('TA01').evaluate(ctx)).toBeNull()
+  })
+})

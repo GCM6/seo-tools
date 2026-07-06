@@ -1,7 +1,9 @@
 import { parseHTML } from 'linkedom'
 import type { Rule, RuleContext, RuleHitDraft } from '../types'
 import { schemaRuleFor } from '../schema-vocab'
-import { pagesWithExtra, C09_ALT_MISSING_RATIO, SCANNABILITY_PARA_WORDS } from './technical'
+import { pagesWithExtra, C09_ALT_MISSING_RATIO, SCANNABILITY_PARA_WORDS, isLanguagePathTemplate } from './technical'
+import { clusterTemplates } from '@/lib/crawl/template-cluster'
+import type { SiteAuditPage } from '@/lib/crawl/site-audit'
 
 // P2 内容/SEO 规则组：解析入口页 rawHtml 判定 title/meta/h1/schema。
 // —— 阈值均为启发式经验值，随 RULES_VERSION 版本化 ——
@@ -19,6 +21,11 @@ const GEO_STATS_MIN = 3
 // C08：可独立成答段落的最小字符数与「前段」占比（启发式）。
 const ANSWER_MIN_CHARS = 40
 const ANSWER_FRONT_FRACTION = 0.3
+
+// —— TA01/TA02 主题权威（结构性建议、恒 inferred/notice；阈值启发式，无行业标准）——
+// 「群内内链密度」以站内全站入度均值近似，非严格群内邻接（见切片设计 §2）。
+const TA01_SHALLOW_MAX_PAGES = 2 // 话题群页数 ≤ 此值视为「有话题无深度」
+const TA01_ISOLATED_AVG_INBOUND = 1 // 群内页站内入度均值 < 此值视为孤立
 
 // FAQ/HowTo 富摘要已弃用（2026-05 起谷歌全面停展），永不作为富摘要机会推荐新增。
 const DEPRECATED_SCHEMA = ['FAQPage', 'FAQ', 'HowTo']
@@ -627,4 +634,58 @@ const C11: Rule = {
   },
 }
 
-export const contentRules: Rule[] = [C01, C02, C03, C05a, C04, C05b, C05c, C05d, C06, C07, C08, C09, C10, C11]
+// TA01：主题覆盖浅/话题群割裂。用 clusterTemplates 从页面 URL 重建话题群（排除语言路径群），
+// 群内内链密度以站内入度均值近似（非严格群内邻接）。恒结构性建议、不作排名断言。
+const TA01: Rule = {
+  id: 'TA01',
+  pillar: 'P2',
+  side: 'seo',
+  severity: 'notice',
+  claimType: 'inferred',
+  evaluate(ctx): RuleHitDraft | null {
+    const auditCtx = ctx.siteAudit
+    if (!auditCtx) return null
+    const byUrl = new Map(auditCtx.payload.pages.map((p) => [p.url, p]))
+    const clusters = clusterTemplates(auditCtx.payload.pages.map((p) => p.url)).filter(
+      (c) => !isLanguagePathTemplate(c.pattern),
+    )
+    if (clusters.length === 0) return null
+
+    const stripSlash = (u: string) => u.replace(/\/$/, '')
+    const impressionOf = (url: string) =>
+      ctx.queryPageMetrics
+        .filter((m) => stripSlash(m.page) === stripSlash(url))
+        .reduce((s, m) => s + m.impressions, 0)
+
+    type ClusterRow = { pattern: string; pageCount: number; avgInbound: number; gscImpressions: number }
+    const shallow: ClusterRow[] = []
+    const isolated: ClusterRow[] = []
+    for (const c of clusters) {
+      const pages = c.urls.map((u) => byUrl.get(u)).filter((p): p is SiteAuditPage => !!p)
+      if (pages.length === 0) continue
+      const avgInbound = pages.reduce((s, p) => s + p.inboundLinkCount, 0) / pages.length
+      const row: ClusterRow = {
+        pattern: c.pattern,
+        pageCount: pages.length,
+        avgInbound: Number(avgInbound.toFixed(1)),
+        gscImpressions: c.urls.reduce((s, u) => s + impressionOf(u), 0),
+      }
+      if (pages.length <= TA01_SHALLOW_MAX_PAGES) shallow.push(row)
+      if (avgInbound < TA01_ISOLATED_AVG_INBOUND) isolated.push(row)
+    }
+    if (shallow.length === 0 && isolated.length === 0) return null
+
+    const parts: string[] = []
+    if (shallow.length) parts.push(`${shallow.length} 个话题群仅 1-2 页（有话题无深度）`)
+    if (isolated.length) parts.push(`${isolated.length} 个话题群站内入度均值近乎为 0（话题群孤立）`)
+    return {
+      title: '主题覆盖浅 / 话题群割裂',
+      description: `${parts.join('；')}。（群内内链密度以站内入度均值近似，非严格群内邻接。）主题权威系行业经验框架、非官方排名因子，此处仅作结构性建议。`,
+      evidenceRefs: [auditCtx.id],
+      scope: 'site',
+      detail: { shallowClusters: shallow, isolatedClusters: isolated },
+    }
+  },
+}
+
+export const contentRules: Rule[] = [C01, C02, C03, C05a, C04, C05b, C05c, C05d, C06, C07, C08, C09, C10, C11, TA01]

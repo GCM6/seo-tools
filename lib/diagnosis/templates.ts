@@ -436,6 +436,13 @@ export const templates: Record<string, RecommendationTemplate> = {
     promptType: 'content',
     risk: '品牌提及与 AI 可见性为相关非因果，只做度量对比不下因果结论。',
   },
+  TA01: {
+    what: '补足浅覆盖话题群的内容深度（围绕核心话题扩展子主题页），并在孤立话题群之间建立主题内链，形成话题网络。',
+    whyHint: '话题群仅 1-2 页或群内近乎无站内入度，主题覆盖浅且割裂（结构性推断，非排名断言）。',
+    effort: 'high',
+    validationMethod: '重新统计话题群页数与群内入度均值是否提升；GSC 观察该话题聚合展示是否上升。',
+    promptType: 'content',
+  },
 }
 
 // 缺省模板：按 finding.side 兜底（技术/内容两档），保证任意规则命中都能出可用建议。
