@@ -29,6 +29,9 @@ describe('deriveNextRulesVersion', () => {
   it('忽略非法格式', () => {
     expect(deriveNextRulesVersion(['garbage', 'rules_v5'], 'rules_v1')).toBe('rules_v6')
   })
+  it('按数值取最大而非字符串序（v10 > v9）', () => {
+    expect(deriveNextRulesVersion(['rules_v9', 'rules_v10'], 'rules_v1')).toBe('rules_v11')
+  })
 })
 
 describe('computeArtifactUpdate', () => {
@@ -43,6 +46,10 @@ describe('computeArtifactUpdate', () => {
   it('非标准 version 兜底为 v2', () => {
     expect(computeArtifactUpdate({ version: 'weird', payload: null }, null, now).version).toBe('v2')
   })
+  it('显式 null payload 会覆盖写入 payload:null（当前行为，潜在脚枪，此测试钉死以便未来加守卫是自觉修改）', () => {
+    const patch = computeArtifactUpdate({ version: 'v1', payload: { a: 1 } }, { payload: null }, now)
+    expect(patch).toEqual({ version: 'v2', lastVerifiedAt: '2026-08-01T00:00:00.000Z', payload: null })
+  })
 })
 
 describe('groupChangelog', () => {
@@ -56,6 +63,22 @@ describe('groupChangelog', () => {
     expect(out.map((e) => e.version)).toEqual(['rules_v3', 'rules_v2'])
     expect(out[1].proposals).toHaveLength(1)
     expect(out[1].proposals[0].target).toBe('ai_crawler_ua_list')
+  })
+  it('同一版本下的多个 approved+已发布提案合并为一条', () => {
+    const out = groupChangelog([
+      { changeType: 'update_artifact', target: 'A', evidenceRefs: ['u1'], reviewedAt: 'r1', status: 'approved', releasedInRulesVersion: 'rules_v2' },
+      { changeType: 'new_rule', target: 'B', evidenceRefs: ['u2'], reviewedAt: 'r2', status: 'approved', releasedInRulesVersion: 'rules_v2' },
+    ])
+    expect(out).toHaveLength(1)
+    expect(out[0].version).toBe('rules_v2')
+    expect(out[0].proposals).toHaveLength(2)
+  })
+  it('版本降序按数值排（v10 在 v2 之前）', () => {
+    const out = groupChangelog([
+      { changeType: 'new_rule', target: 'A', evidenceRefs: ['u1'], reviewedAt: 'r1', status: 'approved', releasedInRulesVersion: 'rules_v2' },
+      { changeType: 'new_rule', target: 'B', evidenceRefs: ['u2'], reviewedAt: 'r2', status: 'approved', releasedInRulesVersion: 'rules_v10' },
+    ])
+    expect(out.map((e) => e.version)).toEqual(['rules_v10', 'rules_v2'])
   })
 })
 

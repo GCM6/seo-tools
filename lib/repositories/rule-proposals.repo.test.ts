@@ -1,21 +1,21 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest'
-import { readFileSync, rmSync } from 'node:fs'
+import { readFileSync, readdirSync, rmSync } from 'node:fs'
 import { createClient } from '@libsql/client'
 
 const TEST_DB = './veris-test-rulesrepo.db'
 process.env.LIBSQL_URL = `file:${TEST_DB}` // 必须在 import 仓库/client 前设置。
 
-// 把已提交的 migration SQL 灌进临时文件库（fresh sqlite 无表，drizzle 不自动建表）。
+// 把已提交的 migration SQL 全量按序灌进临时文件库（fresh sqlite 无表，drizzle 不自动建表）。
 // 必须在 import @/db/client 之前灌好：client 在 import 时即 eager 打开该文件句柄，
 // 若之后再 rmSync+重建会让 drizzle 句柄指向被 unlink 的空 inode（读不到表）。
-// migration 早于 Task 1，故补两列新字段（findings.rule_id / runs.rules_version）。
+// 直接遍历 db/migrations/*.sql（含 0002 补的 findings.rule_id / runs.rules_version），
+// 无需手写 ALTER，新增迁移自动纳入。
 rmSync(TEST_DB, { force: true })
 const bootstrap = createClient({ url: `file:${TEST_DB}` })
-for (const m of ['0000_init_diagnosis_v3.sql', '0001_woozy_menace.sql']) {
+const migrations = readdirSync('db/migrations').filter((f) => f.endsWith('.sql')).sort()
+for (const m of migrations) {
   await bootstrap.executeMultiple(readFileSync(`db/migrations/${m}`, 'utf8'))
 }
-await bootstrap.execute('ALTER TABLE findings ADD COLUMN rule_id text')
-await bootstrap.execute('ALTER TABLE runs ADD COLUMN rules_version text')
 bootstrap.close()
 
 afterAll(() => rmSync(TEST_DB, { force: true }))
