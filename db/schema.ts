@@ -54,6 +54,8 @@ export const runs = sqliteTable('runs', {
   runType: text('run_type').notNull().default('baseline'),
   status: text('status').notNull().default('draft'),
   protocolVersion: text('protocol_version').notNull().default('v2'),
+  // 规则库版本快照：创建时写入当前 RULES_VERSION，跨版本回测可比横幅据此（spec §11.3）。
+  rulesVersion: text('rules_version'),
   startedAt: text('started_at'),
   finishedAt: text('finished_at'),
   failureReason: text('failure_reason'),
@@ -163,6 +165,8 @@ export const findings = sqliteTable('findings', {
   side: text('side').notNull(),
   // 五支柱归属（P1-P5），健康分按支柱分组求值（spec §7.1）。规则命中时写入；旧数据可空。
   pillar: text('pillar'),
+  // 规则命中时写入原始 rule_id（fingerprint 已是其哈希，此处存原值供 F3 按规则聚合 dismiss/effectiveness）。
+  ruleId: text('rule_id'),
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
   severity: text('severity').notNull().default('mid'),

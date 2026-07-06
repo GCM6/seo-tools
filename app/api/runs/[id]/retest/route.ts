@@ -4,6 +4,7 @@ import { runs } from '@/db/schema'
 import { getRun, getProject, markRunStatus } from '@/lib/repositories'
 import { inngest } from '@/lib/inngest/client'
 import { buildCollectRequestedEvent } from '@/lib/inngest/events'
+import { RULES_VERSION } from '@/lib/diagnosis/types'
 
 // POST /runs/{id}/retest（§7）—— 以某 baseline run 为锚发起同协议回测。
 // 铁律：回测必须复用同一 prompt set / 市场语言 / 模型族 / 采样规则（同协议），故新 run 继承
@@ -27,6 +28,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       runType: 'retest',
       status: 'collecting',
       protocolVersion: baseline.protocolVersion,
+      // 现场打当前版本，不从 baseline 复制——跨版本回测横幅据此触发（spec §11.3）。
+      rulesVersion: RULES_VERSION,
       startedAt: new Date().toISOString(),
     })
     .returning()

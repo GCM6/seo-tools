@@ -40,6 +40,8 @@ export interface FindingRow {
   side: RuleHit['side']
   // 支柱归属，健康分按此分组（spec §7.1）。
   pillar: Pillar
+  // 命中规则的原始 rule_id，供 F3 按规则聚合 dismiss/effectiveness（spec §11）。
+  ruleId: string
   title: string
   description: string
   severity: ReturnType<typeof severityToFinding>
@@ -57,6 +59,7 @@ export function buildFindingRows(runId: string, hits: RuleHit[]): FindingRow[] {
     runId,
     side: hit.side,
     pillar: hit.pillar,
+    ruleId: hit.ruleId,
     title: hit.title,
     description: hit.description,
     severity: severityToFinding(hit.severity),

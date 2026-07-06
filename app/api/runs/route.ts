@@ -4,6 +4,7 @@ import { runs } from '@/db/schema'
 import { getProject, markRunStatus } from '@/lib/repositories'
 import { inngest } from '@/lib/inngest/client'
 import { buildCollectRequestedEvent } from '@/lib/inngest/events'
+import { RULES_VERSION } from '@/lib/diagnosis/types'
 
 const VALID_RUN_TYPE = ['baseline', 'retest'] as const
 
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
 
   const [created] = await db
     .insert(runs)
-    .values({ id: `run_${crypto.randomUUID()}`, projectId, runType, status: 'collecting' })
+    .values({ id: `run_${crypto.randomUUID()}`, projectId, runType, status: 'collecting', rulesVersion: RULES_VERSION })
     .returning()
 
   // 派发失败（如本地 Inngest dev server 未启动）时不能让 run 卡死在
