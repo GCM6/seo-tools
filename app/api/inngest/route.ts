@@ -3,8 +3,9 @@ import { inngest } from '@/lib/inngest/client'
 import { collectEvidence } from '@/lib/inngest/collect-evidence'
 import { generateFindings } from '@/lib/inngest/generate-findings'
 import { reevaluateCompetitors } from '@/lib/inngest/reevaluate-competitors'
+import { rulesEvolutionScan } from '@/lib/inngest/rules-evolution'
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [collectEvidence, generateFindings, reevaluateCompetitors],
+  functions: [collectEvidence, generateFindings, reevaluateCompetitors, rulesEvolutionScan],
 })
