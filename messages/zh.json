@@ -133,6 +133,7 @@
     "viewEvidence": "查看原始证据",
     "overviewLabel": "诊断工作台",
     "siteLink": "站点结构 →",
+    "keywordsLink": "关键词现状 →",
     "competitorsLink": "竞品 →",
     "perEngineTitle": "分引擎 AI 可见度",
     "perEngineMeta": "各 AI 引擎引用差异大（重叠约 11–13%），分引擎报告、不合并。",
@@ -363,6 +364,12 @@
     "matrixEmpty": "至少确认一个竞品后才能查看对比。",
     "you": "本站",
     "estimateNote": "重叠度与关键词数为第三方估算（L3）。"
+  },
+  "keywords": {
+    "title": "关键词现状",
+    "subtitle": "GSC 实测关键词指标（L4）与 DataForSEO 缺口分析。",
+    "empty": "本次诊断暂无关键词数据。",
+    "emptyCta": "去设置页连接 GSC / 配置 DataForSEO →"
   },
   "site": {
     "title": "站点结构",

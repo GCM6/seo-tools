@@ -140,6 +140,9 @@ export default async function RunDiagnosisPage({
               <Link href={`/${locale}/runs/${id}/site`} className="text-sm underline underline-offset-2">
                 {t('screen2.siteLink')}
               </Link>
+              <Link href={`/${locale}/runs/${id}/keywords`} className="text-sm underline underline-offset-2">
+                {t('screen2.keywordsLink')}
+              </Link>
               <Link href={`/${locale}/runs/${id}/competitors`} className="text-sm underline underline-offset-2">
                 {t('screen2.competitorsLink')}
               </Link>

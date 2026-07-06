@@ -133,6 +133,7 @@
     "viewEvidence": "View raw evidence",
     "overviewLabel": "Diagnostic workspace",
     "siteLink": "Site structure →",
+    "keywordsLink": "Keywords →",
     "competitorsLink": "Competitors →",
     "perEngineTitle": "Per-engine AI visibility",
     "perEngineMeta": "AI engines cite differently (~11–13% overlap) — reported per engine, not merged.",
@@ -363,6 +364,12 @@
     "matrixEmpty": "Confirm at least one competitor to see the comparison.",
     "you": "You (this site)",
     "estimateNote": "Overlap & keyword figures are third-party estimates (L3)."
+  },
+  "keywords": {
+    "title": "Keyword status",
+    "subtitle": "GSC-measured keyword metrics (L4) and DataForSEO gap analysis.",
+    "empty": "No keyword data for this run yet.",
+    "emptyCta": "Go to Settings to connect GSC / configure DataForSEO →"
   },
   "site": {
     "title": "Site structure",
