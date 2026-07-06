@@ -17,6 +17,43 @@ export function isRenderDependent(rc: { initialChars: number; renderedChars: num
   return rc.initialChars / rc.renderedChars < RENDER_DEPENDENCY_RATIO
 }
 
+// —— T15 低价值语言页泛滥（启发式阈值，随 RULES_VERSION 固化，非行业硬标准）——
+const T15_MIN_LANG_CODES = 2 // 至少 2 种语言路径才判定多语言泛滥
+const T15_ZERO_IMPRESSION_RATIO = 0.7 // 语言页零展示占比告警线
+const T15_MIN_ZERO_PAGES = 10 // 零展示语言页绝对数下限
+
+// ISO 639-1 语言码白名单（语言路径首段匹配用）。
+const ISO_639_1_CODES = new Set([
+  'aa','ab','ae','af','ak','am','an','ar','as','av','ay','az','ba','be','bg','bh','bi','bm','bn','bo','br','bs',
+  'ca','ce','ch','co','cr','cs','cu','cv','cy','da','de','dv','dz','ee','el','en','eo','es','et','eu','fa','ff',
+  'fi','fj','fo','fr','fy','ga','gd','gl','gn','gu','gv','ha','he','hi','ho','hr','ht','hu','hy','hz','ia','id',
+  'ie','ig','ii','ik','io','is','it','iu','ja','jv','ka','kg','ki','kj','kk','kl','km','kn','ko','kr','ks','ku',
+  'kv','kw','ky','la','lb','lg','li','ln','lo','lt','lu','lv','mg','mh','mi','mk','ml','mn','mr','ms','mt','my',
+  'na','nb','nd','ne','ng','nl','nn','no','nr','nv','ny','oc','oj','om','or','os','pa','pi','pl','ps','pt','qu',
+  'rm','rn','ro','ru','rw','sa','sc','sd','se','sg','si','sk','sl','sm','sn','so','sq','sr','ss','st','su','sv',
+  'sw','ta','te','tg','th','ti','tk','tl','tn','to','tr','ts','tt','tw','ty','ug','uk','ur','uz','ve','vi','vo',
+  'wa','wo','xh','yi','yo','za','zh','zu',
+])
+
+// 取 URL 或模板 pattern 的首段路径（小写、剥前导斜杠）。
+function firstPathSegment(urlOrPattern: string): string {
+  let path = urlOrPattern
+  try {
+    path = new URL(urlOrPattern).pathname
+  } catch {
+    // pattern 形如 '/de/{slug}'（相对路径），直接用原串
+  }
+  return (path.replace(/^\/+/, '').split('/')[0] ?? '').toLowerCase()
+}
+
+// 判断模板 pattern（或 URL）首段是否为语言路径（/de/*、/zh-cn/*）。
+export function isLanguagePathTemplate(pattern: string): boolean {
+  const first = firstPathSegment(pattern)
+  if (!first) return false
+  const lang = first.includes('-') ? first.split('-')[0] : first
+  return ISO_639_1_CODES.has(lang)
+}
+
 function hostOf(u: string): string | null {
   try {
     return new URL(u).host.replace(/^www\./, '')
@@ -393,6 +430,57 @@ const T14: Rule = {
   },
 }
 
+// T15：低价值语言页泛滥（语言路径模板 × GSC 零展示交叉）。
+// 「低价值」核心证据是 GSC 零展示实测，无 GSC 不可验证 → 整条 no-op（宁缺毋滥）。
+const T15: Rule = {
+  id: 'T15',
+  pillar: 'P1',
+  side: 'technical',
+  severity: 'warning',
+  claimType: 'inferred',
+  evaluate(ctx): RuleHitDraft | null {
+    const audit = ctx.siteAudit
+    if (!audit) return null
+    const gscEvidenceId = ctx.queryPageMetrics.find((m) => m.evidenceId)?.evidenceId
+    if (!gscEvidenceId) return null // 无 GSC：不可验证「低价值」
+
+    const langCodes = new Set(
+      audit.payload.templates
+        .filter((t) => isLanguagePathTemplate(t.pattern))
+        .map((t) => {
+          const first = firstPathSegment(t.pattern)
+          return first.includes('-') ? first.split('-')[0] : first
+        }),
+    )
+    if (langCodes.size < T15_MIN_LANG_CODES) return null
+
+    const langPages = audit.payload.pages.filter((p) => isLanguagePathTemplate(p.url))
+    if (langPages.length === 0) return null
+
+    const stripSlash = (u: string) => u.replace(/\/$/, '')
+    const impressed = new Set(
+      ctx.queryPageMetrics.filter((m) => m.impressions > 0).map((m) => stripSlash(m.page)),
+    )
+    const zeroPages = langPages.filter((p) => !impressed.has(stripSlash(p.url)))
+    const zeroRatio = zeroPages.length / langPages.length
+    if (zeroPages.length < T15_MIN_ZERO_PAGES || zeroRatio < T15_ZERO_IMPRESSION_RATIO) return null
+
+    return {
+      title: '低价值语言页泛滥',
+      description: `识别到 ${langCodes.size} 种语言路径下共 ${zeroPages.length} 页在 GSC 近 90 天零展示（占语言页 ${Math.round(zeroRatio * 100)}%），疑似翻译插件批量生成、耗抓取预算并稀释权重（推断）。`,
+      evidenceRefs: [audit.id, gscEvidenceId],
+      scope: 'site',
+      detail: {
+        langCodes: [...langCodes],
+        langPageCount: langPages.length,
+        zeroImpressionCount: zeroPages.length,
+        zeroRatio: Number(zeroRatio.toFixed(2)),
+        sampleUrls: zeroPages.slice(0, 5).map((p) => p.url),
+      },
+    }
+  },
+}
+
 // —— P1 性能检查组 T09a-c（证据源：PSI）。定级见 spec §「性能检查组定位说明」 ——
 // CWV 指标展示格式：LCP/INP 为毫秒（取整），CLS 为比值（3 位小数）。
 function fmtCwv(metric: string, value: number): string {
@@ -496,7 +584,7 @@ const T09c: Rule = {
   },
 }
 
-export const technicalRules: Rule[] = [T01, T02, T03, T04, T05, T06, T07, T08, T10, T11, T12, T13, T14, T09a, T09b, T09c]
+export const technicalRules: Rule[] = [T01, T02, T03, T04, T05, T06, T07, T08, T10, T11, T12, T13, T14, T15, T09a, T09b, T09c]
 
 // C09/C11 复用轻检扩展的取数逻辑（内容支柱，但证据同为 site_audit 轻检）。
 export { pagesWithExtra, C09_ALT_MISSING_RATIO, SCANNABILITY_PARA_WORDS }

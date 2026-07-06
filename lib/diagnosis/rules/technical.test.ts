@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { RuleContext, RuleHitDraft } from '../types'
 import type { SiteAuditPage, SiteAuditPayload } from '@/lib/crawl/site-audit'
-import { technicalRules } from './technical'
+import { technicalRules, isLanguagePathTemplate } from './technical'
 
 const rule = (id: string) => technicalRules.find((r) => r.id === id)!
 
@@ -372,5 +372,83 @@ describe('T09c slow TTFB', () => {
     const ctx = baseCtx()
     ctx.psiChecks = [psiCheck(psiResult({ lighthouse: { ttfbMs: 400 } }))]
     expect(rule('T09c').evaluate(ctx)).toBeNull()
+  })
+})
+
+describe('isLanguagePathTemplate', () => {
+  it('识别语言首段模板', () => {
+    expect(isLanguagePathTemplate('/de/{slug}')).toBe(true)
+    expect(isLanguagePathTemplate('/zh-cn/products')).toBe(true)
+    expect(isLanguagePathTemplate('https://example.com/fr/a')).toBe(true)
+  })
+  it('非语言首段返回 false', () => {
+    expect(isLanguagePathTemplate('/products/{id}')).toBe(false)
+    expect(isLanguagePathTemplate('/blog/{slug}')).toBe(false)
+    expect(isLanguagePathTemplate('/')).toBe(false)
+  })
+})
+
+describe('T15 低价值语言页泛滥', () => {
+  // 造 2 种语言各 6 页共 12 页语言页，其中 11 页零展示（>10 且占比 >0.7）。
+  const langPages = () => {
+    const ps: ReturnType<typeof page>[] = []
+    for (const lang of ['de', 'fr']) {
+      for (let i = 0; i < 6; i++) ps.push(page({ url: `https://example.com/${lang}/p${i}` }))
+    }
+    return ps
+  }
+  const langTemplates = [
+    { pattern: '/de/{slug}', pageCount: 6, representativeUrl: null },
+    { pattern: '/fr/{slug}', pageCount: 6, representativeUrl: null },
+  ]
+  const withTemplates = (
+    saPages: ReturnType<typeof page>[],
+    templates = langTemplates,
+  ): RuleContext['siteAudit'] => {
+    const sa = audit({}, saPages)!
+    sa.payload.templates = templates
+    return sa
+  }
+
+  it('GSC 未连接时 no-op', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = withTemplates(langPages())
+    // queryPageMetrics 为空 => 无 GSC
+    expect(rule('T15').evaluate(ctx)).toBeNull()
+  })
+
+  it('命中：2 种语言 + 零展示占比达标', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = withTemplates(langPages())
+    // 只有 /de/p0 有展示，其余 11 页零展示
+    ctx.queryPageMetrics = [
+      { evidenceId: 'gsc1', page: 'https://example.com/de/p0', query: 'x', clicks: 0, impressions: 5, position: 10 },
+    ]
+    const hit = rule('T15').evaluate(ctx) as RuleHitDraft
+    expect(hit).not.toBeNull()
+    expect(hit.evidenceRefs).toEqual(['sa1', 'gsc1'])
+    expect(hit.detail!.zeroImpressionCount).toBe(11)
+    expect((hit.detail!.langCodes as string[]).sort()).toEqual(['de', 'fr'])
+  })
+
+  it('单语言（<2 种）no-op', () => {
+    const ctx = baseCtx()
+    const ps = Array.from({ length: 12 }, (_, i) => page({ url: `https://example.com/de/p${i}` }))
+    ctx.siteAudit = withTemplates(ps, [{ pattern: '/de/{slug}', pageCount: 12, representativeUrl: null }])
+    ctx.queryPageMetrics = [
+      { evidenceId: 'gsc1', page: 'https://example.com/de/p0', query: 'x', clicks: 0, impressions: 5, position: 10 },
+    ]
+    expect(rule('T15').evaluate(ctx)).toBeNull()
+  })
+
+  it('零展示未达绝对数下限 no-op', () => {
+    const ctx = baseCtx()
+    // 2 种语言各 2 页 = 4 页，即使全零展示也 <10
+    const ps = ['de', 'fr'].flatMap((l) => [0, 1].map((i) => page({ url: `https://example.com/${l}/p${i}` })))
+    ctx.siteAudit = withTemplates(ps, langTemplates)
+    ctx.queryPageMetrics = [
+      { evidenceId: 'gsc1', page: 'https://example.com/other', query: 'x', clicks: 0, impressions: 5, position: 10 },
+    ]
+    expect(rule('T15').evaluate(ctx)).toBeNull()
   })
 })

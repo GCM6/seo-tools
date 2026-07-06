@@ -155,6 +155,13 @@ export const templates: Record<string, RecommendationTemplate> = {
     promptType: 'technical',
     fixSnippet: HREFLANG_SNIPPET,
   },
+  T15: {
+    what: '核实语言页价值：对 GSC 零展示的语言路径页评估合并或加 noindex，翻译插件批量生成页按价值取舍，把抓取预算释放给主力页。',
+    whyHint: '大量零展示语言页耗抓取预算、稀释权重（翻译插件泛滥的常见成因）。',
+    effort: 'mid',
+    validationMethod: '重新采集 + GSC 观察语言页展示是否回升，或抓取预算是否集中到主力页。',
+    promptType: 'technical',
+  },
   T09a: {
     what: '按 CrUX 未达标指标定向优化 Core Web Vitals：LCP（压缩首屏图片/预加载关键资源/优化服务器响应）、INP（拆分长任务/减少主线程阻塞）、CLS（为图片和广告位预留尺寸）。',
     whyHint: 'CrUX 字段数据是 Google 排名实际使用的真实用户体验信号，未达标削弱页面体验维度与移动优先索引下的竞争力。',
