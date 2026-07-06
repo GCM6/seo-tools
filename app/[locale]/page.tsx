@@ -14,7 +14,7 @@ export default async function NewAnalysisPage({
   setRequestLocale(locale)
 
   return (
-    <Shell active={1} locale={locale} runId="run_demo">
+    <Shell active={1} locale={locale}>
       <NewAnalysisForm locale={locale} />
     </Shell>
   )

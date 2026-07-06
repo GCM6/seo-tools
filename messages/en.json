@@ -102,6 +102,15 @@
     "viewEvidence": "View raw evidence",
     "overviewLabel": "Diagnostic workspace",
     "siteLink": "Site structure →",
+    "competitorsLink": "Competitors →",
+    "perEngineTitle": "Per-engine AI visibility",
+    "perEngineMeta": "AI engines cite differently (~11–13% overlap) — reported per engine, not merged.",
+    "sentimentTitle": "Citation sentiment",
+    "sentimentMeta": "Sentiment of brand mentions (measurement-layer classifier; n=5 directional).",
+    "sentPositive": "Positive",
+    "sentNeutral": "Neutral",
+    "sentNegative": "Negative",
+    "sentComparison": "Comparison",
     "overviewBody": "This run has {evidence} evidence artifacts and {findings} findings. Review the evidence first, then confirm recommendations.",
     "nextLabel": "Next step",
     "nextReview": "Review issues and confirm recommendations",
@@ -212,7 +221,49 @@
       "retestTag": "Next round",
       "retestBody": "Retest requires real baseline and retest data under the same protocol; no delta is shown until it exists."
     },
-    "note": "\"Give the prompt\" rather than \"auto-publish\": generation and publishing stay with a human + human review, keeping quality controllable and avoiding thin-content penalties. MCP-direct CMS writes can come later, but v1 stops at the precise prompt."
+    "manageFacts": "Manage brand facts →",
+    "note": "\"Give the prompt\" rather than \"auto-publish\": generation and publishing stay with a human + human review, keeping quality controllable and avoiding thin-content penalties. MCP-direct CMS writes can come later, but v1 stops at the precise prompt.",
+    "viewReport": "View full report →",
+    "applied": {
+      "mark": "Mark as executed",
+      "done": "Executed ✓ · {at}",
+      "noteLabel": "Execution note (optional)",
+      "notePlaceholder": "Optionally note what was done, links to the change, etc.",
+      "submit": "Confirm executed",
+      "cancel": "Cancel"
+    }
+  },
+  "findings": {
+    "dismiss": "Dismiss",
+    "dismissed": "Dismissed",
+    "dismissHint": "Mark as a false positive; it won't advance to recommendations",
+    "dismissReasonLabel": "Reason for dismissing (required)",
+    "dismissReasonPlaceholder": "Why is this a false positive? e.g. inapplicable to this site, already fixed, misjudged…",
+    "dismissReasonRequired": "A reason is required before dismissing",
+    "dismissConfirm": "Confirm dismiss",
+    "dismissCancel": "Cancel"
+  },
+  "facts": {
+    "title": "Brand facts",
+    "meta": "Only \"verified\" brand facts are injected into execution prompts (§6.2 human-in-the-loop gate)",
+    "empty": "No brand facts yet. Add one, then verify it manually before it can be injected into prompts.",
+    "gateNotice": "\"Verify\" = a human confirms this fact is true and verifiable, authorizing its injection into execution prompts; unverified brand claims are never injected.",
+    "colSource": "Source",
+    "addTitle": "Add a brand fact",
+    "typeLabel": "Type",
+    "typePlaceholder": "e.g. product / credential / metric",
+    "factLabel": "Fact",
+    "factPlaceholder": "A verifiable brand fact (never fabricate)",
+    "sourceUrlLabel": "Source URL (optional)",
+    "sourceNoteLabel": "Source note (optional)",
+    "add": "Add",
+    "verify": "Mark verified",
+    "verified": "Verified",
+    "retire": "Retire",
+    "retired": "Retired",
+    "draft": "Draft",
+    "remove": "Delete",
+    "backToOutput": "← Back to output"
   },
   "evidence": {
     "chatgptAnswer": "Evidence · ChatGPT measured answer, verbatim (run 3/5)",
@@ -259,6 +310,29 @@
       "rank": "Rank"
     }
   },
+  "competitors": {
+    "title": "Competitors",
+    "subtitle": "SERP-overlap candidates. Confirm the ones that are real organic competitors — only confirmed competitors enter gap analysis and comparison (human-in-the-loop).",
+    "noData": "No competitor candidates yet. Configure DataForSEO and re-run to auto-identify competitors from SERP overlap.",
+    "candidatesTitle": "Candidates (pending confirmation)",
+    "confirmedTitle": "Confirmed competitors",
+    "dismissedTitle": "Dismissed",
+    "overlapScore": "Overlap",
+    "sharedKeywords": "Shared keywords",
+    "topKeywords": "Top shared keywords",
+    "aiSov": "AI Share of Voice",
+    "confirm": "Confirm",
+    "dismiss": "Dismiss",
+    "restore": "Restore",
+    "confirmedBadge": "confirmed",
+    "candidateBadge": "candidate",
+    "dismissedBadge": "dismissed",
+    "reevalNotice": "Confirming triggers incremental re-evaluation (gap keywords, SoV, backlinks) merged into the current run.",
+    "matrixTitle": "Comparison matrix",
+    "matrixEmpty": "Confirm at least one competitor to see the comparison.",
+    "you": "You (this site)",
+    "estimateNote": "Overlap & keyword figures are third-party estimates (L3)."
+  },
   "site": {
     "title": "Site structure",
     "inferredBadge": "Inferred template",
@@ -291,5 +365,160 @@
       "blocked_by_robots": "Blocked by robots",
       "error": "Failed"
     }
+  },
+  "report": {
+    "title": "Comprehensive Diagnostic Report",
+    "counts": "{findings} findings · {recs} recommendations ({gated} accepted)",
+    "exportMd": "Export Markdown",
+    "print": "Print / PDF",
+    "toc": {
+      "summary": "1. Executive Summary",
+      "method": "2. Method & Scope",
+      "pillars": "3. Five-Pillar Detail",
+      "keywords": "4. Keyword Status & Gaps",
+      "competitors": "5. Competitor Comparison",
+      "priority": "6. Priority Matrix",
+      "roadmap": "7. Action Roadmap",
+      "retest": "8. Retest Plan & Loop Results"
+    },
+    "claim": {
+      "measured_hard": "Measured",
+      "measured_sample": "Measured · sample",
+      "inferred": "Inferred",
+      "hypothesis": "Hypothesis"
+    },
+    "summary": {
+      "constraintTitle": "Constraint locator",
+      "focusPillars": "Focus pillars: ",
+      "healthTitle": "Health score (inferred)",
+      "overall": "Overall",
+      "unscored": "Not scored",
+      "breakdownToggle": "How the score is computed",
+      "topFindings": "Highest-impact findings",
+      "noFindings": "No findings yet."
+    },
+    "constraint": {
+      "systemic_basics": "Systemic basics: high-severity crawl / index / render blockers exist — fix the technical foundation (P1) first.",
+      "visibility_data_missing": "Visibility data missing: GSC is not connected or DataForSEO is unconfigured, so keyword status lacks data. Connect a data source before locating the constraint.",
+      "authority_content": "Authority & content gap: many keyword gaps plus weak authority / corpus signals — focus on content coverage (P3) and brand authority (P5).",
+      "fine_tuning": "Fine-tuning stage: no systemic blockers — work items by impact × effort priority."
+    },
+    "pillarNames": {
+      "p1": "P1 Technical health (crawl · index · render)",
+      "p2": "P2 Structured data & parsability",
+      "p3": "P3 Keywords & content coverage",
+      "p4": "P4 SERP competition",
+      "p5": "P5 Brand authority & GEO visibility"
+    },
+    "pillars": {
+      "issueCount": "{count} hits",
+      "unscored": "Not scored",
+      "evidence": "Evidence",
+      "noFindings": "No hits — no issues."
+    },
+    "severity": {
+      "high": "High",
+      "mid": "Medium",
+      "ok": "Notice"
+    },
+    "labTag": "Lab data",
+    "method": {
+      "capturedAt": "Captured at",
+      "protocol": "Probe protocol version",
+      "dataSources": "Data sources",
+      "noSources": "No evidence collected this run.",
+      "staleTitle": "Rule-freshness warning",
+      "staleIntro": "Rule library last verified on {date}; the following checks may lag:",
+      "staleNever": "never verified",
+      "fresh": "All rule artifacts are within their freshness window.",
+      "sourceLabels": {
+        "gsc": "Google Search Console",
+        "ai_answer": "AI answer probe",
+        "page_fetch": "Page fetch",
+        "render_check": "Render check",
+        "schema": "Structured data",
+        "serp_snapshot": "SERP snapshot",
+        "manual": "Manual entry",
+        "sitemap": "Sitemap",
+        "site_audit": "Site-wide audit",
+        "dataforseo_serp": "DataForSEO SERP",
+        "dataforseo_labs": "DataForSEO Labs",
+        "dataforseo_backlinks": "DataForSEO Backlinks",
+        "psi": "PageSpeed Insights",
+        "ua_probe": "AI crawler reachability",
+        "third_party_presence": "Third-party presence"
+      }
+    },
+    "keywords": {
+      "estimateNote": "Search volume / difficulty are third-party estimates (L3), not measured.",
+      "gapsTitle": "Keyword gaps",
+      "empty": "GSC / DataForSEO not connected — no keyword data.",
+      "col": {
+        "keyword": "Keyword",
+        "clicks": "Clicks",
+        "impressions": "Impressions",
+        "ctr": "CTR",
+        "position": "Position",
+        "source": "Source",
+        "gapType": "Gap type",
+        "ourPosition": "Our position",
+        "opportunity": "Opportunity",
+        "volume": "Volume (est.)"
+      },
+      "gapType": {
+        "missing": "Missing",
+        "weak": "Weak",
+        "winning": "Winning"
+      }
+    },
+    "competitors": {
+      "empty": "No confirmed competitors — confirm them on the competitors page first.",
+      "col": {
+        "domain": "Domain",
+        "overlap": "Overlap",
+        "shared": "Shared keywords"
+      }
+    },
+    "priority": {
+      "quadrants": {
+        "quick_win": "Quick win (high impact · low effort)",
+        "strategic": "Strategic (high impact · high effort)",
+        "fill_in": "Fill-in (low impact · low effort)",
+        "low": "Low priority (low impact · high effort)"
+      },
+      "quickWinsTitle": "Quick wins",
+      "axisImpact": "Impact",
+      "axisEffort": "Effort",
+      "high": "High",
+      "low": "Low",
+      "count": "{count} items",
+      "empty": "No recommendations."
+    },
+    "roadmap": {
+      "quick": "Near-term (0–2 weeks)",
+      "mid": "Mid-term (2–6 weeks)",
+      "long": "Long-term (6+ weeks)",
+      "validation": "Validation",
+      "empty": "No accepted recommendations in the roadmap yet."
+    },
+    "retest": {
+      "protocolLock": "Same-protocol lock: retests must reuse the same prompt version, keyword set, competitor set, and rule-library version (RULES_VERSION) to be comparable.",
+      "compound": "Compound changes are not attributed to any single recommendation (inferred).",
+      "empty": "No retest yet. Re-run under the same protocol 4–6 weeks after applying a recommendation.",
+      "col": {
+        "metric": "Metric",
+        "baseline": "Baseline",
+        "retest": "Retest",
+        "delta": "Delta",
+        "interpretation": "Interpretation"
+      }
+    }
+  },
+  "retest": {
+    "dueTitle": "Retest due · start a same-protocol re-run in one click",
+    "dueCta": "Start retest",
+    "starting": "Starting…",
+    "error": "Failed to start retest — please try again",
+    "nextDue": "Next retest: {date}"
   }
 }

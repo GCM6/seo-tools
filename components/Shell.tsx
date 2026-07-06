@@ -15,7 +15,7 @@ export async function Shell({
 }: {
   active: 1 | 2 | 3 | 4
   locale: string
-  runId: string
+  runId?: string
   domain?: string
   children: ReactNode
 }) {

@@ -13,7 +13,7 @@ export interface PromptSetInput {
 export interface ProbePrompt {
   text: string
   intent: string
-  source: 'template_v1'
+  source: 'template_v1' | 'template_v2'
   market: string
   language: string
   priority: number
@@ -68,18 +68,101 @@ const TEMPLATES: [string, (v: TemplateVars) => string, (v: TemplateVars) => stri
   ['trust', (v) => `有哪些被专家或社区广泛推荐的 ${v.category} 产品？`, (v) => `Which ${v.category} products are widely recommended by experts or the community?`],
 ]
 
-export function buildPromptSet(input: PromptSetInput): ProbePrompt[] {
-  const vars: TemplateVars = {
+// 从项目输入构造模板变量：无竞品时留 null，模板函数各自做品类兜底。
+function buildVars(input: PromptSetInput): TemplateVars {
+  return {
     brand: brandFromDomain(input.domain),
     category: input.industry.trim() || (input.language === 'zh' ? '该行业' : 'this industry'),
     comp1: input.competitors[0] ?? null,
     comp2: input.competitors[1] ?? null,
   }
+}
+
+export function buildPromptSet(input: PromptSetInput): ProbePrompt[] {
+  const vars = buildVars(input)
   const zh = input.language === 'zh'
   return TEMPLATES.map(([intent, zhTpl, enTpl], i) => ({
     text: zh ? zhTpl(vars) : enTpl(vars),
     intent,
     source: 'template_v1',
+    market: input.market,
+    language: input.language,
+    priority: i,
+  }))
+}
+
+// ── prompt 集 v2（分层 30 条）─────────────────────────────────────────────
+// 按类别配额：品牌 5 / 品类推荐 8 / 对比 6 / 长尾问答 8 / 信任评估 3 = 30。
+// intent 复用现有枚举并新增 'brand'；每个类别对应一个稳定 intent，便于按类别核配额。
+// 确定性模板：无竞品用品类兜底，中英双模板按 language 选择。改模板须升 source 版本号。
+
+// 品牌类 5 条（v1 没有的品牌直击问法）。intent = 'brand'。
+const V2_BRAND: [string, (v: TemplateVars) => string, (v: TemplateVars) => string][] = [
+  ['brand', (v) => `${v.brand} 是什么？它主要解决什么问题？`, (v) => `What is ${v.brand}, and what problem does it mainly solve?`],
+  ['brand', (v) => `${v.brand} 靠谱吗？口碑如何？`, (v) => `Is ${v.brand} reliable? What is its reputation like?`],
+  ['brand', (v) => `${v.brand} 的主要竞品有哪些？`, (v) => `What are the main competitors of ${v.brand}?`],
+  ['brand', (v) => (v.comp1 ? `${v.brand} 和 ${v.comp1} 怎么选？` : `${v.brand} 和同类 ${v.category} 产品怎么选？`), (v) => (v.comp1 ? `How should I choose between ${v.brand} and ${v.comp1}?` : `How should I choose between ${v.brand} and similar ${v.category} products?`)],
+  ['brand', (v) => `${v.brand} 适合什么场景？`, (v) => `What use cases is ${v.brand} best suited for?`],
+]
+
+// 品类推荐 8 条。intent = 'recommendation'。
+const V2_RECOMMENDATION: [string, (v: TemplateVars) => string, (v: TemplateVars) => string][] = [
+  ['recommendation', (v) => `${v.category} 领域有哪些值得推荐的产品或服务？`, (v) => `What are the best products or services for ${v.category}?`],
+  ['recommendation', (v) => `请推荐几款适合中小团队的 ${v.category} 工具，并说明理由。`, (v) => `Recommend a few ${v.category} tools for small teams and explain why.`],
+  ['recommendation', (v) => `目前 ${v.category} 方向最好的解决方案是什么？`, (v) => `What is currently the best solution for ${v.category}?`],
+  ['recommendation', (v) => `预算有限的团队应该选择哪家 ${v.category} 产品？`, (v) => `Which ${v.category} product should a team on a tight budget choose?`],
+  ['recommendation', (v) => `有哪些开源或更便宜的 ${v.category} 替代方案？`, (v) => `Are there open-source or cheaper alternatives for ${v.category}?`],
+  ['recommendation', (v) => `远程 / 跨地区团队用什么 ${v.category} 工具比较合适？`, (v) => `What ${v.category} tools work well for remote or distributed teams?`],
+  ['recommendation', (v) => `初创公司在 ${v.category} 上应该怎么选型？`, (v) => `How should a startup pick its ${v.category} stack?`],
+  ['recommendation', (v) => `企业级团队在 ${v.category} 方向上应该重点考虑哪些产品？`, (v) => `Which ${v.category} products should an enterprise team focus on?`],
+]
+
+// 对比 6 条。intent = 'comparison'。无竞品用品类兜底。
+const V2_COMPARISON: [string, (v: TemplateVars) => string, (v: TemplateVars) => string][] = [
+  ['comparison', (v) => (v.comp1 ? `${v.brand} 和 ${v.comp1} 相比怎么样？各有什么优缺点？` : `${v.category} 领域的头部产品之间有什么差异？该怎么选？`), (v) => (v.comp1 ? `How does ${v.brand} compare to ${v.comp1}? What are the pros and cons of each?` : `How do the leading ${v.category} products differ, and how should I choose?`)],
+  ['comparison', (v) => (v.comp1 && v.comp2 ? `${v.comp1} 和 ${v.comp2} 哪个更好用？有没有其他值得考虑的选择？` : `挑选 ${v.category} 产品时，主流选项之间怎么对比？`), (v) => (v.comp1 && v.comp2 ? `Which is better, ${v.comp1} or ${v.comp2}? Are there other options worth considering?` : `When picking a ${v.category} product, how do the mainstream options compare?`)],
+  ['comparison', (v) => `${v.brand} 有哪些替代品？各自适合谁？`, (v) => `What are the alternatives to ${v.brand}, and who is each best for?`],
+  ['comparison', (v) => `${v.category} 领域头部产品在功能上有哪些关键差异？`, (v) => `What are the key feature differences among the leading ${v.category} products?`],
+  ['comparison', (v) => (v.comp1 ? `${v.brand} 相比 ${v.comp1} 的核心优势和短板是什么？` : `${v.brand} 相比同类 ${v.category} 产品的核心优势和短板是什么？`), (v) => (v.comp1 ? `What are ${v.brand}'s core strengths and weaknesses versus ${v.comp1}?` : `What are ${v.brand}'s core strengths and weaknesses versus similar ${v.category} products?`)],
+  ['comparison', (v) => `挑选 ${v.category} 产品时，价格与功能之间该如何权衡？`, (v) => `When choosing a ${v.category} product, how should I weigh price against features?`],
+]
+
+// 长尾问答 8 条。intent = 'howto'。
+const V2_LONGTAIL: [string, (v: TemplateVars) => string, (v: TemplateVars) => string][] = [
+  ['howto', (v) => `如何挑选适合自己团队的 ${v.category} 产品？要注意什么？`, (v) => `How do I choose the right ${v.category} product for my team? What should I watch out for?`],
+  ['howto', (v) => `${v.category} 工具怎么落地实施？有什么最佳实践？`, (v) => `How do I roll out a ${v.category} tool? Any best practices?`],
+  ['howto', (v) => `${v.category} 产品一般怎么收费？主流产品价格差异大吗？`, (v) => `How are ${v.category} products typically priced? Do the mainstream ones differ much?`],
+  ['howto', (v) => `使用 ${v.category} 工具时常见的坑有哪些？如何避免？`, (v) => `What are common pitfalls when using ${v.category} tools, and how do I avoid them?`],
+  ['howto', (v) => `${v.category} 产品如何和现有工作流集成？`, (v) => `How do ${v.category} products integrate with an existing workflow?`],
+  ['howto', (v) => `迁移到新的 ${v.category} 工具需要注意什么？`, (v) => `What should I consider when migrating to a new ${v.category} tool?`],
+  ['howto', (v) => `评估 ${v.category} 产品时应该关注哪些关键指标？`, (v) => `Which key metrics matter when evaluating a ${v.category} product?`],
+  ['howto', (v) => `小团队用 ${v.category} 工具如何控制成本？`, (v) => `How can a small team keep ${v.category} tooling costs under control?`],
+]
+
+// 信任评估 3 条。intent = 'trust'。
+const V2_TRUST: [string, (v: TemplateVars) => string, (v: TemplateVars) => string][] = [
+  ['trust', (v) => `${v.category} 领域哪家产品的口碑最好？`, (v) => `Which ${v.category} product has the best reputation?`],
+  ['trust', (v) => `有哪些被专家或社区广泛推荐的 ${v.category} 产品？`, (v) => `Which ${v.category} products are widely recommended by experts or the community?`],
+  ['trust', (v) => `${v.category} 产品在数据安全与合规方面表现如何？`, (v) => `How do ${v.category} products perform on data security and compliance?`],
+]
+
+// 分层顺序拼接：品牌 → 品类推荐 → 对比 → 长尾问答 → 信任评估。
+// priority 按拼接后的下标赋值，保证同输入 → 同顺序（同协议回测前提）。
+const TEMPLATES_V2 = [
+  ...V2_BRAND,
+  ...V2_RECOMMENDATION,
+  ...V2_COMPARISON,
+  ...V2_LONGTAIL,
+  ...V2_TRUST,
+]
+
+export function buildPromptSetV2(input: PromptSetInput): ProbePrompt[] {
+  const vars = buildVars(input)
+  const zh = input.language === 'zh'
+  return TEMPLATES_V2.map(([intent, zhTpl, enTpl], i) => ({
+    text: zh ? zhTpl(vars) : enTpl(vars),
+    intent,
+    source: 'template_v2',
     market: input.market,
     language: input.language,
     priority: i,

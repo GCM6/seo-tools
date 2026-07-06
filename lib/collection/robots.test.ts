@@ -20,14 +20,14 @@ describe('parseRobotsAllowed', () => {
 describe('fetchRobotsCheck', () => {
   it('treats a 404 robots.txt as allowed with empty rawText', async () => {
     const fetchImpl = vi.fn(async () => new Response(null, { status: 404 }))
-    const result = await fetchRobotsCheck('https://teamflow.cn/', fetchImpl as never)
+    const result = await fetchRobotsCheck('https://example.com/', fetchImpl as never)
     expect(result).toEqual({ allowed: true, rawText: '' })
-    expect(fetchImpl).toHaveBeenCalledWith('https://teamflow.cn/robots.txt')
+    expect(fetchImpl).toHaveBeenCalledWith('https://example.com/robots.txt')
   })
 
   it('parses a fetched robots.txt against the entry path', async () => {
     const fetchImpl = vi.fn(async () => new Response('User-agent: *\nDisallow: /', { status: 200 }))
-    const result = await fetchRobotsCheck('https://teamflow.cn/pricing', fetchImpl as never)
+    const result = await fetchRobotsCheck('https://example.com/pricing', fetchImpl as never)
     expect(result.allowed).toBe(false)
     expect(result.rawText).toContain('Disallow: /')
   })

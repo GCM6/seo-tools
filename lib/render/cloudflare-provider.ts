@@ -17,6 +17,9 @@ export function createCloudflareRenderProvider(config: CloudflareProviderConfig)
   const fetchImpl = config.fetchImpl ?? fetch
 
   return {
+    isConfigured() {
+      return Boolean(config.accountId && config.apiToken)
+    },
     async renderMainText(url: string): Promise<RenderResult> {
       const res = await fetchImpl(
         `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/browser-rendering/content`,

@@ -1,4 +1,4 @@
-import { buildPromptSet, brandFromDomain, type ProbePrompt } from './prompt-set'
+import { buildPromptSetV2, brandFromDomain, type ProbePrompt } from './prompt-set'
 import { parseProbeAnswer, PROBE_PARSER_VERSION } from './parse'
 import type { AiProbeProvider, AiProbeProviderId } from './providers/types'
 import { sha256Hex } from '@/lib/collection/hash'
@@ -113,7 +113,7 @@ export async function collectProbesStage(
   const providers = deps.buildProviders().filter((p) => config.activeProviderIds.includes(p.id))
 
   const prompts = await step.run('probe-persist-prompts', async () => {
-    const rows = buildPromptSet(config.promptInput).map((p) => ({
+    const rows = buildPromptSetV2(config.promptInput).map((p) => ({
       ...p,
       id: `pr_${crypto.randomUUID()}`,
       runId,
@@ -188,8 +188,8 @@ export async function collectProbesStage(
               targetDomainCited: parsed.targetDomainCited,
               competitorsMentioned: parsed.competitorsMentioned,
               citedUrls: parsed.citedUrls,
-              // V0 不做情绪判定：保持默认 neutral，不造信号
-              sentiment: 'neutral',
+              // G09 引用情感：测量层解析器分类（parser_version 版本化，可抽查原文），非 agent 生成
+              sentiment: parsed.sentiment,
               rawAnswerHash: rawHash,
               parserVersion: PROBE_PARSER_VERSION,
             })

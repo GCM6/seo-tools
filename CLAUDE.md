@@ -61,6 +61,7 @@ V0 is a single-user, single-project, BYOK (bring-your-own-API-key) internal tool
 
 ## 语言规范
 
-- 所有对话和文档都使用中文
-- 文档使用 markdown 格式
-- The product targets Chinese and niche-vertical users; planning docs and UI copy are in Chinese. Keep that audience in mind for any user-facing strings.
+- **对话与沟通**：与开发者的所有交流、代码解释、步骤说明以及 Git 提交信息（Git Commit Message）必须使用**中文**。
+- **文档编写**：所有技术文档、规划方案、状态记录等均使用 **Markdown 格式的中文** 编写。
+- **用户界面 (UI) 文案**：本项目主要面向中文及垂直行业用户，UI 中的所有标签、提示、报错、实测级别（如 `实测`）等用户可见文案必须使用**中文**。
+- **代码与术语**：代码中的变量名、函数名、API 路由、数据库字段及技术术语保持**英文**；代码注释在解释复杂业务逻辑时可使用中文，简单注释使用英文。

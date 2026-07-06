@@ -5,6 +5,7 @@ import { StatStrip } from '@/components/StatStrip'
 import { FindingList, type FindingItem } from '@/components/FindingList'
 import { EvidenceDrawer, type EvidenceView } from '@/components/EvidenceDrawer'
 import { RunProgress } from '@/components/RunProgress'
+import { RetestBanner } from '@/components/RetestBanner'
 import { PresenceMap } from '@/components/PresenceMap'
 import { SovBar } from '@/components/SovBar'
 import {
@@ -48,11 +49,23 @@ export default async function RunDiagnosisPage({
   ])
   const project = run ? await getProject(run.projectId) : undefined
 
+  // 回测排期（spec §5.1-6）：nextRetestDueAt ≤ 今天即到期，顶部横幅一键同协议重跑；
+  // 在未来则显示次要「下次回测」提示。为空表示尚无 applied 建议触发排期。
+  const retestDueAt = project?.nextRetestDueAt ?? null
+  const retestDue = retestDueAt ? Date.parse(retestDueAt) <= new Date().getTime() : false
+
   // AI 探针聚合：可见度卡 / 答案地图 / SoV 的唯一数据来源；无结果时为 null（保持空态）。
   const probeSummary = project
     ? aggregateProbeSummary({
         prompts: promptRows,
-        results: probeRows,
+        results: probeRows.map((r) => ({
+          promptId: r.promptId,
+          brandPresent: r.brandPresent,
+          competitorsMentioned: r.competitorsMentioned,
+          evidenceId: r.evidenceId,
+          provider: r.provider,
+          sentiment: r.sentiment,
+        })),
         brand: brandFromDomain(project.domain),
         competitors: project.competitors ?? [],
       })
@@ -68,8 +81,11 @@ export default async function RunDiagnosisPage({
     evidenceRows.map((e) => [e.id, { id: e.id, type: e.type, claimLevel: e.claimLevel, source: e.source, payload: e.payload }]),
   )
 
+  // 已忽略（dismissed）的发现默认不进入列表——人工判定为误报后即从视图隐去。
   const items: FindingItem[] = await Promise.all(
-    findings.map(async (f): Promise<FindingItem> => {
+    findings
+      .filter((f) => f.status !== 'dismissed')
+      .map(async (f): Promise<FindingItem> => {
       const prov = provenanceForClaim(f.claimType as ClaimType)
       // 证据已随 evidenceRows 一次性载入 evidenceById，同 run 的引用直接命中，
       // 只有跨 run 的引用（数据异常时）才回落到单独查询，避免 N+1。
@@ -105,6 +121,12 @@ export default async function RunDiagnosisPage({
   return (
     <Shell active={2} locale={locale} runId={id} domain={project?.domain}>
       <section className="screen show" data-screen="2">
+        {retestDue ? (
+          <RetestBanner runId={id} locale={locale} />
+        ) : retestDueAt ? (
+          <div className="note">{t('retest.nextDue', { date: retestDueAt.slice(0, 10) })}</div>
+        ) : null}
+
         {run ? (
           <RunProgress runId={id} initialStatus={run.status as RunStatus} initialFailureReason={run.failureReason ?? ''} />
         ) : null}
@@ -114,9 +136,14 @@ export default async function RunDiagnosisPage({
             <div className="ws-label">{t('screen2.overviewLabel')}</div>
             <h1>{project?.domain ?? id}</h1>
             <p>{t('screen2.overviewBody', { findings: items.length, evidence: evidenceRows.length })}</p>
-            <Link href={`/${locale}/runs/${id}/site`} className="text-sm underline underline-offset-2">
-              {t('screen2.siteLink')}
-            </Link>
+            <div className="flex gap-4">
+              <Link href={`/${locale}/runs/${id}/site`} className="text-sm underline underline-offset-2">
+                {t('screen2.siteLink')}
+              </Link>
+              <Link href={`/${locale}/runs/${id}/competitors`} className="text-sm underline underline-offset-2">
+                {t('screen2.competitorsLink')}
+              </Link>
+            </div>
           </div>
           <div className="ws-next">
             <span>{t('screen2.nextLabel')}</span>
@@ -162,6 +189,51 @@ export default async function RunDiagnosisPage({
               ? t('screen2.probePendingRerun', { providers: sources.aiProviders.join(' / ') })
               : t('screen2.probePending')}
           </div>
+        )}
+
+        {/* 分引擎可见度（G05/G06 分引擎报告，引擎间不可互推）——多于一个引擎才展示 */}
+        {probeSummary && probeSummary.perEngine.length > 1 && (
+          <>
+            <div className="sec-h">
+              <h2>{t('screen2.perEngineTitle')}</h2>
+              <span className="meta">{t('screen2.perEngineMeta')}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              {probeSummary.perEngine.map((e) => (
+                <div key={e.engine} className="rounded border p-3">
+                  <div className="text-xs text-neutral-500">{e.engine}</div>
+                  <div className="text-xl font-semibold">
+                    {e.promptsPresent}/{e.promptsTotal}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* 引用情感分布（G09，测量层解析器，n=5 方向性）——有含品牌样本才展示 */}
+        {probeSummary && probeSummary.sentiment.total > 0 && (
+          <>
+            <div className="sec-h">
+              <h2>{t('screen2.sentimentTitle')}</h2>
+              <span className="meta">{t('screen2.sentimentMeta')}</span>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {(
+                [
+                  ['sentPositive', probeSummary.sentiment.positive],
+                  ['sentNeutral', probeSummary.sentiment.neutral],
+                  ['sentNegative', probeSummary.sentiment.negative],
+                  ['sentComparison', probeSummary.sentiment.comparison],
+                ] as const
+              ).map(([key, val]) => (
+                <div key={key} className="rounded border p-3">
+                  <div className="text-xs text-neutral-500">{t(`screen2.${key}`)}</div>
+                  <div className="text-xl font-semibold">{val}</div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         <div className="sec-h">

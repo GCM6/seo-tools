@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createCrawlState, runCrawlBatch, leftoverDiscovered, type CrawlOptions } from './crawler'
-import type { LightCheckPage } from './light-check'
+import { type LightCheckPage, emptyLightCheckExtra } from './light-check'
 
 const page = (url: string, links: string[] = []): LightCheckPage => ({
   url, finalUrl: url, httpStatus: 200, title: 't', canonicalUrl: null, metaRobots: null,
-  mainTextChars: 100, contentHash: 'h', internalLinks: links, checkStatus: 'checked', errorReason: null,
+  mainTextChars: 100, contentHash: 'h', internalLinks: links, extra: emptyLightCheckExtra(), checkStatus: 'checked', errorReason: null,
 })
 
 const opts = (over: Partial<CrawlOptions> = {}): CrawlOptions =>
@@ -21,7 +21,7 @@ describe('crawler', () => {
       [entry]: ['https://example.com/a', 'https://example.com/b'],
       'https://example.com/a': ['https://example.com/b'],
     })
-    let state = createCrawlState(entry, ['https://example.com/b', 'https://example.com/only-sitemap'], 'example.com')
+    const state = createCrawlState(entry, ['https://example.com/b', 'https://example.com/only-sitemap'], 'example.com')
     const out = await runCrawlBatch(state, opts(), fetchImpl)
     const byUrl = Object.fromEntries(out.results.map((r) => [r.url, r]))
     expect(byUrl[entry]).toMatchObject({ discoveredVia: 'entry', depth: 0 })
@@ -36,7 +36,7 @@ describe('crawler', () => {
   it('maxPages 截断：多余 URL 留在 frontier 由 leftoverDiscovered 返回', async () => {
     const entry = 'https://example.com/'
     const fetchImpl = siteFetch({ [entry]: ['https://example.com/1', 'https://example.com/2', 'https://example.com/3'] })
-    let state = createCrawlState(entry, [], 'example.com')
+    const state = createCrawlState(entry, [], 'example.com')
     let out = await runCrawlBatch(state, opts({ maxPages: 2, batchSize: 1 }), fetchImpl)
     while (!out.state.done) out = await runCrawlBatch(out.state, opts({ maxPages: 2, batchSize: 1 }), fetchImpl)
     expect(out.state.checkedCount).toBe(2)
@@ -50,7 +50,7 @@ describe('crawler', () => {
       'https://example.com/d1': ['https://example.com/d2'],
       'https://example.com/d2': ['https://example.com/d3'],
     })
-    let state = createCrawlState(entry, [], 'example.com')
+    const state = createCrawlState(entry, [], 'example.com')
     let out = await runCrawlBatch(state, opts({ maxDepth: 1 }), fetchImpl)
     while (!out.state.done) out = await runCrawlBatch(out.state, opts({ maxDepth: 1 }), fetchImpl)
     const urls = Object.keys(out.state.seen)
@@ -61,7 +61,7 @@ describe('crawler', () => {
   it('robots disallow 的路径不 fetch，记 blocked_by_robots', async () => {
     const entry = 'https://example.com/'
     const fetchImpl = siteFetch({ [entry]: ['https://example.com/admin/x'] })
-    let state = createCrawlState(entry, [], 'example.com')
+    const state = createCrawlState(entry, [], 'example.com')
     let out = await runCrawlBatch(state, opts({ robotsTxt: 'User-agent: *\nDisallow: /admin' }), fetchImpl)
     while (!out.state.done) {
       const next = await runCrawlBatch(out.state, opts({ robotsTxt: 'User-agent: *\nDisallow: /admin' }), fetchImpl)

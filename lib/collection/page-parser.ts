@@ -8,10 +8,14 @@ export interface PageFacts {
   metaRobots: string | null
 }
 
-export function extractMainTextChars(html: string): number {
+export function extractMainText(html: string): string {
   const { document } = parseHTML(html)
   document.querySelectorAll('script, style').forEach((el) => el.remove())
-  return (document.body?.textContent ?? '').replace(/\s+/g, ' ').trim().length
+  return (document.body?.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
+
+export function extractMainTextChars(html: string): number {
+  return extractMainText(html).length
 }
 
 export function parsePageFacts(html: string): Omit<PageFacts, 'rawHtml'> {

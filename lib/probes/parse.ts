@@ -1,7 +1,10 @@
 // 探针回答的确定性解析器：纯字符串/URL 匹配，LLM 不参与，绝不生成数字。
 // 改判定规则必须升 PROBE_PARSER_VERSION（协议留痕，保证跨 run 可比）。
 
-export const PROBE_PARSER_VERSION = 'v1'
+import { classifyProbeSentiment, type ProbeSentiment } from './sentiment'
+
+// v2：新增 G09 引用情感分类（sentiment），判定规则已变，故升版本。
+export const PROBE_PARSER_VERSION = 'v2'
 
 export interface ParseInput {
   answerText: string
@@ -16,6 +19,7 @@ export interface ParsedProbeAnswer {
   targetDomainCited: boolean
   competitorsMentioned: string[]
   citedUrls: string[]
+  sentiment: ProbeSentiment
 }
 
 function escapeRegExp(s: string): string {
@@ -52,10 +56,13 @@ function citesDomain(urls: string[], domain: string): boolean {
 export function parseProbeAnswer(input: ParseInput): ParsedProbeAnswer {
   const { answerText, citedUrls, brand, domain, competitors } = input
   const domainToken = normalizeHost(domain)
+  const brandPresent = mentions(answerText, brand) || answerText.toLowerCase().includes(domainToken)
   return {
-    brandPresent: mentions(answerText, brand) || answerText.toLowerCase().includes(domainToken),
+    brandPresent,
     targetDomainCited: citesDomain(citedUrls, domain),
     competitorsMentioned: competitors.filter((c) => mentions(answerText, c)),
     citedUrls,
+    // 情感分类只在品牌出现时有意义；未出现一律 'neutral'。
+    sentiment: brandPresent ? classifyProbeSentiment(answerText, brand) : 'neutral',
   }
 }

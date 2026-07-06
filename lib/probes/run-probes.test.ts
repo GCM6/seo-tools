@@ -78,16 +78,16 @@ function run(deps: ProbeStageDeps) {
 }
 
 describe('collectProbesStage', () => {
-  it('probes selected+configured providers only: 20 prompts × n × providers, persists everything', async () => {
+  it('probes selected+configured providers only: 30 prompts × n × providers, persists everything', async () => {
     const { deps, created } = makeDeps()
     const { out } = await run(deps)
 
     // 选中 ChatGPT+Perplexity（AI Overviews 非探针引擎，忽略）；gemini 未选中不探
     expect(out.probedProviders.sort()).toEqual(['openai', 'perplexity'])
-    expect(created.prompts).toHaveLength(20)
-    // 20 prompts × n=2 × 2 providers
-    expect(created.results).toHaveLength(80)
-    expect(created.evidence).toHaveLength(80)
+    expect(created.prompts).toHaveLength(30)
+    // 30 prompts × n=2 × 2 providers
+    expect(created.results).toHaveLength(120)
+    expect(created.evidence).toHaveLength(120)
     const ev = created.evidence[0]
     expect(ev.type).toBe('ai_answer')
     expect(ev.claimLevel).toBe('L3')
@@ -119,11 +119,11 @@ describe('collectProbesStage', () => {
     const { out } = await run(deps)
     expect(out.probedProviders.sort()).toEqual(['openai', 'perplexity'])
 
-    // perplexity 全成功：40 条 result；openai 全失败：0 条 result 但留 40 条 error evidence
-    expect(created.results).toHaveLength(40)
-    expect(created.evidence).toHaveLength(80)
+    // perplexity 全成功：60 条 result；openai 全失败：0 条 result 但留 60 条 error evidence
+    expect(created.results).toHaveLength(60)
+    expect(created.evidence).toHaveLength(120)
     const errorEvidence = created.evidence.filter((e) => (e.request as Record<string, unknown>).error_code)
-    expect(errorEvidence).toHaveLength(40)
+    expect(errorEvidence).toHaveLength(60)
     expect((errorEvidence[0].request as Record<string, unknown>).provider).toBe('openai')
   })
 
@@ -134,7 +134,7 @@ describe('collectProbesStage', () => {
     expect(progress.length).toBeGreaterThan(0)
     expect(progress.every((m) => (m.pct ?? 0) > 65 && (m.pct ?? 0) <= 90)).toBe(true)
     const evidenceMsgs = (emitted as { type: string; evidenceType?: string }[]).filter((m) => m.type === 'evidence_created')
-    expect(evidenceMsgs).toHaveLength(20)
+    expect(evidenceMsgs).toHaveLength(30)
     expect(evidenceMsgs[0].evidenceType).toBe('ai_answer')
   })
 })

@@ -1,4 +1,5 @@
 import { normalizeUrl, isSameSite } from './url'
+import type { LightCheckExtra } from './light-check'
 
 // site_audit：一次 run 的全站轻检不可变快照（存 evidence payload）。
 // site_pages 表是「当前状态」，本快照才是 findings 引用与 retest 对比的锚。
@@ -16,6 +17,12 @@ export interface SiteAuditPage {
   checkStatus: string
   errorReason: string | null
   isKeyPage: boolean
+  // 正文哈希：C10 精确重复内容检测（同 hash 即逐字重复）。历史证据无此字段时为 null。
+  contentHash?: string | null
+  templateId?: string | null
+  // 轻检扩展信号（viewport/hreflang/alt/结构/协议/重定向）。历史证据无此字段时为 null，
+  // 消费规则（T06/T08/T13/T14/C09/C11）遇 null 跳过该页。
+  lightCheckExtra?: LightCheckExtra | null
 }
 
 export interface SiteAuditTemplate { pattern: string; pageCount: number; representativeUrl: string | null }

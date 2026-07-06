@@ -60,6 +60,73 @@ describe('parseProbeAnswer', () => {
   })
 
   it('exposes a parser version for protocol provenance', () => {
-    expect(PROBE_PARSER_VERSION).toBe('v1')
+    expect(PROBE_PARSER_VERSION).toBe('v2')
+  })
+
+  it('classifies a positive brand mention as positive', () => {
+    const r = parseProbeAnswer({
+      ...base,
+      answerText: 'Metadocu is a reliable and recommended docs tool.',
+      citedUrls: [],
+    })
+    expect(r.brandPresent).toBe(true)
+    expect(r.sentiment).toBe('positive')
+  })
+
+  it('classifies a comparison mention as comparison (highest priority)', () => {
+    const r = parseProbeAnswer({
+      ...base,
+      answerText: 'Metadocu is a great alternative compared to Notion.',
+      citedUrls: [],
+    })
+    expect(r.sentiment).toBe('comparison')
+  })
+
+  it('classifies a negative brand mention as negative', () => {
+    const r = parseProbeAnswer({
+      ...base,
+      answerText: 'Metadocu feels outdated and lacks key features.',
+      citedUrls: [],
+    })
+    expect(r.sentiment).toBe('negative')
+  })
+
+  it('classifies a neutral brand mention as neutral', () => {
+    const r = parseProbeAnswer({
+      ...base,
+      answerText: 'Metadocu is a documentation product.',
+      citedUrls: [],
+    })
+    expect(r.sentiment).toBe('neutral')
+  })
+
+  it('treats a negated positive word as non-positive', () => {
+    const r = parseProbeAnswer({
+      ...base,
+      answerText: 'Metadocu is not recommended for large teams.',
+      citedUrls: [],
+    })
+    expect(r.sentiment).toBe('neutral')
+  })
+
+  it('defaults sentiment to neutral when the brand is absent', () => {
+    const r = parseProbeAnswer({
+      ...base,
+      answerText: 'The best docs tools are excellent and recommended.',
+      citedUrls: [],
+    })
+    expect(r.brandPresent).toBe(false)
+    expect(r.sentiment).toBe('neutral')
+  })
+
+  it('classifies a CJK positive brand mention as positive', () => {
+    const r = parseProbeAnswer({
+      brand: '飞书',
+      domain: 'feishu.cn',
+      competitors: [],
+      answerText: '飞书是一款非常靠谱、值得推荐的协作工具。',
+      citedUrls: [],
+    })
+    expect(r.sentiment).toBe('positive')
   })
 })

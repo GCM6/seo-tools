@@ -81,6 +81,8 @@ describe('deriveStatCards', () => {
         totalSamples: 100,
         perPrompt: [],
         sov: [],
+        perEngine: [],
+        sentiment: { positive: 0, neutral: 0, negative: 0, comparison: 0, total: 0 },
         sampleEvidenceId: 'ev_probe_hit',
       },
     })

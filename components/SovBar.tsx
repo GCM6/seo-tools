@@ -1,11 +1,16 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import type { DemoSov } from '@/lib/fixtures'
+
+export interface SovRow {
+  name: string
+  pct: number
+  you: boolean
+}
 
 // Share-of-Voice bars — competitor visibility vs. yours. The "you" row is
 // tinted with the measured colour and carries the localized "(you)" suffix.
-export function SovBar({ rows }: { rows: DemoSov[] }) {
+export function SovBar({ rows }: { rows: SovRow[] }) {
   const t = useTranslations('screen2')
 
   return (

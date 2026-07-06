@@ -3,7 +3,7 @@ import { extractMainTextChars, parsePageFacts, fetchPageFacts } from './page-par
 
 const HTML = `<!doctype html><html><head>
   <title>Team Flow</title>
-  <link rel="canonical" href="https://teamflow.cn/" />
+  <link rel="canonical" href="https://example.com/" />
   <meta name="robots" content="index,follow" />
 </head><body><main><h1>Team Flow</h1><p>协作工具，帮团队更快交付。</p></main></body></html>`
 
@@ -17,7 +17,7 @@ describe('extractMainTextChars', () => {
 describe('parsePageFacts', () => {
   it('extracts main text length, canonical, and meta robots', () => {
     const facts = parsePageFacts(HTML)
-    expect(facts.canonicalUrl).toBe('https://teamflow.cn/')
+    expect(facts.canonicalUrl).toBe('https://example.com/')
     expect(facts.metaRobots).toBe('index,follow')
     expect(facts.mainTextChars).toBeGreaterThan(0)
   })
@@ -32,9 +32,9 @@ describe('parsePageFacts', () => {
 describe('fetchPageFacts', () => {
   it('fetches the URL and returns rawHtml alongside parsed facts', async () => {
     const fetchImpl = vi.fn(async () => new Response(HTML, { status: 200 }))
-    const result = await fetchPageFacts('https://teamflow.cn', fetchImpl as never)
+    const result = await fetchPageFacts('https://example.com', fetchImpl as never)
     expect(result.rawHtml).toBe(HTML)
-    expect(result.canonicalUrl).toBe('https://teamflow.cn/')
-    expect(fetchImpl).toHaveBeenCalledWith('https://teamflow.cn')
+    expect(result.canonicalUrl).toBe('https://example.com/')
+    expect(fetchImpl).toHaveBeenCalledWith('https://example.com')
   })
 })

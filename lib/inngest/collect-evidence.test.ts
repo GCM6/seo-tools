@@ -14,7 +14,12 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
       metaRobots: 'index,follow',
     })),
     fetchRobotsCheck: vi.fn(async () => ({ allowed: true, rawText: '' })),
-    extractSchema: vi.fn(() => ({ types: ['Organization'], raw: [{ '@type': 'Organization' }] })),
+    extractSchema: vi.fn(() => ({
+      types: ['Organization'],
+      raw: [{ '@type': 'Organization' }],
+      sameAs: [],
+      blocks: [{ ok: true, parsed: { '@type': 'Organization' }, rawText: '{"@type":"Organization"}' }],
+    })),
     renderProvider: {
       renderMainText: vi.fn(async () => ({ html: '<html>rendered</html>', mainTextChars: 400 })),
     },
@@ -22,6 +27,18 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
       isConfigured: vi.fn(() => false),
       checkSite: vi.fn(),
     },
+    // 默认关闭 PSI，保持既有用例的证据计数不变；专门的 PSI 用例里再打开。
+    isPsiConfigured: vi.fn(() => false),
+    fetchPageSpeedInsights: vi.fn(async () => ({
+      strategy: 'mobile' as const,
+      crux: { lcpMs: 4200, inpMs: 120, cls: 0.2, hasFieldData: true },
+      lighthouse: { performanceScore: 40, opportunities: [{ id: 'a', title: '压缩图片', savingsMs: 800 }], ttfbMs: 1500 },
+    })),
+    // GSC 默认不连接（getProjectSettings 返回 undefined），GSC 采集块整体跳过；专门用例里再启用。
+    refreshGscAccessToken: vi.fn(async () => ({ accessToken: 'access_tok' })),
+    querySearchAnalytics: vi.fn(async () => [{ keys: ['buy widgets'], clicks: 10, impressions: 500, ctr: 0.02, position: 8 }]),
+    upsertKeyword: vi.fn(async (_row: unknown) => [{ id: 'kw_1' }]),
+    createKeywordMetrics: vi.fn(async (_rows: { keywordId: string; evidenceId?: string | null }[]) => []),
     createEvidenceArtifact: vi.fn(async (input: NewEvidenceArtifact) => [input]),
     markRunStatus: vi.fn(async () => undefined),
     runProbes: vi.fn(async () => ({ probedProviders: [], promptCount: 0 })),
@@ -52,6 +69,17 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
       { id: 'tpl_1', projectId: 'proj_1', pattern: '/', pageCount: 1, representativePageId: 'sp_1', source: 'heuristic' },
     ]),
     getRunProbeResults: vi.fn(async () => []),
+    // GEO 采集器（Phase D）默认在基线用例里降级（抛错→block try/catch no-op），保持既有证据计数；
+    // 专门用例里提供可用 fake 断言 ua_probe / third_party_presence 证据。
+    collectUaProbe: vi.fn(async () => { throw new Error('ua-probe disabled in baseline') }),
+    checkThirdPartyPresence: vi.fn(async () => { throw new Error('third-party disabled in baseline') }),
+    // DataForSEO 默认未配置，采集块整体跳过；专门用例里再启用。
+    isDataforseoConfigured: vi.fn(() => false),
+    dataforseoProvider: { isConfigured: vi.fn(() => false) },
+    runDataforseo: vi.fn(async () => undefined),
+    getRunPrompts: vi.fn(async () => []),
+    getProject: vi.fn(async () => ({ id: 'proj_1', domain: 'example.com', industry: '', market: 'US', language: 'en', competitors: [] })),
+    sendDiagnose: vi.fn(async () => undefined),
     ...overrides,
   }
 }
@@ -102,6 +130,8 @@ describe('collectEvidenceHandler', () => {
     deps.createEvidenceArtifact.mock.calls.forEach((c) => expect(c[0].claimLevel).toBe('L4'))
 
     expect(deps.markRunStatus).toHaveBeenCalledWith('run_1', 'collected', expect.objectContaining({ finishedAt: expect.any(String) }))
+    // 采集落地后接力触发诊断生成链
+    expect(deps.sendDiagnose).toHaveBeenCalledWith({ runId: 'run_1', projectId: 'proj_1' })
 
     const progressValues = published.map((m: unknown) => (m as { data: { pct?: number } }).data.pct).filter((v) => v !== undefined)
     expect(progressValues).toEqual([8, 20, 45, 65, 90])
@@ -139,6 +169,69 @@ describe('collectEvidenceHandler', () => {
       payload: expect.objectContaining({ query: 'site:example.com', totalResults: 7 }),
     })
     expect(published.some((m) => (m as { data: { evidenceType?: string } }).data.evidenceType === 'serp_snapshot')).toBe(true)
+  })
+
+  it('collects and persists a PSI evidence artifact when PSI is configured', async () => {
+    const deps = makeDeps({ isPsiConfigured: vi.fn(() => true) })
+    const { args, published } = makeArgs()
+
+    await collectEvidenceHandler(args, asCollectDeps(deps))
+
+    expect(deps.fetchPageSpeedInsights).toHaveBeenCalledWith('https://example.com/', 'mobile')
+    const psiCall = deps.createEvidenceArtifact.mock.calls.find((c) => c[0].type === 'psi')
+    expect(psiCall).toBeTruthy()
+    expect(psiCall![0]).toMatchObject({ type: 'psi', claimLevel: 'L4', source: 'https://example.com/' })
+    expect((psiCall![0].payload as { crux: { hasFieldData: boolean } }).crux.hasFieldData).toBe(true)
+    expect(published.some((m) => (m as { data: { evidenceType?: string } }).data.evidenceType === 'psi')).toBe(true)
+  })
+
+  it('does not fail the run when PSI fetch throws (graceful degrade)', async () => {
+    const deps = makeDeps({
+      isPsiConfigured: vi.fn(() => true),
+      fetchPageSpeedInsights: vi.fn(async () => { throw new Error('psi quota exceeded') }),
+    })
+    const { args } = makeArgs()
+
+    const result = await collectEvidenceHandler(args, asCollectDeps(deps))
+    expect(result).toEqual({ status: 'collected' })
+    expect(deps.createEvidenceArtifact.mock.calls.some((c) => c[0].type === 'psi')).toBe(false)
+    expect(deps.sendDiagnose).toHaveBeenCalled()
+  })
+
+  it('collects GSC keyword evidence + metrics when the project is connected', async () => {
+    const deps = makeDeps({
+      getProjectSettings: vi.fn(async () => ({
+        gscConnected: true, gscRefreshToken: 'refresh_tok', gscSiteUrl: 'sc-domain:example.com',
+        crawlEnabled: false, // 隔离：跳过全站爬取，聚焦 GSC 断言
+      })),
+    })
+    const { args, published } = makeArgs()
+
+    await collectEvidenceHandler(args, asCollectDeps(deps))
+
+    expect(deps.refreshGscAccessToken).toHaveBeenCalledWith('refresh_tok')
+    // query 维 + page×query 交叉维两次查询
+    expect(deps.querySearchAnalytics).toHaveBeenCalledTimes(2)
+    const gscEv = deps.createEvidenceArtifact.mock.calls.filter((c) => c[0].type === 'gsc')
+    expect(gscEv).toHaveLength(2)
+    expect(gscEv.map((c) => (c[0].payload as { dimension: string }).dimension).sort()).toEqual(['query', 'queryPage'])
+    gscEv.forEach((c) => expect(c[0].claimLevel).toBe('L4'))
+    // keyword_metrics 落库：upsert 关键词后按 keywordId 建指标行
+    expect(deps.upsertKeyword).toHaveBeenCalled()
+    expect(deps.createKeywordMetrics).toHaveBeenCalled()
+    const metricRows = deps.createKeywordMetrics.mock.calls[0][0]
+    expect(metricRows[0].keywordId).toBe('kw_1')
+    expect(published.some((m) => (m as { data: { evidenceType?: string } }).data.evidenceType === 'gsc')).toBe(true)
+  })
+
+  it('skips GSC collection when the project is not connected', async () => {
+    const deps = makeDeps() // getProjectSettings → undefined
+    const { args } = makeArgs()
+
+    await collectEvidenceHandler(args, asCollectDeps(deps))
+
+    expect(deps.refreshGscAccessToken).not.toHaveBeenCalled()
+    expect(deps.createEvidenceArtifact.mock.calls.some((c) => c[0].type === 'gsc')).toBe(false)
   })
 
   // AI 探针阶段挂在 render 之后、mark-collected 之前；providers/key 过滤在 stage 内部做，
@@ -253,5 +346,56 @@ describe('collectEvidenceHandler', () => {
       (c) => c[0].type === 'page_fetch' && c[0].sitePageId,
     )
     expect(deepFetches.map((c) => c[0].sitePageId).sort()).toEqual(['sp_2', 'sp_3'])
+  })
+
+  it('DataForSEO 已配置：收集种子词（探针检索式，去品牌）并调用 runDataforseo', async () => {
+    const runDataforseo = vi.fn(async (_args: unknown) => undefined)
+    const deps = makeDeps({
+      isDataforseoConfigured: vi.fn(() => true),
+      runDataforseo,
+      // 未连 GSC → 种子仅来自探针 prompt；'example ...' 为品牌词应被剔除。
+      getRunPrompts: vi.fn(async () => [
+        { id: 'p1', text: 'best crm software', priority: 0 },
+        { id: 'p2', text: 'example brand pricing', priority: 1 },
+      ]),
+      getProject: vi.fn(async () => ({ id: 'proj_1', domain: 'example.com', industry: 'saas', market: 'de', language: 'de', competitors: [] })),
+    })
+    const { args } = makeArgs()
+    await collectEvidenceHandler(args, asCollectDeps(deps))
+
+    expect(runDataforseo).toHaveBeenCalledTimes(1)
+    const stageArgs = runDataforseo.mock.calls[0][0] as { seeds: string[]; market: string; brand: string; competitorTopN: number }
+    expect(stageArgs.seeds).toEqual(['best crm software']) // 品牌词 'example brand pricing' 被去掉
+    expect(stageArgs.market).toBe('de')
+    expect(stageArgs.brand).toBe('example')
+  })
+
+  it('GEO 采集器：落 ua_probe(L4) 与 third_party_presence(L3) 证据', async () => {
+    const deps = makeDeps({
+      collectUaProbe: vi.fn(async () => ({
+        crawlers: [{ ua: 'PerplexityBot', kind: 'search' as const, url: 'https://example.com', status: 403, blocked: true }],
+        llmsTxt: { exists: false, url: 'https://example.com/llms.txt' },
+      })),
+      checkThirdPartyPresence: vi.fn(async () => ({
+        wikipedia: { exists: false, title: null, url: null },
+        reddit: { mentions: 0, windowDays: 365 },
+      })),
+    })
+    const { args } = makeArgs()
+    await collectEvidenceHandler(args, asCollectDeps(deps))
+    const ua = deps.createEvidenceArtifact.mock.calls.find((c) => c[0].type === 'ua_probe')
+    const tp = deps.createEvidenceArtifact.mock.calls.find((c) => c[0].type === 'third_party_presence')
+    expect(ua).toBeTruthy()
+    expect(ua![0].claimLevel).toBe('L4')
+    expect(tp).toBeTruthy()
+    expect(tp![0].claimLevel).toBe('L3')
+  })
+
+  it('DataForSEO 未配置：跳过，不调用 runDataforseo', async () => {
+    const runDataforseo = vi.fn(async () => undefined)
+    const deps = makeDeps({ isDataforseoConfigured: vi.fn(() => false), runDataforseo })
+    const { args } = makeArgs()
+    await collectEvidenceHandler(args, asCollectDeps(deps))
+    expect(runDataforseo).not.toHaveBeenCalled()
   })
 })

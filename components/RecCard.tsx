@@ -17,6 +17,7 @@ export interface RecCardFields {
   risk?: string
   validationMethod?: string
   confidence?: string
+  editedNote?: string
 }
 
 export interface RecCardProps {
@@ -50,21 +51,25 @@ export function RecCard({
   )
 
   const [draft, setDraft] = useState(editDraft)
+  const [editingDraft, setEditingDraft] = useState(false)
 
   // Optimistically reflect the new status, fire the PATCH, then commit ONLY when
   // the server accepted it. On a non-ok response or a thrown error we leave the
   // confirmed `status` untouched, so `useOptimistic` reverts the overlay back to
   // it once the transition settles — i.e. the card rolls back to the prior state.
-  const patch = (next: RecStatus) => {
+  const patch = (next: RecStatus, editedPayload?: unknown) => {
     startTransition(async () => {
       setOptimisticStatus(next)
       try {
         const res = await fetch(`/api/recommendations/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: next }),
+          body: JSON.stringify({ status: next, editedPayload }),
         })
-        if (res.ok) setStatus(next)
+        if (res.ok) {
+          setStatus(next)
+          setEditingDraft(false)
+        }
       } catch {
         // Network error — keep the persisted status; optimistic state rolls back.
       }
@@ -73,56 +78,70 @@ export function RecCard({
 
   const accepted = optimisticStatus === 'accepted'
   const rejected = optimisticStatus === 'rejected'
-  // `editing` is derived from the (optimistic) status so accept/reject/edit stay
-  // mutually exclusive: rejecting or accepting clears the edit textarea, and a
-  // failed PATCH rolls the textarea back together with the status.
-  const editing = optimisticStatus === 'edited'
 
   const onAccept = () => patch(accepted ? 'draft' : 'accepted')
   const onReject = () => patch('rejected')
-  const onEdit = () => patch(editing ? 'draft' : 'edited')
+  const onEdit = () => setEditingDraft(true)
+  const onSaveEdit = () => patch('edited', { note: draft })
+  const onCancelEdit = () => {
+    setDraft(editDraft)
+    setEditingDraft(false)
+  }
 
   return (
-    <div className={`card rec${editing ? ' editing' : ''}`}>
+    <div className={`card rec${editingDraft ? ' editing' : ''}`}>
       <div className="rec-top">
         <span className={`prio${priority.toUpperCase() === 'P1' ? '' : ' p2'}`}>{priority}</span>
         <h3>{title}</h3>
         <div className="rec-actions">
-          <button
-            type="button"
-            className={`act acc${accepted ? ' on' : ''}`}
-            aria-pressed={accepted}
-            onClick={onAccept}
-          >
-            {accepted ? t('common.actions.accepted') : t('common.actions.accept')}
-          </button>
-          <button
-            type="button"
-            className={`act${editing ? ' acc on' : ''}`}
-            aria-pressed={editing}
-            onClick={onEdit}
-          >
-            {editing ? t('common.actions.editing') : t('common.actions.edit')}
-          </button>
-          <button
-            type="button"
-            className={`act rej${rejected ? ' on' : ''}`}
-            aria-pressed={rejected}
-            onClick={onReject}
-          >
-            {t('common.actions.reject')}
-          </button>
+          {editingDraft ? (
+            <>
+              <button type="button" className="act acc on" onClick={onSaveEdit}>
+                {t('common.actions.saveEdit')}
+              </button>
+              <button type="button" className="act" onClick={onCancelEdit}>
+                {t('common.actions.cancel')}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className={`act acc${accepted ? ' on' : ''}`}
+                aria-pressed={accepted}
+                onClick={onAccept}
+              >
+                {accepted ? t('common.actions.accepted') : t('common.actions.accept')}
+              </button>
+              <button
+                type="button"
+                className={`act${optimisticStatus === 'edited' ? ' acc on' : ''}`}
+                aria-pressed={optimisticStatus === 'edited'}
+                onClick={onEdit}
+              >
+                {optimisticStatus === 'edited' ? t('common.actions.edited') : t('common.actions.edit')}
+              </button>
+              <button
+                type="button"
+                className={`act rej${rejected ? ' on' : ''}`}
+                aria-pressed={rejected}
+                onClick={onReject}
+              >
+                {t('common.actions.reject')}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {editing ? (
+      {editingDraft ? (
         <div className="edit-note">
           <ProvenanceTag variant="i" label={t('common.actions.editing')} />
         </div>
       ) : null}
 
       <div className="rec-body">
-        {editing ? (
+        {editingDraft ? (
           <div className="field-block full">
             <div className="fb-l">{t('screen3.label.why')}</div>
             <textarea
@@ -134,6 +153,12 @@ export function RecCard({
           </div>
         ) : (
           <>
+            {optimisticStatus === 'edited' && fields.editedNote ? (
+              <div className="field-block full edited-block">
+                <div className="fb-l">{t('screen3.label.editedNote')}</div>
+                <p>{fields.editedNote}</p>
+              </div>
+            ) : null}
             {fields.why ? (
               <div className="field-block">
                 <div className="fb-l">{t('screen3.label.why')}</div>

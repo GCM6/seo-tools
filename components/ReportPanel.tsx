@@ -11,8 +11,12 @@ export interface ReportPanelFact {
 // Mirrors the prototype .report / .rsec / .export markup.
 export async function ReportPanel({
   facts = [],
+  domain = '',
+  confirmedCount = 0,
 }: {
   facts?: ReportPanelFact[]
+  domain?: string
+  confirmedCount?: number
 }) {
   const t = await getTranslations('screen4')
   const tCommon = await getTranslations('common')
@@ -20,29 +24,29 @@ export async function ReportPanel({
   return (
     <div className="card report">
       <h2>{t('reportTitle')}</h2>
-      <div className="rmeta">{t('reportMeta')}</div>
+      <div className="rmeta">{t('reportMeta', { domain: domain || t('unknownDomain') })}</div>
+
+      <div className="rsec">
+        <div className="rt">{t('report.outputTitle')}</div>
+        <div className="rd">{t('report.outputBody', { count: confirmedCount })}</div>
+      </div>
 
       <div className="rsec">
         <div className="rt">
-          {t('report.snapshotTitle')}{' '}
-          <ProvenanceTag variant="m" label={tCommon('tag.measured')} />
+          {t('report.factsTitle')}{' '}
+          {facts.length ? <ProvenanceTag variant="m" label={tCommon('tag.measured')} /> : null}
         </div>
-        <div className="rd">{t('report.snapshotBody')}</div>
-      </div>
-
-      <div className="rsec">
-        <div className="rt">{t('report.gapTitle')}</div>
-        <div className="rd">{t('report.gapBody')}</div>
-      </div>
-
-      <div className="rsec">
-        <div className="rt">{t('report.issuesTitle')}</div>
-        <div className="rd">{t('report.issuesBody')}</div>
-      </div>
-
-      <div className="rsec">
-        <div className="rt">{t('report.recsTitle')}</div>
-        <div className="rd">{t('report.recsBody')}</div>
+        <div className="rd">
+          {facts.length ? (
+            <ul>
+              {facts.map((f, i) => (
+                <li key={i}>{f.factText}</li>
+              ))}
+            </ul>
+          ) : (
+            t('report.emptyFacts')
+          )}
+        </div>
       </div>
 
       <div className="rsec">
@@ -52,19 +56,6 @@ export async function ReportPanel({
         </div>
         <div className="rd">{t('report.retestBody')}</div>
       </div>
-
-      {facts.length > 0 ? (
-        <div className="rsec">
-          <div className="rt">{tCommon('tag.measured')}</div>
-          <div className="rd">
-            <ul>
-              {facts.map((f, i) => (
-                <li key={i}>{f.factText}</li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      ) : null}
 
       <button className="export">{tCommon('actions.export')}</button>
     </div>

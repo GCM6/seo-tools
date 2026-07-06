@@ -1,16 +1,32 @@
 import { NonRetriableError } from 'inngest'
 import { inngest } from './client'
-import { COLLECT_REQUESTED_EVENT, type CollectRequestedEventData } from './events'
+import {
+  COLLECT_REQUESTED_EVENT,
+  type CollectRequestedEventData,
+  type DiagnoseRequestedEventData,
+  buildDiagnoseRequestedEvent,
+} from './events'
 import { runProgressChannel, type RunProgressMessage } from './channels'
 import { assertPublicUrl, SsrfBlockedError } from '@/lib/security/ssrf-guard'
 import { fetchPageFacts } from '@/lib/collection/page-parser'
 import { fetchRobotsCheck } from '@/lib/collection/robots'
 import { extractSchema } from '@/lib/collection/schema-extractor'
 import { computeMainContentDelta } from '@/lib/collection/readability-risk'
+import { fetchPageSpeedInsights, isPsiConfigured } from '@/lib/collection/psi'
+import { collectUaProbe } from '@/lib/collection/ua-probe'
+import { checkThirdPartyPresence } from '@/lib/collection/third-party-presence'
+import { refreshAccessToken } from '@/lib/gsc/oauth'
+import { querySearchAnalytics, mapRowsToKeywordMetrics } from '@/lib/gsc/search-analytics'
+import { createDataforseoProviderFromEnv, isDataforseoConfigured } from '@/lib/dataforseo'
+import { collectDataforseoStage, type DataforseoStageArgs } from '@/lib/dataforseo/collect-stage'
+import type { DataforseoProvider } from '@/lib/dataforseo/types'
+import { gatherSeedKeywords } from '@/lib/diagnosis/seed-keywords'
+import { brandFromDomain } from '@/lib/probes/prompt-set'
 import { sha256Hex } from '@/lib/collection/hash'
 import { normalizeUrl } from '@/lib/crawl/url'
 import { discoverSitemaps } from '@/lib/crawl/sitemap'
 import { createCrawlState, runCrawlBatch, leftoverDiscovered, type CrawlPageResult } from '@/lib/crawl/crawler'
+import type { LightCheckExtra } from '@/lib/crawl/light-check'
 import { planTemplates } from '@/lib/crawl/template-cluster'
 import { buildSiteAudit, type SiteAuditPage } from '@/lib/crawl/site-audit'
 import { createCloudflareRenderProvider } from '@/lib/render/cloudflare-provider'
@@ -31,6 +47,10 @@ import {
   syncUrlTemplates,
   getProjectTemplates,
   getRunProbeResults,
+  getRunPrompts,
+  upsertKeyword,
+  createKeywordMetrics,
+  upsertCompetitor,
 } from '@/lib/repositories'
 
 interface CollectStep {
@@ -50,6 +70,23 @@ interface CollectDeps {
   extractSchema: typeof extractSchema
   renderProvider: RenderProvider
   searchVisibilityProvider: SearchVisibilityProvider
+  // PSI 性能采集（T09a-c 证据源）。免 key 可用；失败降级不阻断整轮采集。
+  fetchPageSpeedInsights: typeof fetchPageSpeedInsights
+  isPsiConfigured: typeof isPsiConfigured
+  // GEO 深化采集（Phase D）：AI 爬虫可达性/llms.txt（G02/G08）+ 第三方语料（G07）。免 key，best-effort。
+  collectUaProbe: typeof collectUaProbe
+  checkThirdPartyPresence: typeof checkThirdPartyPresence
+  // GSC 关键词采集（K 组证据源）。仅在项目已连接 OAuth 时触发；失败降级不阻断。
+  refreshGscAccessToken: (refreshToken: string) => Promise<{ accessToken: string }>
+  querySearchAnalytics: typeof querySearchAnalytics
+  upsertKeyword: typeof upsertKeyword
+  createKeywordMetrics: typeof createKeywordMetrics
+  // DataForSEO 采集（Phase C，P3 缺口/P4 竞品/P5 外链证据源）。BYOK，未配置时整块跳过。
+  isDataforseoConfigured: typeof isDataforseoConfigured
+  dataforseoProvider: DataforseoProvider
+  runDataforseo: (args: DataforseoStageArgs) => Promise<void>
+  getRunPrompts: typeof getRunPrompts
+  getProject: typeof getProject
   createEvidenceArtifact: typeof createEvidenceArtifact
   markRunStatus: typeof markRunStatus
   // AI 探针阶段整体注入：provider/key 过滤与失败兜底都在 stage 内部
@@ -64,6 +101,17 @@ interface CollectDeps {
   syncUrlTemplates: typeof syncUrlTemplates
   getProjectTemplates: typeof getProjectTemplates
   getRunProbeResults: typeof getRunProbeResults
+  // 采集完成后触发诊断生成链（spec §5）。注入以便单测无副作用地断言其被调用。
+  sendDiagnose: (data: DiagnoseRequestedEventData) => Promise<unknown>
+}
+
+// GSC 查询窗口：数据有 ~2 天延迟，取 [今-31, 今-3] 的 28 天窗口。在 step 内计算以保重试幂等。
+function gscDateRange(now = new Date()): { startDate: string; endDate: string } {
+  const fmt = (d: Date) => d.toISOString().slice(0, 10)
+  return {
+    startDate: fmt(new Date(now.getTime() - 31 * 86400000)),
+    endDate: fmt(new Date(now.getTime() - 3 * 86400000)),
+  }
 }
 
 function errorReason(err: unknown, fallback = 'collection_failed'): string {
@@ -87,6 +135,19 @@ function defaultDeps(): CollectDeps {
       apiKey: process.env.GOOGLE_CSE_API_KEY ?? '',
       cx: process.env.GOOGLE_CSE_CX ?? '',
     }),
+    fetchPageSpeedInsights,
+    isPsiConfigured,
+    collectUaProbe,
+    checkThirdPartyPresence,
+    refreshGscAccessToken: (refreshToken) => refreshAccessToken(refreshToken),
+    querySearchAnalytics,
+    upsertKeyword,
+    createKeywordMetrics,
+    isDataforseoConfigured,
+    dataforseoProvider: createDataforseoProviderFromEnv(),
+    runDataforseo: (args) => collectDataforseoStage(args, { createEvidenceArtifact, upsertCompetitor }),
+    getRunPrompts,
+    getProject,
     createEvidenceArtifact,
     markRunStatus,
     runProbes: (args) =>
@@ -107,6 +168,7 @@ function defaultDeps(): CollectDeps {
     syncUrlTemplates,
     getProjectTemplates,
     getRunProbeResults,
+    sendDiagnose: (data) => inngest.send(buildDiagnoseRequestedEvent(data)),
   }
 }
 
@@ -114,7 +176,7 @@ export async function collectEvidenceHandler(
   { event, step, publish }: CollectArgs,
   deps: CollectDeps = defaultDeps(),
 ): Promise<{ status: 'collected' }> {
-  const { runId, projectId, url } = event.data
+  const { runId, projectId, url, baselineRunId } = event.data
   const channel = runProgressChannel(runId)
   // channel.progress() 返回的是 Promise<envelope>，先 await 拿到 {channel,topic,data}
   // 再交给 publish（ctx.publish 接受 MaybePromise，测试里也据此断言 .data 形状）。
@@ -174,7 +236,14 @@ export async function collectEvidenceHandler(
       type: 'page_fetch',
       claimLevel: 'L4',
       source: entryUrl,
-      payload: { canonicalUrl: pageFacts.canonicalUrl, metaRobots: pageFacts.metaRobots, robotsAllowed: robots.allowed },
+      // robotsTxt 原文并入入口 page_fetch payload：G01 用 parseRobotsAllowed 逐 UA 判检索爬虫屏蔽，
+      // 免于新增一种 evidence 类型 / schema 迁移。
+      payload: {
+        canonicalUrl: pageFacts.canonicalUrl,
+        metaRobots: pageFacts.metaRobots,
+        robotsAllowed: robots.allowed,
+        robotsTxt: robots.rawText,
+      },
       rawText: pageFacts.rawHtml,
       rawHash: sha256Hex(pageFacts.rawHtml),
     }),
@@ -191,7 +260,12 @@ export async function collectEvidenceHandler(
       type: 'schema',
       claimLevel: 'L4',
       source: entryUrl,
-      payload: { types: schema.types },
+      // sameAs（E01 实体消歧）+ blocks 语法有效性（C05b）随 payload 落库；raw JSON-LD 仍存 rawText。
+      payload: {
+        types: schema.types,
+        sameAs: schema.sameAs,
+        blocks: schema.blocks.map((b) => ({ ok: b.ok, rawText: b.rawText })),
+      },
       rawText: JSON.stringify(schema.raw),
       rawHash: sha256Hex(JSON.stringify(schema.raw)),
     }),
@@ -239,6 +313,7 @@ export async function collectEvidenceHandler(
       metaRobots: r.metaRobots,
       mainTextChars: r.mainTextChars,
       contentHash: r.contentHash || null,
+      lightCheckExtra: r.extra,
       checkStatus: r.checkStatus,
       errorReason: r.errorReason,
     })
@@ -265,7 +340,7 @@ export async function collectEvidenceHandler(
           leftover.map((l) => ({
             url: l.url, discoveredVia: l.via, depth: l.depth, httpStatus: null, finalUrl: null,
             title: null, canonicalUrl: null, metaRobots: null, mainTextChars: null, contentHash: null,
-            checkStatus: 'discovered_only' as const, errorReason: null,
+            lightCheckExtra: null, checkStatus: 'discovered_only' as const, errorReason: null,
           })),
         ),
       )
@@ -305,6 +380,104 @@ export async function collectEvidenceHandler(
     await emit({ type: 'evidence_created', evidenceType: 'render_check' })
   }
 
+  // —— PSI 性能采集（T09a-c）——：入口页移动端 CWV 字段数据 + Lighthouse 实验室线索。
+  // 免 key 可用；单次失败（配额/网络）不阻断采集，psi 证据缺失时 T09 规则整体 no-op。
+  if (deps.isPsiConfigured()) {
+    try {
+      const psi = await step.run('fetch-psi', () => deps.fetchPageSpeedInsights(entryUrl, 'mobile'))
+      const rawText = JSON.stringify(psi)
+      await step.run('persist-psi', () =>
+        deps.createEvidenceArtifact({
+          id: `ev_${crypto.randomUUID()}`,
+          projectId,
+          runId,
+          type: 'psi',
+          // CrUX 字段数据为真实用户测量（L4）；Lighthouse 实验室部分在同一 artifact，规则按 hasFieldData 分级。
+          claimLevel: 'L4',
+          source: entryUrl,
+          request: { strategy: 'mobile', note: 'CrUX field data = ranking signal (L4); Lighthouse lab = diagnostic only, not ranking input' },
+          payload: psi,
+          rawText,
+          rawHash: sha256Hex(rawText),
+        }),
+      )
+      await emit({ type: 'evidence_created', evidenceType: 'psi' })
+    } catch {
+      // PSI 失败仅降级，不影响其余证据与诊断触发。
+    }
+  }
+
+  // GSC query 维 Top 展示词：作为 DataForSEO 种子词的真实需求来源（未连 GSC 时留空，种子仅来自探针）。
+  let gscTopQueries: { keyText: string; impressions: number }[] = []
+
+  // —— GSC 关键词采集（K 组）——：已连接 OAuth 的项目拉 query 维 + page×query 交叉维，
+  // 落 gsc 证据（供规则）+ keyword_metrics（供关键词现状 tab 与回测）。未连接则整块跳过，K 组 no-op。
+  if (settings?.gscConnected && settings.gscRefreshToken && settings.gscSiteUrl) {
+    const siteUrl = settings.gscSiteUrl
+    const refreshToken = settings.gscRefreshToken
+    try {
+      const gsc = await step.run('gsc-query', async () => {
+        const { accessToken } = await deps.refreshGscAccessToken(refreshToken)
+        const range = gscDateRange()
+        const [queryRows, queryPageRows] = await Promise.all([
+          deps.querySearchAnalytics(accessToken, siteUrl, { ...range, dimensions: ['query'], rowLimit: 1000 }),
+          deps.querySearchAnalytics(accessToken, siteUrl, { ...range, dimensions: ['page', 'query'], rowLimit: 1000 }),
+        ])
+        return { queryRows, queryPageRows, range }
+      })
+
+      // 供 DataForSEO 种子词收集（按展示量取头部）。
+      gscTopQueries = gsc.queryRows
+        .filter((r) => r.keys[0])
+        .map((r) => ({ keyText: r.keys[0], impressions: r.impressions }))
+
+      // query 维证据：K01/K02 的取数锚。keyword_metrics 也引用它作 evidenceId。
+      const queryEvId = `ev_${crypto.randomUUID()}`
+      const queryRaw = JSON.stringify(gsc.queryRows)
+      await step.run('persist-gsc-query', () =>
+        deps.createEvidenceArtifact({
+          id: queryEvId, projectId, runId, type: 'gsc', claimLevel: 'L4', source: siteUrl,
+          request: { dimension: 'query', ...gsc.range },
+          payload: { dimension: 'query', rows: gsc.queryRows },
+          rawText: queryRaw, rawHash: sha256Hex(queryRaw),
+        }),
+      )
+
+      // page×query 交叉维证据：K06 蚕食检测（keys=[page, query]）。
+      const qpRaw = JSON.stringify(gsc.queryPageRows)
+      await step.run('persist-gsc-querypage', () =>
+        deps.createEvidenceArtifact({
+          id: `ev_${crypto.randomUUID()}`, projectId, runId, type: 'gsc', claimLevel: 'L4', source: siteUrl,
+          request: { dimension: 'queryPage', ...gsc.range },
+          payload: { dimension: 'queryPage', rows: gsc.queryPageRows },
+          rawText: qpRaw, rawHash: sha256Hex(qpRaw),
+        }),
+      )
+
+      // keywords + keyword_metrics（query 维 top 200 by impressions）落库。规则不依赖此表（读证据），
+      // 但关键词现状 tab 与同协议回测需要；evidenceId 挂 query 维证据满足证据引用约束。
+      await step.run('persist-gsc-keyword-metrics', async () => {
+        const metrics = mapRowsToKeywordMetrics(gsc.queryRows, 'query')
+          .sort((a, b) => b.impressions - a.impressions)
+          .slice(0, 200)
+        const metricRows: Parameters<typeof deps.createKeywordMetrics>[0] = []
+        for (const m of metrics) {
+          const [kw] = await deps.upsertKeyword({
+            id: `kw_${crypto.randomUUID()}`, projectId, text: m.keyText, market: '', language: '', source: 'gsc', intent: '',
+          })
+          metricRows.push({
+            id: `km_${crypto.randomUUID()}`, runId, keywordId: kw.id, source: 'gsc',
+            impressions: m.impressions, clicks: m.clicks, ctr: m.ctr, position: m.position, evidenceId: queryEvId,
+          })
+        }
+        await deps.createKeywordMetrics(metricRows)
+      })
+      await emit({ type: 'evidence_created', evidenceType: 'gsc' })
+    } catch {
+      // GSC 失败（令牌过期/权限/网络）仅降级，不阻断采集与诊断。
+    }
+  }
+
   // —— 模板代表页 + 重点页深检：渲染调用数 = 模板数 + 重点页数，而非全站页数 ——
   async function deepCheckTarget(target: { url: string; sitePageId: string }) {
     const facts = await step.run(`deep-fetch:${target.url}`, () => deps.fetchPageFacts(target.url))
@@ -321,7 +494,11 @@ export async function collectEvidenceHandler(
       deps.createEvidenceArtifact({
         id: `ev_${crypto.randomUUID()}`, projectId, runId, type: 'schema', claimLevel: 'L4',
         source: target.url, sitePageId: target.sitePageId,
-        payload: { types: deepSchema.types },
+        payload: {
+          types: deepSchema.types,
+          sameAs: deepSchema.sameAs,
+          blocks: deepSchema.blocks.map((b) => ({ ok: b.ok, rawText: b.rawText })),
+        },
         rawText: JSON.stringify(deepSchema.raw), rawHash: sha256Hex(JSON.stringify(deepSchema.raw)),
       }),
     )
@@ -387,6 +564,8 @@ export async function collectEvidenceHandler(
           finalUrl: p.finalUrl, canonicalUrl: p.canonicalUrl, metaRobots: p.metaRobots,
           mainTextChars: p.mainTextChars, inboundLinkCount: p.inboundLinkCount,
           checkStatus: p.checkStatus, errorReason: p.errorReason, isKeyPage: p.isKeyPage,
+          contentHash: p.contentHash, templateId: p.templateId,
+          lightCheckExtra: p.lightCheckExtra as LightCheckExtra | null,
         })),
         templates: templates.map((t) => ({
           pattern: t.pattern,
@@ -410,11 +589,90 @@ export async function collectEvidenceHandler(
     await emit({ type: 'evidence_created', evidenceType: 'site_audit' })
   }
 
+  // —— DataForSEO 采集（Phase C）——：种子词 SERP→候选竞品→Labs→Backlinks→Bing→品牌 SERP。
+  // BYOK：未配置则整块跳过；种子为空（无 GSC 且无探针词）时 stage 内部 no-op。竞品仅落 candidate，
+  // 人工确认后由 reevaluateCompetitors 增量算 gap 与对比（两段式诊断，spec §5.1-4）。
+  if (deps.isDataforseoConfigured()) {
+    const brand = brandFromDomain(domain)
+    const { seeds, market } = await step.run('dfs-gather-seeds', async () => {
+      const [project, prompts] = await Promise.all([deps.getProject(projectId), deps.getRunPrompts(runId)])
+      const seeds = gatherSeedKeywords({
+        gscQueries: gscTopQueries,
+        promptTexts: prompts.map((p) => p.text),
+        brand,
+        limit: settings?.seedKeywordLimit ?? 100,
+      })
+      return { seeds, market: project?.market ?? '' }
+    })
+    await deps.runDataforseo({
+      step,
+      emit,
+      runId,
+      projectId,
+      domain,
+      brand,
+      market,
+      seeds,
+      competitorTopN: settings?.competitorSerpTopN ?? 10,
+      provider: deps.dataforseoProvider,
+    })
+  }
+
+  // —— GEO 深化采集（Phase D）——：AI 爬虫可达性 + llms.txt（G02/G08）+ 第三方语料（G07）。
+  // 免 key、best-effort：各自 try/catch 降级，单点失败不阻断诊断触发；缺证据时对应规则 no-op。
+  try {
+    const uaProbe = await step.run('ua-probe', () => deps.collectUaProbe({ entryUrl }))
+    const uaRaw = JSON.stringify(uaProbe)
+    await step.run('persist-ua-probe', () =>
+      deps.createEvidenceArtifact({
+        id: `ev_${crypto.randomUUID()}`,
+        projectId,
+        runId,
+        type: 'ua_probe',
+        // 各爬虫 UA 实测状态码 + llms.txt 存在性均为硬事实（L4）。
+        claimLevel: 'L4',
+        source: entryUrl,
+        payload: uaProbe,
+        rawText: uaRaw,
+        rawHash: sha256Hex(uaRaw),
+      }),
+    )
+    await emit({ type: 'evidence_created', evidenceType: 'ua_probe' })
+  } catch {
+    // UA 探测失败仅降级，G02/G08 no-op。
+  }
+
+  try {
+    const brand = brandFromDomain(domain)
+    const thirdParty = await step.run('third-party-presence', () => deps.checkThirdPartyPresence({ brand }))
+    const tpRaw = JSON.stringify(thirdParty)
+    await step.run('persist-third-party', () =>
+      deps.createEvidenceArtifact({
+        id: `ev_${crypto.randomUUID()}`,
+        projectId,
+        runId,
+        type: 'third_party_presence',
+        // Wikipedia 存在性偏硬、Reddit 提及数为估算——整体按第三方估算 L3。
+        claimLevel: 'L3',
+        source: brand,
+        payload: thirdParty,
+        rawText: tpRaw,
+        rawHash: sha256Hex(tpRaw),
+      }),
+    )
+    await emit({ type: 'evidence_created', evidenceType: 'third_party_presence' })
+  } catch {
+    // 第三方语料检测失败仅降级，G07 no-op。
+  }
+
   await emit({ type: 'progress', pct: 90 })
 
   await step.run('mark-collected', () =>
     deps.markRunStatus(runId, 'collected', { finishedAt: new Date().toISOString(), failureReason: null }),
   )
+  // 链接诊断生成链：采集落地后立即触发 generateFindings（独立 Inngest 函数，异步接力）。
+  // 回测锚点穿线：baselineRunId 非空则 generateFindings 收尾算 delta（spec §5.1-3）。
+  await step.run('trigger-diagnose', () => deps.sendDiagnose({ runId, projectId, baselineRunId }))
   await emit({ type: 'done' })
 
   return { status: 'collected' }

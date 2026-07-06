@@ -5,7 +5,15 @@ import { FindingCard } from './FindingList'
 describe('FindingCard', () => {
   it('toggles evidence drawer on click', () => {
     render(
-      <FindingCard title="t" provVariant="m" provLabel="实测" confidence="" severity="hi">
+      <FindingCard
+        id="f1"
+        title="t"
+        provVariant="m"
+        provLabel="实测"
+        confidence=""
+        severity="hi"
+        labels={{ dismiss: '忽略此发现', dismissed: '已忽略' }}
+      >
         <div>evidence-body</div>
       </FindingCard>,
     )

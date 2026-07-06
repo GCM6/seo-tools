@@ -1,5 +1,5 @@
 import { parseRobotsAllowed } from '@/lib/collection/robots'
-import { fetchLightCheck, type LightCheckPage } from './light-check'
+import { fetchLightCheck, emptyLightCheckExtra, type LightCheckPage } from './light-check'
 
 export type DiscoveredVia = 'entry' | 'sitemap' | 'crawl' | 'both'
 
@@ -41,7 +41,7 @@ export function createCrawlState(entryUrl: string, sitemapUrls: string[], entryH
 function blockedResult(item: { url: string; depth: number | null; via: DiscoveredVia }): CrawlPageResult {
   return {
     url: item.url, finalUrl: item.url, httpStatus: 0, title: null, canonicalUrl: null, metaRobots: null,
-    mainTextChars: 0, contentHash: '', internalLinks: [], errorReason: null,
+    mainTextChars: 0, contentHash: '', internalLinks: [], extra: emptyLightCheckExtra(item.url.startsWith('https://'), false), errorReason: null,
     checkStatus: 'blocked_by_robots', discoveredVia: item.via, depth: item.depth,
   }
 }

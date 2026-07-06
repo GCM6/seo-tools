@@ -402,6 +402,21 @@ button {
 .step:hover {
   color: var(--ds-ink);
 }
+.step.disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.step.disabled:hover {
+  color: var(--ds-body);
+}
+.step.done {
+  color: var(--ds-ink);
+}
+.step.done .n {
+  background: var(--good-bg);
+  border-color: var(--good-bg);
+  color: var(--good);
+}
 .step.active {
   background: var(--ds-ink);
   color: var(--ds-on-ink);
@@ -510,6 +525,65 @@ button {
   max-width: 620px;
   margin: 2px 0 22px;
 }
+.analysis-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--sp-base);
+  align-items: start;
+}
+.analysis-form {
+  padding: 22px;
+}
+.analysis-brief {
+  padding: 20px;
+  position: sticky;
+  top: 14px;
+  background:
+    linear-gradient(180deg, rgba(11, 110, 116, 0.07), transparent 44%),
+    var(--ds-surface-1);
+}
+.brief-label,
+.rp-eyebrow,
+.ws-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--measured);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.analysis-brief h2 {
+  font-size: 18px;
+  margin: 6px 0 16px;
+}
+.brief-list {
+  display: grid;
+  gap: 11px;
+}
+.brief-list div {
+  border-top: 1px solid var(--ds-border-subtle);
+  padding-top: 11px;
+}
+.brief-list span {
+  display: block;
+  font-size: 12px;
+  color: var(--ds-muted);
+  margin-bottom: 3px;
+}
+.brief-list b {
+  font-size: 13px;
+  color: var(--ds-ink);
+  font-weight: 600;
+  line-height: 1.5;
+}
+.brief-note {
+  margin-top: 16px;
+  padding: 11px 12px;
+  border-radius: var(--rd-md);
+  background: var(--measured-bg);
+  color: var(--measured);
+  font-size: 12px;
+  line-height: 1.55;
+}
 .field {
   margin-bottom: 18px;
 }
@@ -613,7 +687,7 @@ button {
 /* ---- step2 stat strip ---- */
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: var(--sp-sm);
 }
 .stat {
@@ -664,6 +738,205 @@ button {
   padding: var(--sp-base);
   color: var(--ds-muted);
   font-size: 13px;
+}
+
+/* ---- run status / workflow summary ---- */
+.run-progress {
+  border: 1px solid var(--ds-border);
+  border-radius: var(--rd-lg);
+  background:
+    linear-gradient(180deg, rgba(11, 110, 116, 0.035), transparent 54%),
+    var(--ds-surface-1);
+  padding: 18px 20px;
+  margin-bottom: var(--sp-base);
+  box-shadow: 0 14px 34px rgba(23, 31, 38, 0.04);
+}
+.run-progress.collecting {
+  border-color: rgba(11, 110, 116, 0.14);
+  background:
+    radial-gradient(circle at 28px 26px, rgba(11, 110, 116, 0.11), transparent 34px),
+    linear-gradient(180deg, rgba(11, 110, 116, 0.045), transparent 62%),
+    var(--ds-surface-1);
+}
+.run-progress.failed {
+  border-color: rgba(178, 58, 72, 0.15);
+  background:
+    linear-gradient(180deg, rgba(178, 58, 72, 0.04), transparent 62%),
+    var(--ds-surface-1);
+}
+.rp-main {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-md);
+  align-items: flex-start;
+}
+.rp-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+.rp-orb {
+  position: relative;
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--measured);
+  box-shadow: 0 0 0 5px rgba(11, 110, 116, 0.1);
+}
+.collecting .rp-orb::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border: 1px solid rgba(11, 110, 116, 0.22);
+  border-radius: inherit;
+  animation: rp-pulse 2.6s ease-out infinite;
+}
+.failed .rp-orb {
+  background: var(--gap);
+  box-shadow: 0 0 0 5px rgba(178, 58, 72, 0.09);
+}
+.rp-main h2 {
+  font-size: 18px;
+  margin: 3px 0;
+  letter-spacing: 0;
+}
+.rp-main p {
+  margin: 0;
+  color: var(--ds-body);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.rp-pct {
+  font-family: var(--font-mono);
+  flex: 0 0 auto;
+  border: 1px solid rgba(11, 110, 116, 0.14);
+  border-radius: var(--rd-pill);
+  background: rgba(255, 255, 255, 0.62);
+  padding: 6px 10px;
+  color: var(--measured);
+  font-size: 12px;
+  line-height: 1;
+}
+.rp-track {
+  height: 4px;
+  margin-top: 16px;
+  border-radius: var(--rd-pill);
+  background: rgba(20, 31, 36, 0.06);
+  overflow: hidden;
+}
+.rp-track i {
+  display: block;
+  position: relative;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(11, 110, 116, 0.72), rgba(11, 110, 116, 0.45));
+  border-radius: var(--rd-pill);
+  overflow: hidden;
+  transition: width var(--transition-smooth);
+}
+.collecting .rp-track i::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: rp-sweep 2.4s ease-in-out infinite;
+}
+.failed .rp-track i {
+  background: rgba(178, 58, 72, 0.55);
+}
+.rp-stages {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.rp-stages span {
+  min-width: 0;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--rd-pill);
+  background: rgba(255, 255, 255, 0.55);
+  padding: 6px 9px;
+  color: var(--ds-muted);
+  font-size: 12px;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+}
+.rp-stages span.done {
+  border-color: rgba(11, 110, 116, 0.14);
+  background: rgba(11, 110, 116, 0.08);
+  color: var(--measured);
+}
+.rp-events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-xs);
+  margin-top: 10px;
+  color: var(--ds-muted);
+  font-size: 12px;
+}
+.rp-events span {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--rd-sm);
+  padding: 3px 8px;
+}
+@keyframes rp-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes rp-pulse {
+  from {
+    opacity: 0.7;
+    transform: scale(0.75);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+}
+.work-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: var(--sp-base);
+  align-items: stretch;
+  margin-bottom: var(--sp-md);
+}
+.work-summary > div {
+  border: 1px solid var(--ds-border);
+  border-radius: var(--rd-lg);
+  background: var(--ds-surface-1);
+  padding: var(--sp-base);
+}
+.work-summary h1 {
+  font-size: 22px;
+  margin: 3px 0 4px;
+}
+.work-summary p {
+  margin: 0;
+  color: var(--ds-body);
+  font-size: 13px;
+}
+.ws-next {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+.ws-next span {
+  color: var(--ds-muted);
+  font-size: 12px;
+}
+.ws-next b {
+  color: var(--measured);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 /* ---- answer presence map ---- */
@@ -877,6 +1150,37 @@ button {
   padding: 0 3px;
   border-radius: var(--rd-xs);
 }
+.ev-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-xs);
+  margin-bottom: var(--sp-xs);
+}
+.ev-summary div {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--rd-md);
+  padding: 9px 10px;
+}
+.ev-summary span {
+  display: block;
+  font-size: 11px;
+  color: var(--ds-muted);
+  margin-bottom: 3px;
+}
+.ev-summary b {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ds-ink);
+  word-break: break-word;
+}
+.raw-evidence summary {
+  cursor: pointer;
+  color: var(--ds-muted);
+  font-size: 12px;
+  margin-bottom: var(--sp-xs);
+}
 .cites {
   margin-top: 10px;
 }
@@ -991,6 +1295,12 @@ button {
 }
 .field-block.full {
   grid-column: 1 / -1;
+}
+.edited-block {
+  background: var(--inferred-bg);
+  border: 1px solid rgba(178, 107, 22, 0.16);
+  border-radius: var(--rd-md);
+  padding: 11px 12px;
 }
 .ev-ref {
   font-size: 12.5px;
@@ -1130,9 +1440,27 @@ button {
   .stats {
     grid-template-columns: repeat(2, 1fr);
   }
+  .analysis-layout,
+  .work-summary {
+    grid-template-columns: 1fr;
+  }
+  .analysis-brief {
+    position: static;
+  }
+  .rp-main {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .rp-pct {
+    align-self: flex-start;
+  }
+  .rp-stages {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .row2,
   .rec-body,
-  .out-grid {
+  .out-grid,
+  .ev-summary {
     grid-template-columns: 1fr;
   }
   .map {
@@ -1140,5 +1468,423 @@ button {
   }
   .report {
     position: static;
+  }
+}
+
+/* ---- 综合报告打印 / PDF（Phase E · report 页）---- */
+@media print {
+  /* 导航与操作区不进纸：顶栏、步骤条、目录锚点、导出/打印按钮均隐藏。 */
+  .topbar,
+  .stepper,
+  .no-print {
+    display: none !important;
+  }
+
+  /* 报告正文全宽、去掉屏幕留白与阴影，交给纸张边距。 */
+  .shell,
+  .report-layout,
+  .report-body {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .card {
+    box-shadow: none !important;
+  }
+
+  /* 避免标题与其后内容被分页截断、避免卡片/表格行跨页断裂。 */
+  .report-section {
+    break-inside: avoid-page;
+  }
+  .report-section h3,
+  .report-section h4 {
+    break-after: avoid-page;
+  }
+  .card,
+  .report-table tr,
+  .report-section li {
+    break-inside: avoid;
+  }
+
+  /* 打印时给报告表格描线，保证黑白可读。 */
+  .report-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .report-table th,
+  .report-table td {
+    border: 1px solid #999;
+    padding: 4px 8px;
+    text-align: left;
+  }
+
+  /* 展开「分数怎么算的」等 details，纸面完整呈现。 */
+  details {
+    display: block !important;
+  }
+  details > summary {
+    display: none !important;
+  }
+}
+
+/* ---- 综合报告屏显布局（Phase E · report 页 / 优先级矩阵）---- */
+.report-toolbar {
+  display: flex;
+  gap: 10px;
+  margin: 14px 0 18px;
+}
+
+/* 目录锚点侧栏 + 报告正文两栏；窄屏堆叠。 */
+.report-layout {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+.report-toc {
+  position: sticky;
+  top: 16px;
+  font-size: 13px;
+}
+.report-toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.report-toc a {
+  color: var(--ds-body);
+  text-decoration: none;
+  padding: 3px 0;
+  display: block;
+}
+.report-toc a:hover {
+  color: var(--ds-primary);
+}
+
+.report-body {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+  min-width: 0;
+}
+/* 锚点跳转不被顶栏遮住。 */
+.report-section {
+  scroll-margin-top: 16px;
+}
+.report-section > h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ds-ink);
+  margin: 0 0 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+.report-section > h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ds-ink);
+  margin: 18px 0 10px;
+}
+.report-section .card {
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+
+/* 约束定位卡 / 健康分卡头：标题 + 「推断」标签左右分布。 */
+.report-constraint-h,
+.report-health-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.report-constraint-title,
+.report-health-h > span:first-child {
+  font-weight: 600;
+  color: var(--ds-ink);
+}
+.report-constraint p {
+  margin: 0;
+  color: var(--ds-body);
+  line-height: 1.6;
+}
+.report-focus {
+  margin-top: 10px !important;
+  font-size: 13px;
+  color: var(--ds-muted);
+}
+
+/* 健康分总分 + 五支柱格。 */
+.report-health-scores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 12px;
+}
+.report-health-overall,
+.report-health-cell {
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--rd-md);
+  padding: 10px 12px;
+}
+.report-health-overall {
+  background: var(--ds-primary-muted);
+  border-color: var(--ds-border-primary);
+}
+.report-health-scores .k {
+  font-size: 12px;
+  color: var(--ds-muted);
+}
+.report-health-scores .v {
+  font-size: 24px;
+  font-weight: 650;
+  color: var(--ds-ink);
+  line-height: 1.2;
+}
+.report-health-scores .v.muted {
+  color: var(--ds-ghost);
+  font-size: 15px;
+  font-weight: 500;
+}
+.report-health-issues {
+  font-size: 11px;
+  color: var(--ds-muted);
+}
+.report-breakdown {
+  margin-top: 12px;
+}
+.report-breakdown summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ds-primary);
+}
+.report-breakdown pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  color: var(--ds-body);
+  background: var(--ds-surface-2, var(--ds-primary-muted));
+  border-radius: var(--rd-sm);
+  padding: 12px;
+  margin-top: 10px;
+}
+
+/* 最高影响发现 / 支柱明细列表。 */
+.report-top,
+.report-sev-group ul,
+.report-roadmap-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.report-top li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.report-top-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--ds-body);
+}
+
+/* 方法与范围：定义列表两栏。 */
+.report-method dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 18px;
+  margin: 0;
+}
+.report-method dt {
+  color: var(--ds-muted);
+  font-size: 13px;
+}
+.report-method dd {
+  margin: 0;
+  color: var(--ds-body);
+}
+.report-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.report-source-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--rd-pill);
+  color: var(--ds-body);
+}
+.report-stale {
+  border-color: var(--ds-border-warning, var(--ds-warning)) !important;
+}
+.report-stale-h {
+  font-weight: 600;
+  color: var(--ds-warning);
+  margin-bottom: 6px;
+}
+
+/* 支柱卡头 + 严重度分组。 */
+.report-pillar-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.report-pillar-name {
+  font-weight: 600;
+  color: var(--ds-ink);
+}
+.report-pillar-score {
+  font-size: 20px;
+  font-weight: 650;
+  color: var(--ds-ink);
+}
+.report-pillar-score.muted {
+  color: var(--ds-ghost);
+  font-size: 14px;
+  font-weight: 500;
+}
+.report-sev-group {
+  margin-top: 12px;
+}
+.report-sev-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ds-muted);
+  margin-bottom: 8px;
+}
+.report-finding-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--ds-ink);
+}
+.report-finding-desc {
+  font-size: 13px;
+  color: var(--ds-body);
+  margin-top: 4px;
+  line-height: 1.55;
+}
+.report-evidence {
+  font-size: 11px;
+  color: var(--ds-muted);
+  margin-top: 4px;
+}
+.report-roadmap-what {
+  color: var(--ds-ink);
+}
+.report-roadmap-val {
+  font-size: 12px;
+  margin-top: 3px !important;
+}
+.report-protocol-lock {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--ds-body);
+  line-height: 1.55;
+}
+
+/* 屏显表格（打印表格样式在 @media print 内另有定义）。 */
+.report-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 14px;
+}
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.report-table th,
+.report-table td {
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+.report-table th {
+  color: var(--ds-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.report-table td {
+  color: var(--ds-body);
+}
+
+/* 优先级矩阵四象限。 */
+.pmatrix-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.pmatrix-cell {
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: var(--rd-md);
+  padding: 12px 14px;
+  min-height: 96px;
+}
+.pmatrix-cell-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--ds-ink);
+  margin-bottom: 8px;
+}
+.pmatrix-cell-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ds-muted);
+}
+.pmatrix-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pmatrix-cell-name {
+  font-size: 13px;
+  color: var(--ds-body);
+}
+.pmatrix-qw-what {
+  color: var(--ds-ink);
+}
+.pmatrix-qw-impact {
+  font-size: 12px;
+  color: var(--ds-muted);
+}
+.pmatrix-empty {
+  color: var(--ds-ghost);
+  font-size: 12px;
+}
+.pmatrix-quickwins {
+  margin-top: 14px;
+  padding: 14px 16px;
+}
+
+@media (max-width: 720px) {
+  .report-layout {
+    grid-template-columns: 1fr;
+  }
+  .report-toc {
+    position: static;
+  }
+  .pmatrix-grid {
+    grid-template-columns: 1fr;
   }
 }

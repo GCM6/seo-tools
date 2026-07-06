@@ -3,10 +3,10 @@ import { COLLECT_REQUESTED_EVENT, buildCollectRequestedEvent } from './events'
 
 describe('buildCollectRequestedEvent', () => {
   it('builds an Inngest event payload from a run and its entry URL', () => {
-    const event = buildCollectRequestedEvent({ id: 'run_1', projectId: 'proj_1' }, 'https://teamflow.cn')
+    const event = buildCollectRequestedEvent({ id: 'run_1', projectId: 'proj_1' }, 'https://example.com')
     expect(event).toEqual({
       name: COLLECT_REQUESTED_EVENT,
-      data: { runId: 'run_1', projectId: 'proj_1', url: 'https://teamflow.cn' },
+      data: { runId: 'run_1', projectId: 'proj_1', url: 'https://example.com' },
     })
   })
 })

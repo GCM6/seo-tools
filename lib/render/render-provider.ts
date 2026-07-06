@@ -4,5 +4,6 @@ export interface RenderResult {
 }
 
 export interface RenderProvider {
+  isConfigured?(): boolean
   renderMainText(url: string): Promise<RenderResult>
 }

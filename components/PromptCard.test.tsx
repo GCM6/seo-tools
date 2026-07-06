@@ -9,7 +9,7 @@ vi.mock('next-intl', () => ({
     ({ copy: '复制提示词', copied: '已复制 ✓' })[key] ?? key,
 }))
 
-const PROMPT = '为 teamflow.cn 执行：新增小团队选型对比内容\n- 免费档支持 10 人'
+const PROMPT = '为 https://example.com 执行已确认建议\n- 只使用 verified brand facts'
 
 describe('PromptCard', () => {
   const writeText = vi.fn(() => Promise.resolve())
