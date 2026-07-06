@@ -394,6 +394,7 @@ describe('TA01 主题覆盖浅 / 话题群割裂', () => {
     const detail = hit.detail as { shallowClusters: unknown[]; isolatedClusters: unknown[] }
     expect(detail.shallowClusters.length).toBeGreaterThanOrEqual(1) // /about 1 页
     expect(detail.isolatedClusters.length).toBeGreaterThanOrEqual(1) // /blog 入度 0
+    expect(hit.description).toContain('非严格群内邻接')
   })
 
   it('语言路径群不计入话题群', () => {
