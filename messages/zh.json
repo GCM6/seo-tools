@@ -520,5 +520,33 @@
     "starting": "发起中…",
     "error": "发起回测失败，请重试",
     "nextDue": "下次回测：{date}"
+  },
+  "rulesAdmin": {
+    "title": "规则库管理",
+    "subtitle": "自动发现、人工放行——第四道人工闸门",
+    "pendingTab": "待审提案",
+    "changelogTab": "版本变更记录",
+    "empty": "暂无待审提案",
+    "source": "来源",
+    "changeType": "变更类型",
+    "target": "目标",
+    "evidence": "一手来源",
+    "createdAt": "创建时间",
+    "approve": "批准",
+    "reject": "驳回",
+    "approved": "已批准",
+    "rejected": "已驳回",
+    "release": "打包发版",
+    "releaseHint": "把所有已批未发布提案打包为新版本；update_artifact 类立即生效",
+    "releaseVersionLabel": "版本号（留空则自动推导下一个）",
+    "releaseDone": "已发版 {version}：{released} 条提案，{artifacts} 个资产更新。待部署：请将 RULES_VERSION 更新为 {version} 并部署。",
+    "manualTitle": "手动建提案",
+    "manualEvidenceLabel": "一手来源 URL（每行一个，至少一个）",
+    "manualTargetLabel": "目标（规则 ID 或资产 key）",
+    "manualSubmit": "提交提案",
+    "errorEvidence": "至少需要一个一手来源 URL",
+    "errorTarget": "目标不能为空",
+    "sourceLabels": { "scheduled_research": "定期巡检", "effectiveness_stats": "效果统计", "dismissal_stats": "误报统计", "manual": "手动" },
+    "changeLabels": { "new_rule": "新增规则", "modify_threshold": "调整阈值", "deprecate": "弃用", "update_artifact": "更新资产" }
   }
 }

@@ -520,5 +520,33 @@
     "starting": "Starting…",
     "error": "Failed to start retest — please try again",
     "nextDue": "Next retest: {date}"
+  },
+  "rulesAdmin": {
+    "title": "Rule Library Admin",
+    "subtitle": "Auto-discover, human-release — the fourth human gate",
+    "pendingTab": "Pending proposals",
+    "changelogTab": "Changelog",
+    "empty": "No pending proposals",
+    "source": "Source",
+    "changeType": "Change type",
+    "target": "Target",
+    "evidence": "First-party source",
+    "createdAt": "Created",
+    "approve": "Approve",
+    "reject": "Reject",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "release": "Package & release",
+    "releaseHint": "Bundle all approved-unreleased proposals into a new version; update_artifact takes effect immediately",
+    "releaseVersionLabel": "Version (blank = auto-derive next)",
+    "releaseDone": "Released {version}: {released} proposals, {artifacts} artifacts updated. Pending deploy: set RULES_VERSION to {version} and deploy.",
+    "manualTitle": "New manual proposal",
+    "manualEvidenceLabel": "First-party source URLs (one per line, at least one)",
+    "manualTargetLabel": "Target (rule id or artifact key)",
+    "manualSubmit": "Submit proposal",
+    "errorEvidence": "At least one first-party source URL is required",
+    "errorTarget": "Target is required",
+    "sourceLabels": { "scheduled_research": "Scheduled scan", "effectiveness_stats": "Effectiveness stats", "dismissal_stats": "Dismissal stats", "manual": "Manual" },
+    "changeLabels": { "new_rule": "New rule", "modify_threshold": "Modify threshold", "deprecate": "Deprecate", "update_artifact": "Update artifact" }
   }
 }
