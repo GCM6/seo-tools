@@ -329,3 +329,11 @@ export const ruleChangeProposals = sqliteTable('rule_change_proposals', {
   check('rcp_change', sql`${t.changeType} in ('new_rule','modify_threshold','deprecate','update_artifact')`),
   check('rcp_status', sql`${t.status} in ('pending','approved','rejected')`),
 ])
+
+// —— BYOK 凭据（SP-G1c）：全局级、env-var-name 为主键、AES-256-GCM 密文。GSC 按站 token 仍在 project_settings。
+export const providerCredentials = sqliteTable('provider_credentials', {
+  credentialKey: text('credential_key').primaryKey(), // env 变量名，如 'OPENAI_API_KEY'
+  ciphertext: text('ciphertext').notNull(),           // encryptSecret 产物（自包含 iv/tag/ct）
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+  updatedAt: text('updated_at').notNull().default(sql`(current_timestamp)`),
+})

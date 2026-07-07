@@ -1,10 +1,11 @@
 import { eq, asc, desc, and, isNull, isNotNull, inArray, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
-import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals } from '@/db/schema'
+import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals, providerCredentials } from '@/db/schema'
 import { hasValidEvidence, computeArtifactUpdate } from '@/lib/diagnosis/rule-proposals'
 import type { EvidenceType, EvidenceLevel, RunStatus, ClaimType } from '@/lib/types'
 import type { LightCheckExtra } from '@/lib/crawl/light-check'
 import { assertFindingClaimEvidence } from './validators'
+import { encryptSecret } from '@/lib/crypto/secrets'
 
 export const getRun = (id: string) => db.query.runs.findFirst({ where: eq(runs.id, id) })
 export const getProject = (id: string) => db.query.projects.findFirst({ where: eq(projects.id, id) })
@@ -388,6 +389,30 @@ export const getRecStatRecords = async () => {
     .innerJoin(findings, eq(recommendations.findingId, findings.id))
     .where(isNotNull(findings.ruleId))
   return rows as { id: string; ruleId: string; outcome: 'unknown' | 'effective' | 'ineffective' | 'regressed' }[]
+}
+
+// —— BYOK 凭据读写（SP-G1c）——
+export const getProviderCredentialRow = (key: string) =>
+  db.query.providerCredentials.findFirst({ where: eq(providerCredentials.credentialKey, key) })
+
+// 只取键判「已配置」，不解密、不外泄值（矩阵/UI 用）。
+export const getConfiguredCredentialKeys = async (): Promise<string[]> => {
+  const rows = await db.select({ k: providerCredentials.credentialKey }).from(providerCredentials)
+  return rows.map((r) => r.k)
+}
+
+// 加密后 upsert（同键覆盖）；主键 = credentialKey，无需生成 id。
+export const setProviderCredential = async (key: string, plaintext: string): Promise<void> => {
+  const ciphertext = encryptSecret(plaintext)
+  const now = new Date().toISOString()
+  await db
+    .insert(providerCredentials)
+    .values({ credentialKey: key, ciphertext, updatedAt: now })
+    .onConflictDoUpdate({ target: providerCredentials.credentialKey, set: { ciphertext, updatedAt: now } })
+}
+
+export const deleteProviderCredential = async (key: string): Promise<void> => {
+  await db.delete(providerCredentials).where(eq(providerCredentials.credentialKey, key))
 }
 
 export * from './validators'
