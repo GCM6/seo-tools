@@ -2147,3 +2147,41 @@ button {
 .estimate-grid span { font-size: 11.5px; color: var(--ds-muted); }
 .estimate-grid b { font-size: 15px; font-variant-numeric: tabular-nums; }
 .estimate-disclaimer { font-size: 11.5px; color: var(--ds-muted); margin-top: 10px; line-height: 1.5; }
+
+/* ---- SP-G1e 只读分享页 + 分享按钮 ---- */
+.share-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+}
+.share-footer {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ds-border);
+  text-align: center;
+  font-size: 12px;
+  color: var(--ds-muted);
+}
+
+.share-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.share-ready { font-size: 12px; color: var(--good); }
+.share-url {
+  min-width: 240px;
+  max-width: 360px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--rd-sm);
+  background: var(--ds-surface-1);
+}
+
+@media print {
+  /* 分享页页脚随报告进纸（品牌落款），去掉屏幕外边距。 */
+  .share-page { padding: 0 !important; max-width: none !important; }
+  .share-footer { margin-top: 24px; }
+}

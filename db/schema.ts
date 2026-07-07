@@ -337,3 +337,15 @@ export const providerCredentials = sqliteTable('provider_credentials', {
   createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
   updatedAt: text('updated_at').notNull().default(sql`(current_timestamp)`),
 })
+
+// —— 只读分享链接（SP-G1e）：run_id + 随机 token + 可选过期。删 run 级联删分享。
+export const reportShares = sqliteTable('report_shares', {
+  id: text('id').primaryKey(),                    // share_<uuid>
+  runId: text('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
+  token: text('token').notNull(),                 // urlsafe 随机，公开路由据此定位（唯一性见下方 index）
+  locale: text('locale').notNull().default('zh'), // 分享时的语言，公开页据此渲染
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+  expiresAt: text('expires_at'),                  // 可空 = 永不过期
+}, (t) => [
+  uniqueIndex('report_shares_token').on(t.token),
+])

@@ -497,6 +497,11 @@
     "counts": "{findings} 条发现 · {recs} 条建议（{gated} 条已采纳）",
     "exportMd": "导出 Markdown",
     "print": "打印 / PDF",
+    "share": "生成分享链接",
+    "shareCopy": "复制",
+    "shareCopied": "已复制 ✓",
+    "shareReady": "只读链接已生成",
+    "generatedBy": "由 Veris 生成 · 证据化 SEO + GEO 诊断",
     "toc": {
       "summary": "1. 执行摘要",
       "method": "2. 方法与范围",

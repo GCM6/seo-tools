@@ -1,12 +1,14 @@
 import { eq, asc, desc, and, isNull, isNotNull, inArray, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
-import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals, providerCredentials } from '@/db/schema'
+import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals, providerCredentials, reportShares } from '@/db/schema'
 import { hasValidEvidence, computeArtifactUpdate } from '@/lib/diagnosis/rule-proposals'
 import type { EvidenceType, EvidenceLevel, RunStatus, ClaimType } from '@/lib/types'
 import type { LightCheckExtra } from '@/lib/crawl/light-check'
 import { assertFindingClaimEvidence } from './validators'
 import { encryptSecret } from '@/lib/crypto/secrets'
 import { encryptGscToken } from '@/lib/gsc/token-crypto'
+import { generateShareToken } from '@/lib/share/token'
+import { isShareExpired } from '@/lib/share/expiry'
 
 export const getRun = (id: string) => db.query.runs.findFirst({ where: eq(runs.id, id) })
 export const getProject = (id: string) => db.query.projects.findFirst({ where: eq(projects.id, id) })
@@ -437,6 +439,32 @@ export const setProviderCredential = async (key: string, plaintext: string): Pro
 
 export const deleteProviderCredential = async (key: string): Promise<void> => {
   await db.delete(providerCredentials).where(eq(providerCredentials.credentialKey, key))
+}
+
+// —— 只读分享链接（SP-G1e）。
+export const getReportShareByToken = (token: string) =>
+  db.query.reportShares.findFirst({ where: eq(reportShares.token, token) })
+
+// 复用该 run 未过期的现有分享（API 幂等：多次点「生成」不堆链接）；无则返回 null。
+export const getActiveShareForRun = async (runId: string, now: Date) => {
+  const rows = await db
+    .select()
+    .from(reportShares)
+    .where(eq(reportShares.runId, runId))
+    .orderBy(desc(reportShares.createdAt))
+  return rows.find((r) => !isShareExpired(r.expiresAt, now)) ?? null
+}
+
+export const createReportShare = async (
+  runId: string,
+  locale: string,
+  expiresAt: string | null = null,
+) => {
+  const [created] = await db
+    .insert(reportShares)
+    .values({ id: `share_${crypto.randomUUID()}`, runId, token: generateShareToken(), locale, expiresAt })
+    .returning()
+  return created
 }
 
 export * from './validators'
