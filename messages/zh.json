@@ -117,6 +117,8 @@
     "gscNotConnected": "未连接——缺 GSC 时关键词点击/曝光/排名（L4 实测）无从谈起。",
     "connectGsc": "连接 GSC",
     "reconnectGsc": "重新连接 GSC",
+    "siteUrlPick": "从已授权站点选择",
+    "siteUrlPickPlaceholder": "选择一个 GSC 资源…",
     "siteUrlLabel": "站点 URL",
     "siteUrlHint": "形如 sc-domain:example.com 或完整 https:// 前缀 URL，须与 GSC 中的资源一致。",
     "saveSiteUrl": "保存站点 URL",

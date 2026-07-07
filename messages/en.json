@@ -117,6 +117,8 @@
     "gscNotConnected": "Not connected — without GSC there's no L4 measured clicks/impressions/position.",
     "connectGsc": "Connect GSC",
     "reconnectGsc": "Reconnect GSC",
+    "siteUrlPick": "Pick from authorized properties",
+    "siteUrlPickPlaceholder": "Choose a GSC property…",
     "siteUrlLabel": "Site URL",
     "siteUrlHint": "Like sc-domain:example.com or a full https:// URL; must match the property in GSC.",
     "saveSiteUrl": "Save site URL",

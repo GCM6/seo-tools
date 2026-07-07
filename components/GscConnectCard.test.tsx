@@ -1,10 +1,21 @@
-import { render, screen } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextIntlClientProvider } from 'next-intl'
 import { GscConnectCard } from './GscConnectCard'
 import zhMessages from '@/messages/zh.json'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+
+// 已连接时组件挂载会 fetch /api/gsc/sites——默认 mock 返回空站点；单测按需覆盖。
+function mockSites(sites: string[]) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, json: async () => ({ sites }) })),
+  )
+}
+
+beforeEach(() => mockSites([]))
+afterEach(() => vi.unstubAllGlobals())
 
 function renderCard(props: Partial<Parameters<typeof GscConnectCard>[0]> = {}) {
   return render(
@@ -38,5 +49,19 @@ describe('GscConnectCard', () => {
   it('已有站点 URL 时预填该值', () => {
     renderCard({ gscConnected: true, gscSiteUrl: 'https://a.com/' })
     expect(screen.getByDisplayValue('https://a.com/')).toBeInTheDocument()
+  })
+
+  it('自动发现到站点时渲染下拉选择', async () => {
+    mockSites(['sc-domain:a.com', 'https://a.com/'])
+    renderCard({ gscConnected: true })
+    await waitFor(() => expect(screen.getByLabelText('从已授权站点选择')).toBeInTheDocument())
+    expect(screen.getByRole('option', { name: 'https://a.com/' })).toBeInTheDocument()
+  })
+
+  it('未连接时不请求站点发现', () => {
+    const spy = vi.fn(async () => ({ ok: true, json: async () => ({ sites: [] }) }))
+    vi.stubGlobal('fetch', spy)
+    renderCard({ gscConnected: false })
+    expect(spy).not.toHaveBeenCalled()
   })
 })

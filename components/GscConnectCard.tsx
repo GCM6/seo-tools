@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 
@@ -22,8 +22,25 @@ export function GscConnectCard({
   const t = useTranslations('projectDetail')
   const router = useRouter()
   const [siteUrl, setSiteUrl] = useState(gscSiteUrl ?? `sc-domain:${projectDomain}`)
+  const [sites, setSites] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+
+  // 已连接则自动发现该项目 GSC 授权下的站点资源（sites.list），供下拉选择替代手打。
+  // 失败/空 → 保持仅手输，不打断。
+  useEffect(() => {
+    if (!gscConnected) return
+    let live = true
+    fetch(`/api/gsc/sites?projectId=${encodeURIComponent(projectId)}`)
+      .then((r) => (r.ok ? r.json() : { sites: [] }))
+      .then((d: { sites?: string[] }) => {
+        if (live && Array.isArray(d.sites)) setSites(d.sites)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [gscConnected, projectId])
 
   function connectGsc() {
     const returnTo = `/${locale}/projects/${projectId}`
@@ -57,6 +74,24 @@ export function GscConnectCard({
 
       {gscConnected && (
         <div className="gsc-site">
+          {sites.length > 0 && (
+            <label className="field">
+              <span>{t('siteUrlPick')}</span>
+              <select
+                className="sel"
+                aria-label={t('siteUrlPick')}
+                value={sites.includes(siteUrl) ? siteUrl : ''}
+                onChange={(e) => e.target.value && setSiteUrl(e.target.value)}
+              >
+                <option value="">{t('siteUrlPickPlaceholder')}</option>
+                {sites.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="field">
             <span>{t('siteUrlLabel')}</span>
             <input className="txt mono" value={siteUrl} onChange={(e) => setSiteUrl(e.target.value)} />
