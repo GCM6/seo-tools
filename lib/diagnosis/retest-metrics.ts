@@ -43,12 +43,15 @@ export function extractRunMetric(spec: ValidationSpec, run: RunMetrics, target: 
     }
     return null
   }
-  if (spec.metricSource === 'gsc' && spec.metric === 'impressions') {
+  if (spec.metricSource === 'gsc' && (spec.metric === 'impressions' || spec.metric === 'position')) {
     if (!target || target.keywords.length === 0) return null
     const wanted = new Set(target.keywords.map(normKw))
     const matched = run.gscKeywords.filter((k) => wanted.has(normKw(k.keyText)))
     if (matched.length === 0) return null
-    return matched.reduce((sum, k) => sum + k.impressions, 0)
+    // impressions 求和；position 取平均（位次类 K02/K06，direction=decrease，均值即方向性够用）。
+    return spec.metric === 'position'
+      ? matched.reduce((sum, k) => sum + k.position, 0) / matched.length
+      : matched.reduce((sum, k) => sum + k.impressions, 0)
   }
   return null
 }

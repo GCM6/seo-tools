@@ -55,6 +55,15 @@ describe('extractRunMetric', () => {
     ] })
     expect(extractRunMetric(spec({}), r, { keywords: [' widget ', 'gadget'] })).toBe(130)
   })
+  it('gsc/position 按目标关键词取平均排名（位次类 K02/K06）', () => {
+    const r = run({ gscKeywords: [
+      { keyText: 'Widget', impressions: 100, position: 4 },
+      { keyText: 'gadget', impressions: 30, position: 8 },
+      { keyText: 'other', impressions: 999, position: 2 },
+    ] })
+    // 命中 widget(4) + gadget(8) → 平均 6
+    expect(extractRunMetric(spec({ metric: 'position', direction: 'decrease' }), r, { keywords: ['widget', 'gadget'] })).toBe(6)
+  })
   it('gsc 目标为 null / 无命中 → null', () => {
     const r = run({ gscKeywords: [{ keyText: 'a', impressions: 5, position: 3 }] })
     expect(extractRunMetric(spec({}), r, null)).toBeNull()

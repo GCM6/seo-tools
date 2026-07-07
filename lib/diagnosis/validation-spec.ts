@@ -31,12 +31,14 @@ const PILLAR_DEFAULT: Record<Pillar, Omit<ValidationSpec, 'scope' | 'windowDays'
   P5: { metricSource: 'probe', metric: 'brand_presence', direction: 'increase' },
 }
 
-export function deriveValidationSpec(hit: RuleHit, override?: ValidationSpec): ValidationSpec {
-  if (override) return override
+// override 为 Partial：只声明要覆盖的字段（如位次类只覆 metric/direction），其余按支柱默认 +
+// hit 派生 scope 兜底。完整 override 仍整体生效（合并后等价），向后兼容。
+export function deriveValidationSpec(hit: RuleHit, override?: Partial<ValidationSpec>): ValidationSpec {
   const base = PILLAR_DEFAULT[hit.pillar]
   return {
     ...base,
     scope: hit.scope || 'site',
     windowDays: 28,
+    ...override,
   }
 }

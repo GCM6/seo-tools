@@ -25,9 +25,9 @@ export interface RecommendationTemplate {
   negativeConstraints?: string[]
   // 覆盖默认风险话术；缺省按 promptType 派生。
   risk?: string
-  // 覆盖按支柱派生的默认 validation_spec（spec §5.1-2）；缺省由 deriveValidationSpec 兜底。
-  // 位次类（K02/K06）宜覆盖为 {metricSource:'gsc',metric:'position',direction:'decrease'}。
-  validationSpec?: ValidationSpec
+  // 覆盖按支柱派生的默认 validation_spec（spec §5.1-2）；Partial——只声明要覆盖的字段，
+  // 其余按支柱默认 + hit 派生 scope 兜底。位次类（K02/K06）覆盖为 position/decrease。
+  validationSpec?: Partial<ValidationSpec>
 }
 
 // google-seo-expert BLOCKERS 蒸馏为内容类 prompt 的全局否定约束（每条内容 prompt 必带）。
@@ -330,6 +330,8 @@ export const templates: Record<string, RecommendationTemplate> = {
     validationMethod: 'GSC 复测该词 CTR 是否回升至位置基准附近；如仍偏低，配 DataForSEO 的 SERP 特性证据再定因。',
     promptType: 'content',
     risk: '不得断言「被 AI Overview 压制」——无 SERP 时序证据前只能表述为疑似受 SERP 特性影响。',
+    // 位次类：回测看该词平均排名是否下降（上移），而非展示量。
+    validationSpec: { metric: 'position', direction: 'decrease' },
   },
   K06: {
     what: '按决策表处理蚕食：两页均有独立价值 → 在次要页设 canonical 指向主页；应彻底合并 → 用 301 把弱页重定向到强页并合并内容。跨域名 canonical 无效。',
@@ -338,6 +340,8 @@ export const templates: Record<string, RecommendationTemplate> = {
     validationMethod: '处理后 GSC 复测该词是否收敛到单页承接、排名与点击是否提升。',
     promptType: 'technical',
     fixSnippet: '<!-- 次要页 <head>：canonical 指向主承接页（同域绝对路径） -->\n<link rel="canonical" href="https://example.com/primary-page/" />\n<!-- 或彻底合并：服务端 301 弱页 → 强页 -->',
+    // 位次类：回测看蚕食词收敛后平均排名是否下降（上移）。
+    validationSpec: { metric: 'position', direction: 'decrease' },
   },
   // ——— P3 关键词缺口（seo，证据源 DataForSEO SERP/Labs，第三方估算 L3）———
   K03: {
