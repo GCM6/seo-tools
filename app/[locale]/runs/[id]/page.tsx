@@ -129,7 +129,7 @@ export default async function RunDiagnosisPage({
   )
 
   return (
-    <Shell active={2} locale={locale} runId={id} domain={project?.domain} dataHealth={dataHealth}>
+    <Shell active={2} locale={locale} runId={id} domain={project?.domain} dataHealth={dataHealth} projectId={run?.projectId}>
       <section className="screen show" data-screen="2">
         {retestDue ? (
           <RetestBanner runId={id} locale={locale} />

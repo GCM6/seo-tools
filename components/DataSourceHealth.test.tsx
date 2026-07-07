@@ -59,4 +59,14 @@ describe('DataSourceHealth', () => {
     expect(hrefs).toContain('/zh/settings#source-gsc')
     expect(hrefs).not.toContain('/zh/settings#source-googleCse')
   })
+
+  it('传 projectId 时 gsc「去连接」指向项目详情，其余源仍指设置页锚点', () => {
+    render(<DataSourceHealth items={items} up={2} total={5} locale="zh" projectId="proj_a" />)
+    fireEvent.click(screen.getByRole('button', { name: /数据源 2\/5/ }))
+    const hrefs = screen.getAllByRole('link', { name: '去连接' }).map((l) => l.getAttribute('href'))
+    expect(hrefs).toContain('/zh/projects/proj_a')
+    expect(hrefs).not.toContain('/zh/settings#source-gsc')
+    // 全局源仍走设置页
+    expect(hrefs).toContain('/zh/settings#source-aiProbe')
+  })
 })

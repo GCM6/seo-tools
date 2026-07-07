@@ -17,6 +17,7 @@ export async function Shell({
   runId,
   domain,
   dataHealth,
+  projectId,
   children,
 }: {
   active: 1 | 2 | 3 | 4
@@ -24,6 +25,7 @@ export async function Shell({
   runId?: string
   domain?: string
   dataHealth?: DataSourceHealthSummary | null
+  projectId?: string
   children: ReactNode
 }) {
   const t = await getTranslations('common')
@@ -50,6 +52,7 @@ export async function Shell({
               up={dataHealth.up}
               total={dataHealth.total}
               locale={locale}
+              projectId={projectId}
             />
           ) : null}
           <Link href={`/${locale}/projects`} className="settings-link">{t('projectsLink')}</Link>
