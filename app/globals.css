@@ -1570,7 +1570,7 @@ button {
 .report-body {
   display: flex;
   flex-direction: column;
-  gap: 34px;
+  gap: var(--sp-2xl);
   min-width: 0;
 }
 /* 锚点跳转不被顶栏遮住。 */
@@ -1621,41 +1621,7 @@ button {
   color: var(--ds-muted);
 }
 
-/* 健康分总分 + 五支柱格。 */
-.report-health-scores {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: 12px;
-}
-.report-health-overall,
-.report-health-cell {
-  border: 1px solid var(--ds-border-subtle);
-  border-radius: var(--rd-md);
-  padding: 10px 12px;
-}
-.report-health-overall {
-  background: var(--ds-primary-muted);
-  border-color: var(--ds-border-primary);
-}
-.report-health-scores .k {
-  font-size: 12px;
-  color: var(--ds-muted);
-}
-.report-health-scores .v {
-  font-size: 24px;
-  font-weight: 650;
-  color: var(--ds-ink);
-  line-height: 1.2;
-}
-.report-health-scores .v.muted {
-  color: var(--ds-ghost);
-  font-size: 15px;
-  font-weight: 500;
-}
-.report-health-issues {
-  font-size: 11px;
-  color: var(--ds-muted);
-}
+/* 健康分五支柱可视化改为 PillarBars（.pbars，见下方 SP-G2d 区块）。 */
 .report-breakdown {
   margin-top: 12px;
 }
@@ -1673,6 +1639,141 @@ button {
   border-radius: var(--rd-sm);
   padding: 12px;
   margin-top: 10px;
+}
+
+/* —— SP-G2d 诊断概要卡：五支柱水平条形 —— */
+.pbars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-base);
+}
+.pbars-overall {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-sm);
+}
+.pbars-overall .k {
+  font-size: 13px;
+  color: var(--ds-muted);
+}
+.pbars-overall .v {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ds-ink);
+  font-variant-numeric: tabular-nums;
+}
+.pbars-overall .v.muted {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ds-ghost);
+}
+.pbars-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.pbar-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 168px) 1fr 40px;
+  align-items: center;
+  gap: var(--sp-sm);
+}
+.pbar-label {
+  font-size: 13px;
+  color: var(--ds-body);
+  min-width: 0;
+}
+.pbar-track {
+  height: 10px;
+  border-radius: var(--rd-pill);
+  background: var(--ds-surface-2, var(--ds-primary-muted));
+  border: 1px solid var(--ds-border-subtle);
+  overflow: hidden;
+}
+.pbar-track.empty {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    var(--ds-border-subtle) 4px,
+    var(--ds-border-subtle) 5px
+  );
+}
+.pbar-fill {
+  height: 100%;
+  background: var(--ds-primary);
+  border-radius: var(--rd-pill);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.pbar-score {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--ds-ink);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.pbar-score.muted {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ds-ghost);
+}
+
+/* —— SP-G2d 证据等级 L0–L4 阶梯图例 —— */
+.ladder-h {
+  font-weight: 600;
+  color: var(--ds-ink);
+  margin-bottom: 10px;
+}
+.ladder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ladder-row {
+  display: grid;
+  grid-template-columns: 10px max-content max-content 1fr;
+  align-items: baseline;
+  gap: var(--sp-sm);
+}
+.ladder-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  align-self: center;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.ladder-dot.m { background: var(--measured); }
+.ladder-dot.i { background: var(--inferred); }
+.ladder-dot.g { background: var(--gap); }
+.ladder-code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ds-ink);
+}
+.ladder-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ds-ink);
+}
+.ladder-desc {
+  font-size: 12px;
+  color: var(--ds-muted);
+  min-width: 0;
+}
+@media (max-width: 480px) {
+  .ladder-row {
+    grid-template-columns: 10px max-content 1fr;
+  }
+  .ladder-desc {
+    grid-column: 2 / -1;
+  }
 }
 
 /* 最高影响发现 / 支柱明细列表。 */

@@ -2,6 +2,9 @@ import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { PriorityMatrix } from '@/components/PriorityMatrix'
 import { KeywordTable } from '@/components/KeywordTable'
+import { PillarBars } from '@/components/PillarBars'
+import { EvidenceLadder } from '@/components/EvidenceLadder'
+import { BlurText } from '@/components/fx/BlurText'
 import {
   getRun,
   getFindings,
@@ -166,6 +169,15 @@ export async function ReportView({ runId }: { runId: string }) {
     empty: t('priority.empty'),
   }
 
+  // 证据等级 L0–L4 阶梯（plan-ux §5.1）；tone 复用 .tag 语义色：L0/L1→g、L2→i、L3/L4→m。
+  const LADDER_TONE = { l0: 'g', l1: 'g', l2: 'i', l3: 'm', l4: 'm' } as const
+  const ladderLevels = (['l0', 'l1', 'l2', 'l3', 'l4'] as const).map((code) => ({
+    code: code.toUpperCase(),
+    name: t(`evidenceLadder.${code}.name`),
+    desc: t(`evidenceLadder.${code}.desc`),
+    tone: LADDER_TONE[code],
+  }))
+
   const toc: [string, string][] = [
     ['sec-summary', t('toc.summary')],
     ['sec-method', t('toc.method')],
@@ -180,7 +192,9 @@ export async function ReportView({ runId }: { runId: string }) {
   return (
     <>
       <div className="sec-h">
-        <h2>{t('title')}</h2>
+        <h2>
+          <BlurText>{t('title')}</BlurText>
+        </h2>
         <span className="meta">{t('counts', { findings: model.counts.findings, recs: model.counts.recommendations, gated: model.counts.gated })}</span>
       </div>
 
@@ -232,27 +246,24 @@ export async function ReportView({ runId }: { runId: string }) {
                   {t('claim.inferred')}
                 </span>
               </div>
-              <div className="report-health-scores">
-                <div className="report-health-overall">
-                  <div className="k">{t('summary.overall')}</div>
-                  <div className="v">{scoreText(model.execSummary.health.overall)}</div>
-                </div>
-                {PILLARS.map((p) => {
-                  const cell = model.execSummary.health.pillars[p]
-                  return (
-                    <div key={p} className="report-health-cell">
-                      <div className="k">{pillarName(p)}</div>
-                      <div className={cell.score === null ? 'v muted' : 'v'}>{scoreText(cell.score)}</div>
-                      <div className="report-health-issues">{t('pillars.issueCount', { count: cell.issueCount })}</div>
-                    </div>
-                  )
-                })}
-              </div>
+              <PillarBars
+                overall={model.execSummary.health.overall}
+                overallLabel={t('summary.overall')}
+                unscoredLabel={t('summary.unscored')}
+                ariaLabel={t('summary.pillarBarsAria')}
+                pillars={PILLARS.map((p) => ({
+                  key: p,
+                  label: pillarName(p),
+                  score: model.execSummary.health.pillars[p].score,
+                }))}
+              />
               <details className="report-breakdown">
                 <summary>{t('summary.breakdownToggle')}</summary>
                 <pre>{model.execSummary.health.breakdown}</pre>
               </details>
             </div>
+
+            <EvidenceLadder title={t('summary.evidenceLadderTitle')} levels={ladderLevels} />
 
             <h4>{t('summary.topFindings')}</h4>
             {model.execSummary.topFindings.length ? (

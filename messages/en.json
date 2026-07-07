@@ -526,7 +526,16 @@
       "unscored": "Not scored",
       "breakdownToggle": "How the score is computed",
       "topFindings": "Highest-impact findings",
-      "noFindings": "No findings yet."
+      "noFindings": "No findings yet.",
+      "pillarBarsAria": "Five-pillar health score bar chart",
+      "evidenceLadderTitle": "Evidence grade (confidence ladder)"
+    },
+    "evidenceLadder": {
+      "l0": { "name": "Unsupported", "desc": "No evidence; not allowed as a conclusion" },
+      "l1": { "name": "Hypothesis", "desc": "A conjecture to be verified" },
+      "l2": { "name": "Inferred", "desc": "A reasonable inference from evidence" },
+      "l3": { "name": "Measured sample", "desc": "Sampled measurement (e.g. n=5 AI probes)" },
+      "l4": { "name": "Hard measured", "desc": "Hard evidence (e.g. GSC last 28 days)" }
     },
     "constraint": {
       "systemic_basics": "Systemic basics: high-severity crawl / index / render blockers exist — fix the technical foundation (P1) first.",
@@ -542,7 +551,6 @@
       "p5": "P5 Brand authority & GEO visibility"
     },
     "pillars": {
-      "issueCount": "{count} hits",
       "unscored": "Not scored",
       "evidence": "Evidence",
       "noFindings": "No hits — no issues."

@@ -526,7 +526,16 @@
       "unscored": "未评分",
       "breakdownToggle": "分数怎么算的",
       "topFindings": "最高影响发现",
-      "noFindings": "暂无发现。"
+      "noFindings": "暂无发现。",
+      "pillarBarsAria": "五支柱健康分条形图",
+      "evidenceLadderTitle": "证据等级（可信度阶梯）"
+    },
+    "evidenceLadder": {
+      "l0": { "name": "不可入库", "desc": "无证据支撑，不允许作为结论" },
+      "l1": { "name": "假设", "desc": "待验证的猜想" },
+      "l2": { "name": "推断", "desc": "基于证据的合理推断" },
+      "l3": { "name": "样本实测", "desc": "样本抽测（如 n=5 AI 探针）" },
+      "l4": { "name": "硬证据实测", "desc": "硬证据（如 GSC 近 28 天数据）" }
     },
     "constraint": {
       "systemic_basics": "系统性基础问题：存在抓取 / 索引 / 渲染层面的高危阻断，请优先修复技术地基（P1）。",
@@ -542,7 +551,6 @@
       "p5": "P5 品牌权威与 GEO 可见性"
     },
     "pillars": {
-      "issueCount": "命中 {count} 条",
       "unscored": "未评分",
       "evidence": "证据",
       "noFindings": "无命中，暂无问题。"
