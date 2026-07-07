@@ -31,4 +31,10 @@ describe('buildDataSourceStatuses', () => {
     const rows = buildDataSourceStatuses({}, { gscAppConfigured: false, gscConnected: false, gscSiteUrl: null })
     expect(rows.find((r) => r.key === 'gsc')).toMatchObject({ configured: false, connected: false })
   })
+  it('DB 已配探针键 → aiProbe 认为已配置（即使 env 空）', () => {
+    const rows = buildDataSourceStatuses({}, { gscAppConfigured: false, gscConnected: false, gscSiteUrl: null }, ['OPENAI_API_KEY'])
+    const ai = rows.find((s) => s.key === 'aiProbe')!
+    expect(ai.configured).toBe(true)
+    expect(ai.detail).toBe('1/4')
+  })
 })

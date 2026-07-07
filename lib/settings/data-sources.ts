@@ -20,14 +20,17 @@ const AI_PROVIDER_ENVS = ['OPENAI_API_KEY', 'PERPLEXITY_API_KEY', 'GEMINI_API_KE
 export function buildDataSourceStatuses(
   env: Record<string, string | undefined>,
   gsc: GscConnection,
+  dbConfiguredKeys: string[] = [],
 ): DataSourceStatus[] {
-  const aiCount = AI_PROVIDER_ENVS.filter((k) => !!env[k]).length
+  // 「已配置」= env 有值 或 DB 凭据已录入（SP-G1c：DB>env 覆盖）。
+  const has = (k: string) => !!env[k] || dbConfiguredKeys.includes(k)
+  const aiCount = AI_PROVIDER_ENVS.filter(has).length
   return [
     { key: 'gsc', configured: gsc.gscAppConfigured, connected: gsc.gscConnected, detail: gsc.gscSiteUrl ?? undefined },
-    { key: 'googleCse', configured: !!(env.GOOGLE_CSE_API_KEY && env.GOOGLE_CSE_CX) },
+    { key: 'googleCse', configured: has('GOOGLE_CSE_API_KEY') && has('GOOGLE_CSE_CX') },
     { key: 'aiProbe', configured: aiCount > 0, detail: `${aiCount}/4` },
-    { key: 'dataforseo', configured: !!(env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD) },
-    { key: 'render', configured: !!(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN) },
+    { key: 'dataforseo', configured: has('DATAFORSEO_LOGIN') && has('DATAFORSEO_PASSWORD') },
+    { key: 'render', configured: has('CLOUDFLARE_ACCOUNT_ID') && has('CLOUDFLARE_API_TOKEN') },
     { key: 'psi', configured: true },
     { key: 'publicCorpora', configured: true },
   ]
