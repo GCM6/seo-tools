@@ -1888,3 +1888,21 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* —— SP-G2c fx 动效基元（纯 CSS，尊重 reduced-motion）—— */
+@keyframes fx-slide-in { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+@keyframes fx-blur-in { from { opacity: 0; filter: blur(8px) } to { opacity: 1; filter: blur(0) } }
+@keyframes fx-shimmer { 0% { background-position: -160% 0 } 100% { background-position: 160% 0 } }
+.fx-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.fx-slide-in { animation: fx-slide-in .32s ease-out both; }
+.fx-blur-in { display: inline-block; animation: fx-blur-in .5s ease-out both; }
+.fx-shimmer { background-image: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); background-size: 200% 100%; animation: fx-shimmer 1.6s linear infinite; }
+/* 故事线相位 */
+.stageline { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.stageline-row { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--ds-muted, #6b7280); }
+.stageline-row.done { color: var(--ds-muted, #9ca3af); }
+.stageline-row.current { font-size: 16px; font-weight: 600; color: var(--ds-fg, #111827); }
+.stageline-row .sl-count { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) {
+  .fx-slide-in, .fx-blur-in, .fx-shimmer { animation: none !important; }
+}
