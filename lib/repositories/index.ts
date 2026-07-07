@@ -2,8 +2,9 @@ import { eq, asc, desc, and, isNull, isNotNull, inArray, sql } from 'drizzle-orm
 import { db } from '@/db/client'
 import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals } from '@/db/schema'
 import { hasValidEvidence, computeArtifactUpdate } from '@/lib/diagnosis/rule-proposals'
-import type { EvidenceType, EvidenceLevel, RunStatus } from '@/lib/types'
+import type { EvidenceType, EvidenceLevel, RunStatus, ClaimType } from '@/lib/types'
 import type { LightCheckExtra } from '@/lib/crawl/light-check'
+import { assertFindingClaimEvidence } from './validators'
 
 export const getRun = (id: string) => db.query.runs.findFirst({ where: eq(runs.id, id) })
 export const getProject = (id: string) => db.query.projects.findFirst({ where: eq(projects.id, id) })
@@ -17,8 +18,32 @@ export const getBrandFact = (id: string) => db.query.brandFacts.findFirst({ wher
 
 // —— 诊断生成链写入（spec §5：generateFindings → recommendations → prompts）——
 // 规则引擎产物批量落库；空数组直接短路（drizzle .values([]) 会抛错）。
-export const createFindings = (rows: (typeof findings.$inferInsert)[]) =>
-  rows.length ? db.insert(findings).values(rows).returning() : Promise.resolve([])
+// §6.2 写路径闸门：measured_hard 必须有 L4、measured_sample 必须有 L3/L4 证据——
+// finding 行只带 evidence_refs（artifact id），故先按 refs 反查 claim_level 再逐行 assert。
+// 仅当批内存在 measured_* 行时才触发这次证据读，hypothesis/inferred 零额外开销。
+export const createFindings = async (rows: (typeof findings.$inferInsert)[]) => {
+  if (!rows.length) return []
+  const needsLevelCheck = rows.some(
+    (r) => r.claimType === 'measured_hard' || r.claimType === 'measured_sample',
+  )
+  if (needsLevelCheck) {
+    const refIds = [...new Set(rows.flatMap((r) => (r.evidenceRefs as string[] | null) ?? []))]
+    const arts = refIds.length
+      ? await db
+          .select({ id: evidenceArtifacts.id, claimLevel: evidenceArtifacts.claimLevel })
+          .from(evidenceArtifacts)
+          .where(inArray(evidenceArtifacts.id, refIds))
+      : []
+    const levelById = new Map(arts.map((a) => [a.id, a.claimLevel as EvidenceLevel]))
+    for (const r of rows) {
+      const evidenceLevels = ((r.evidenceRefs as string[] | null) ?? [])
+        .map((id) => levelById.get(id))
+        .filter((l): l is EvidenceLevel => Boolean(l))
+      assertFindingClaimEvidence({ claimType: r.claimType as ClaimType, evidenceLevels })
+    }
+  }
+  return db.insert(findings).values(rows).returning()
+}
 export const createRecommendations = (rows: (typeof recommendations.$inferInsert)[]) =>
   rows.length ? db.insert(recommendations).values(rows).returning() : Promise.resolve([])
 export const getRecommendation = (id: string) =>
