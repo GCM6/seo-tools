@@ -34,7 +34,9 @@ import { createCloudflareRenderProvider } from '@/lib/render/cloudflare-provider
 import type { RenderProvider } from '@/lib/render/render-provider'
 import { createGoogleCseSearchVisibilityProvider, type SearchVisibilityProvider } from '@/lib/search/search-visibility-provider'
 import { collectProbesStage } from '@/lib/probes/run-probes'
-import { buildProbeProvidersFromEnv } from '@/lib/probes/providers'
+import { buildProbeProviders } from '@/lib/probes/providers'
+import { resolveCredentials } from '@/lib/credentials/store'
+import { PROBE_CREDENTIAL_KEYS } from '@/lib/credentials/keys'
 import {
   createEvidenceArtifact,
   markRunStatus,
@@ -151,15 +153,18 @@ function defaultDeps(): CollectDeps {
     getProject,
     createEvidenceArtifact,
     markRunStatus,
-    runProbes: (args) =>
-      collectProbesStage(args, {
+    runProbes: async (args) => {
+      // 探针 key 走 DB>env 解析（BYOK 设置页录入优先于环境变量）。
+      const creds = await resolveCredentials(PROBE_CREDENTIAL_KEYS)
+      return collectProbesStage(args, {
         getProject,
         getProjectSettings,
-        buildProviders: buildProbeProvidersFromEnv,
+        buildProviders: () => buildProbeProviders(creds),
         createPrompts,
         createEvidenceArtifact,
         createAiProbeResult,
-      }),
+      })
+    },
     getProjectSettings,
     discoverSitemaps,
     runCrawlBatch,
