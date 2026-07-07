@@ -4,11 +4,13 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import type { DataSourceStatus } from '@/lib/settings/data-sources'
+import type { CredentialRow } from '@/lib/settings/credential-rows'
 
 export function SettingsClient({
   projectId,
   projectDomain,
   statuses,
+  credentialRows,
   gscConnected,
   gscSiteUrl,
   justConnected,
@@ -16,6 +18,7 @@ export function SettingsClient({
   projectId: string
   projectDomain: string
   statuses: DataSourceStatus[]
+  credentialRows: CredentialRow[]
   gscConnected: boolean
   gscSiteUrl: string | null
   justConnected: boolean
@@ -70,6 +73,26 @@ export function SettingsClient({
         </table>
       </div>
 
+      <h2 className="mt-6 text-sm font-medium">{t('apiKeysTitle')}</h2>
+      <p className="mt-1 text-xs text-neutral-500">{t('apiKeysHint')}</p>
+      <div className="report-table-wrap mt-2">
+        <table className="report-table">
+          <thead>
+            <tr>
+              <th>{t('credKeyCol')}</th>
+              <th>{t('provider.label')}</th>
+              <th>{t('col.status')}</th>
+              <th>{t('credActionCol')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {credentialRows.map((row) => (
+              <CredentialRowItem key={row.key} row={row} t={t} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       <h2 className="mt-6 text-sm font-medium">{t('gscTitle')}</h2>
       <button type="button" onClick={connectGsc} disabled={busy}>
         {gscConnected ? t('reconnectGsc') : t('connectGsc')}
@@ -87,5 +110,93 @@ export function SettingsClient({
         </div>
       )}
     </section>
+  )
+}
+
+// 单行凭据录入：密码框 + 可测则测连接 + 保存（DB 加密入库）+ DB 来源可清除。
+// 明文值只存本地 state，随请求发往自有后端，不回显、不下发既有值。
+function CredentialRowItem({ row, t }: { row: CredentialRow; t: ReturnType<typeof useTranslations> }) {
+  const router = useRouter()
+  const [value, setValue] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+
+  async function test() {
+    setBusy(true)
+    setNote(null)
+    const res = await fetch('/api/credentials/test', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ credentialKey: row.key, value }),
+    })
+    const data = (await res.json()) as { ok: boolean; error?: string }
+    setBusy(false)
+    setNote(data.ok ? t('testOk') : `${t('testFail')}${data.error ?? ''}`)
+  }
+  async function save() {
+    setBusy(true)
+    setNote(null)
+    const res = await fetch('/api/credentials', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ credentialKey: row.key, value }),
+    })
+    setBusy(false)
+    if (res.ok) {
+      setNote(t('keySaved'))
+      setValue('')
+      router.refresh()
+    } else {
+      setNote(`${t('testFail')}${((await res.json()) as { error?: string }).error ?? ''}`)
+    }
+  }
+  async function clear() {
+    setBusy(true)
+    setNote(null)
+    const res = await fetch('/api/credentials', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ credentialKey: row.key }),
+    })
+    setBusy(false)
+    if (res.ok) {
+      setNote(t('keyCleared'))
+      router.refresh()
+    }
+  }
+
+  return (
+    <tr>
+      <td className="mono">{row.key}</td>
+      <td>{t(`provider.${row.provider}`)}</td>
+      <td>{t(`credSource.${row.source}`)}</td>
+      <td>
+        <input
+          type="password"
+          className="mono"
+          value={value}
+          placeholder={t('credKeyPlaceholder')}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        {row.testable && (
+          <button type="button" className="ml-2" onClick={test} disabled={busy || !value.trim()}>
+            {t('testConn')}
+          </button>
+        )}
+        <button type="button" className="ml-2" onClick={save} disabled={busy || !value.trim()}>
+          {t('saveKey')}
+        </button>
+        {row.source === 'db' && (
+          <button type="button" className="ml-2" onClick={clear} disabled={busy}>
+            {t('clearKey')}
+          </button>
+        )}
+        {note && (
+          <span role="status" className="ml-2 text-xs">
+            {note}
+          </span>
+        )}
+      </td>
+    </tr>
   )
 }
