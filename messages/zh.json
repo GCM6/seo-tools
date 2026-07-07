@@ -295,6 +295,31 @@
       "cancel": "取消"
     }
   },
+  "dataHealth": {
+    "pill": "数据源 {up}/{total}",
+    "title": "数据源健康度",
+    "connect": "去连接",
+    "statusUp": "已就绪",
+    "statusDown": "未接入",
+    "coverage": "本次诊断基于 {up}/{total} 数据源，补齐后可提升覆盖",
+    "coverageAction": "查看数据源",
+    "emptyProbeTitle": "缺少 AI 探针数据源",
+    "emptyProbeImpact": "答案地图与竞争声量需要 AI 答案引擎探针（OpenAI / Perplexity / Gemini / DeepSeek）",
+    "source": {
+      "gsc": "Google Search Console",
+      "googleCse": "Google 可见性检索 (CSE)",
+      "aiProbe": "AI 答案引擎探针",
+      "dataforseo": "DataForSEO（关键词/竞品/外链）",
+      "render": "渲染抓取 (Cloudflare)"
+    },
+    "impact": {
+      "gsc": "缺 GSC：实测关键词点击/曝光/排名（L4）无从谈起",
+      "googleCse": "缺 CSE：传统搜索可见度与 SERP 现状抓不到",
+      "aiProbe": "缺 AI 探针：AI 答案可见度、答案地图、竞争声量全空",
+      "dataforseo": "缺 DataForSEO：关键词缺口、竞品发现、外链数据缺失",
+      "render": "缺渲染源：抓不到渲染后正文，SPA 内容可见性无法判定"
+    }
+  },
   "findings": {
     "dismiss": "忽略此发现",
     "dismissed": "已忽略",

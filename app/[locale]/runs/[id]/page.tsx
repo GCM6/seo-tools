@@ -8,6 +8,9 @@ import { RunProgress } from '@/components/RunProgress'
 import { RetestBanner } from '@/components/RetestBanner'
 import { PresenceMap } from '@/components/PresenceMap'
 import { SovBar } from '@/components/SovBar'
+import { EmptyStateCTA } from '@/components/EmptyStateCTA'
+import { loadDataSourceStatuses } from '@/lib/settings/load-statuses'
+import { summarizeDataSourceHealth } from '@/lib/settings/data-source-health'
 import {
   getRun,
   getProject,
@@ -72,6 +75,13 @@ export default async function RunDiagnosisPage({
     : null
   const sources = dataSourceStatus()
 
+  // 数据源健康度：顶栏 pill 常驻 + 采集完成后的覆盖率横幅共用同一次汇总。（spec §SP-G2b-5/6）
+  const dataHealth = summarizeDataSourceHealth(await loadDataSourceStatuses())
+  const runCollected =
+    run != null && (['collected', 'diagnosing', 'reviewing', 'output'] as RunStatus[]).includes(run.status as RunStatus)
+  const showCoverage = runCollected && dataHealth.up < dataHealth.total
+  const probeAnchor = `/${locale}/settings#source-aiProbe`
+
   // 从当前 run 的真实证据派生指标卡；measured 卡可点开对应证据原文。
   const cards = deriveStatCards(
     evidenceRows.map((e) => ({ id: e.id, type: e.type, claimLevel: e.claimLevel, payload: e.payload })),
@@ -119,12 +129,21 @@ export default async function RunDiagnosisPage({
   )
 
   return (
-    <Shell active={2} locale={locale} runId={id} domain={project?.domain}>
+    <Shell active={2} locale={locale} runId={id} domain={project?.domain} dataHealth={dataHealth}>
       <section className="screen show" data-screen="2">
         {retestDue ? (
           <RetestBanner runId={id} locale={locale} />
         ) : retestDueAt ? (
           <div className="note">{t('retest.nextDue', { date: retestDueAt.slice(0, 10) })}</div>
+        ) : null}
+
+        {showCoverage ? (
+          <div className="coverage-note">
+            <span>{t('dataHealth.coverage', { up: dataHealth.up, total: dataHealth.total })}</span>
+            <Link href={`/${locale}/settings`} className="coverage-action">
+              {t('dataHealth.coverageAction')}
+            </Link>
+          </div>
         ) : null}
 
         {run ? (
@@ -164,7 +183,7 @@ export default async function RunDiagnosisPage({
           <h2>{t('screen2.currentTitle')}</h2>
           <span className="meta">{t('screen2.currentMeta')}</span>
         </div>
-        <StatStrip cards={cards} evidenceById={evidenceById} />
+        <StatStrip cards={cards} evidenceById={evidenceById} locale={locale} />
 
         <div className="sec-h">
           <h2>{t('screen2.mapTitle')}</h2>
@@ -172,12 +191,17 @@ export default async function RunDiagnosisPage({
         </div>
         {probeSummary ? (
           <PresenceMap prompts={probeSummary.perPrompt} />
-        ) : (
+        ) : sources.aiProviders.length ? (
           <div className="card pending-block">
-            {sources.aiProviders.length
-              ? t('screen2.probePendingRerun', { providers: sources.aiProviders.join(' / ') })
-              : t('screen2.probePending')}
+            {t('screen2.probePendingRerun', { providers: sources.aiProviders.join(' / ') })}
           </div>
+        ) : (
+          <EmptyStateCTA
+            title={t('dataHealth.emptyProbeTitle')}
+            impact={t('dataHealth.emptyProbeImpact')}
+            actionLabel={t('dataHealth.connect')}
+            href={probeAnchor}
+          />
         )}
 
         <div className="sec-h">
@@ -186,12 +210,17 @@ export default async function RunDiagnosisPage({
         </div>
         {probeSummary ? (
           <SovBar rows={probeSummary.sov} />
-        ) : (
+        ) : sources.aiProviders.length ? (
           <div className="card pending-block">
-            {sources.aiProviders.length
-              ? t('screen2.probePendingRerun', { providers: sources.aiProviders.join(' / ') })
-              : t('screen2.probePending')}
+            {t('screen2.probePendingRerun', { providers: sources.aiProviders.join(' / ') })}
           </div>
+        ) : (
+          <EmptyStateCTA
+            title={t('dataHealth.emptyProbeTitle')}
+            impact={t('dataHealth.emptyProbeImpact')}
+            actionLabel={t('dataHealth.connect')}
+            href={probeAnchor}
+          />
         )}
 
         {/* 分引擎可见度（G05/G06 分引擎报告，引擎间不可互推）——多于一个引擎才展示 */}

@@ -1,8 +1,19 @@
+import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 import { ProvenanceTag } from './ProvenanceTag'
 import { EvidenceDrawer, type EvidenceView } from './EvidenceDrawer'
 import { provenanceForLevel } from '@/lib/evidence'
 import type { StatCard, StatCardKey } from '@/lib/diagnostics'
+import type { HealthKey } from '@/lib/settings/data-source-health'
+
+// pending 卡的缺源 reason → 设置页锚点的数据源 key（uncollected 无锚点：数据源已就绪、
+// 只是本轮未采到，给不出「去连接」出路）。（spec §SP-G2b-7）
+const REASON_ANCHOR: Partial<Record<string, HealthKey>> = {
+  search_provider: 'googleCse',
+  ai_probe: 'aiProbe',
+  gsc: 'gsc',
+  render_provider: 'render',
+}
 
 // Screen 2 stat strip — four fixed diagnosis dimensions derived from the
 // current run's evidence (lib/diagnostics). A card is either `measured`
@@ -21,9 +32,11 @@ const UNIT_SUFFIX: Partial<Record<StatCardKey, string>> = { crawlableText: '%' }
 export async function StatStrip({
   cards,
   evidenceById,
+  locale,
 }: {
   cards: StatCard[]
   evidenceById?: Record<string, EvidenceView>
+  locale?: string
 }) {
   const [t, tRoot] = await Promise.all([getTranslations('screen2'), getTranslations()])
 
@@ -48,6 +61,8 @@ export async function StatStrip({
                     : ''
           const tagLabel = isUncollected ? t('uncollected') : t('pendingSource', { source })
           const hint = t(`configHint.${c.reason}`)
+          // 缺源卡给「去连接」直达设置页对应锚点（uncollected 除外，见 REASON_ANCHOR 注释）。
+          const anchor = locale && c.reason ? REASON_ANCHOR[c.reason] : undefined
           return (
             <div key={c.key} className="card stat pending" title={hint}>
               <div className="k">{label}</div>
@@ -56,6 +71,11 @@ export async function StatStrip({
                 <ProvenanceTag variant="g" label={tagLabel} />
               </div>
               <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--ds-muted)', marginTop: 6 }}>{hint}</div>
+              {anchor ? (
+                <Link href={`/${locale}/settings#source-${anchor}`} className="stat-connect">
+                  {tRoot('dataHealth.connect')}
+                </Link>
+              ) : null}
             </div>
           )
         }

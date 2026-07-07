@@ -1906,3 +1906,129 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .fx-slide-in, .fx-blur-in, .fx-shimmer { animation: none !important; }
 }
+
+/* ---- SP-G2b 数据源健康度 pill + 抽屉 / 空态 CTA / 覆盖率横幅 ---- */
+.ds-health { position: relative; }
+.ds-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: var(--rd-pill);
+  border: 1px solid var(--ds-border);
+  background: var(--ds-surface-1);
+  color: var(--ds-fg, #1d1d1f);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.ds-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ds-muted); }
+.ds-pill.ok   { border-color: var(--good);     color: var(--good); }
+.ds-pill.ok .dot   { background: var(--good); }
+.ds-pill.warn { border-color: var(--inferred); color: var(--inferred); }
+.ds-pill.warn .dot { background: var(--inferred); }
+.ds-pill.bad  { border-color: var(--gap);      color: var(--gap); }
+.ds-pill.bad .dot  { background: var(--gap); }
+
+.ds-drawer {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 40;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  padding: 10px;
+  background: var(--ds-surface-elevated);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--rd-md);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+}
+.ds-drawer-h { font-size: 12px; font-weight: 600; color: var(--ds-muted); padding: 2px 4px 8px; }
+.ds-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 4px;
+  border-top: 1px solid var(--ds-border-subtle);
+}
+.ds-row .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex: none; }
+.ds-row .dot.up { background: var(--good); }
+.ds-row .dot.down { background: var(--ds-surface-3); }
+.ds-row-body { flex: 1; min-width: 0; }
+.ds-row-name { font-size: 13px; font-weight: 500; }
+.ds-row-impact { font-size: 12px; line-height: 1.5; color: var(--ds-muted); margin-top: 2px; }
+.ds-row-ok { font-size: 11px; color: var(--good); flex: none; }
+.ds-row-connect {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ds-primary);
+  white-space: nowrap;
+  align-self: center;
+}
+.ds-row-connect:hover { text-decoration: underline; }
+
+.empty-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: var(--sp-base);
+}
+.empty-cta-icon {
+  width: 34px; height: 34px;
+  flex: none;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--ds-surface-2);
+  color: var(--ds-muted);
+  font-size: 16px;
+}
+.empty-cta-body { flex: 1; min-width: 0; }
+.empty-cta-title { font-size: 14px; font-weight: 600; }
+.empty-cta-impact { font-size: 12.5px; line-height: 1.5; color: var(--ds-muted); margin-top: 3px; }
+.empty-cta-action {
+  flex: none;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 14px;
+  border-radius: var(--rd-pill);
+  background: var(--ds-primary);
+  color: #fff;
+  white-space: nowrap;
+}
+.empty-cta-action:hover { background: var(--ds-primary-hover); }
+
+.coverage-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--inferred);
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: var(--inferred-bg);
+  border: 1px solid transparent;
+  border-radius: var(--rd-md);
+}
+.coverage-action { font-weight: 500; color: var(--ds-primary); white-space: nowrap; }
+.coverage-action:hover { text-decoration: underline; }
+
+.stat-connect {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ds-primary);
+}
+.stat-connect:hover { text-decoration: underline; }
+
+.ds-row-highlight { animation: dsRowFlash 2.4s ease-out; }
+@keyframes dsRowFlash {
+  0%, 30% { background: var(--ds-primary-muted); }
+  100% { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-row-highlight { animation: none; background: var(--ds-primary-muted); }
+}

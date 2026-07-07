@@ -1,8 +1,7 @@
 import { setRequestLocale, getTranslations } from 'next-intl/server'
 import { Shell } from '@/components/Shell'
 import { getPrimaryProject, getProjectSettings, getConfiguredCredentialKeys } from '@/lib/repositories'
-import { isGscConfigured } from '@/lib/gsc/oauth'
-import { buildDataSourceStatuses } from '@/lib/settings/data-sources'
+import { loadDataSourceStatuses } from '@/lib/settings/load-statuses'
 import { buildCredentialRows } from '@/lib/settings/credential-rows'
 import { SettingsClient } from './SettingsClient'
 
@@ -31,11 +30,7 @@ export default async function SettingsPage({
   }
   const settings = await getProjectSettings(project.id)
   const dbKeys = await getConfiguredCredentialKeys()
-  const statuses = buildDataSourceStatuses(process.env, {
-    gscAppConfigured: isGscConfigured(),
-    gscConnected: settings?.gscConnected ?? false,
-    gscSiteUrl: settings?.gscSiteUrl ?? null,
-  }, dbKeys)
+  const statuses = await loadDataSourceStatuses()
   const credentialRows = buildCredentialRows(process.env, dbKeys)
   return (
     <Shell active={1} locale={locale} domain={project.domain}>

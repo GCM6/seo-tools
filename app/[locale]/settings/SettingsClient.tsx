@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import type { DataSourceStatus } from '@/lib/settings/data-sources'
@@ -28,6 +28,20 @@ export function SettingsClient({
   const [siteUrl, setSiteUrl] = useState(gscSiteUrl ?? `sc-domain:${projectDomain}`)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(justConnected ? t('connectedFlash') : null)
+
+  // 从顶栏健康度抽屉 / 空态 CTA 的「去连接」带 #source-<key> 锚点进来时，
+  // 滚动到对应行并短暂高亮，指明「就是这一行」。用直接 DOM 类切换而非 React state——
+  // 避免在 effect 内同步 setState 触发级联渲染，高亮由 CSS 动画自淡出。（spec §SP-G2b-8）
+  useEffect(() => {
+    const m = window.location.hash.match(/^#source-(\w+)$/)
+    if (!m) return
+    const row = document.getElementById(`source-${m[1]}`)
+    if (!row) return
+    row.scrollIntoView({ block: 'center' })
+    row.classList.add('ds-row-highlight')
+    const timer = setTimeout(() => row.classList.remove('ds-row-highlight'), 2400)
+    return () => clearTimeout(timer)
+  }, [])
 
   function connectGsc() {
     window.location.href = `/api/gsc/auth?projectId=${encodeURIComponent(projectId)}`
@@ -63,7 +77,7 @@ export function SettingsClient({
           </thead>
           <tbody>
             {statuses.map((s) => (
-              <tr key={s.key}>
+              <tr key={s.key} id={`source-${s.key}`}>
                 <td>{t(`source.${s.key}`)}</td>
                 <td>{statusText(s)}</td>
                 <td className="mono">{s.detail ?? '—'}</td>

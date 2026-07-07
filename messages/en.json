@@ -295,6 +295,31 @@
       "cancel": "Cancel"
     }
   },
+  "dataHealth": {
+    "pill": "Sources {up}/{total}",
+    "title": "Data source health",
+    "connect": "Connect",
+    "statusUp": "Ready",
+    "statusDown": "Not connected",
+    "coverage": "This diagnosis used {up}/{total} data sources — connect the rest to widen coverage",
+    "coverageAction": "View sources",
+    "emptyProbeTitle": "Missing AI probe data source",
+    "emptyProbeImpact": "The answer map and share-of-voice need an AI answer-engine probe (OpenAI / Perplexity / Gemini / DeepSeek)",
+    "source": {
+      "gsc": "Google Search Console",
+      "googleCse": "Google visibility search (CSE)",
+      "aiProbe": "AI answer-engine probe",
+      "dataforseo": "DataForSEO (keywords/competitors/backlinks)",
+      "render": "Render fetch (Cloudflare)"
+    },
+    "impact": {
+      "gsc": "No GSC: measured keyword clicks/impressions/rank (L4) unavailable",
+      "googleCse": "No CSE: traditional search visibility and SERP state can't be captured",
+      "aiProbe": "No AI probe: AI answer visibility, answer map and share-of-voice all empty",
+      "dataforseo": "No DataForSEO: keyword gaps, competitor discovery and backlink data missing",
+      "render": "No render source: rendered main-text unreachable, SPA content visibility undecidable"
+    }
+  },
   "findings": {
     "dismiss": "Dismiss",
     "dismissed": "Dismissed",
