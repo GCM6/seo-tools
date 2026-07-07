@@ -2,7 +2,8 @@ import { NonRetriableError } from 'inngest'
 import { inngest } from './client'
 import { DIAGNOSE_REQUESTED_EVENT, type DiagnoseRequestedEventData } from './events'
 import { runProgressChannel, type RunProgressMessage } from './channels'
-import { buildRuleContext } from '@/lib/diagnosis/context'
+import { buildRuleContext, parseGscKeywordMetrics } from '@/lib/diagnosis/context'
+import { buildMetricPair, buildProbeMetricRows, type RunMetrics, type MetricTarget } from '@/lib/diagnosis/retest-metrics'
 import { evaluateRules } from '@/lib/diagnosis/engine'
 import type { DiagnosisEvidenceRow, Rule, RuleHit } from '@/lib/diagnosis/types'
 import { buildFindingRows, buildRecommendationRows, type RecommendationDraft } from '@/lib/diagnosis/finding-rows'
@@ -233,18 +234,47 @@ async function computeRetestDelta(
     deps.getRecommendations(baselineRunId),
   ])
 
+  // 为一轮 run 构建可比标量来源（probe 品牌级 + GSC query 维关键词）。
+  const buildRunMetrics = async (rid: string): Promise<RunMetrics> => {
+    const [evidence, prompts, probeResults] = await Promise.all([
+      deps.getRunEvidence(rid),
+      deps.getRunPrompts(rid),
+      deps.getRunProbeResults(rid),
+    ])
+    const probe = deps.aggregateProbeSummary({
+      prompts: prompts.map((p) => ({ id: p.id, text: p.text, priority: p.priority })),
+      results: probeResults.map((r) => ({
+        promptId: r.promptId, brandPresent: r.brandPresent, competitorsMentioned: r.competitorsMentioned,
+        evidenceId: r.evidenceId, provider: r.provider, sentiment: r.sentiment,
+      })),
+      brand: brandFromDomain((await deps.getProject(projectId))?.domain ?? ''),
+      competitors: [],
+    })
+    const gscKeywords = parseGscKeywordMetrics(
+      evidence.map((e) => ({ id: e.id, type: e.type as EvidenceType, claimLevel: e.claimLevel as EvidenceLevel, source: e.source, payload: e.payload, rawText: e.rawText, sitePageId: e.sitePageId })),
+    ).map((k) => ({ keyText: k.keyText, impressions: k.impressions, position: k.position }))
+    return { probe, gscKeywords }
+  }
+
+  const [baselineMetrics, retestMetrics] = await Promise.all([buildRunMetrics(baselineRunId), buildRunMetrics(retestRunId)])
+
   // ① finding 四态 delta（按 fingerprint 对齐）。
   const deltas = computeFindingDelta(toFindingRefs(baselineRows), toFindingRefs(retestRows))
   const summary = summarizeFindingDelta(deltas)
   const fpToState = new Map(deltas.map((d) => [d.fingerprint, d.state]))
 
-  // ② baseline 建议 outcome：经 baseline finding id → fingerprint → 四态。无标量指标，用四态兜底。
-  const idToFp = new Map(baselineRows.filter((r) => r.fingerprint).map((r) => [r.id, r.fingerprint as string]))
+  // ② baseline 建议 outcome：per-rec 取 finding.metricTarget → buildMetricPair；
+  //    有真标量则压过四态，无则回退按 fingerprint→四态兜底（恒 inferred）。
+  const idToFinding = new Map(baselineRows.map((r) => [r.id, r]))
   await Promise.all(
     baseRecs.map((rec) => {
-      const fp = idToFp.get(rec.findingId)
+      const f = idToFinding.get(rec.findingId)
+      const fp = f?.fingerprint ?? null
       const state = (fp ? fpToState.get(fp) : undefined) ?? null
-      const outcome = computeOutcome((rec.validationSpec as ValidationSpec | null) ?? null, null, state)
+      const spec = (rec.validationSpec as ValidationSpec | null) ?? null
+      const target = (f?.metricTarget as MetricTarget | null) ?? null
+      const pair = spec ? buildMetricPair(spec, target, baselineMetrics, retestMetrics) : null
+      const outcome = computeOutcome(spec, pair, state)
       return deps.setRecommendationOutcome(rec.id, outcome)
     }),
   )
@@ -256,8 +286,12 @@ async function computeRetestDelta(
   const baseOverall = computeHealthScore({ findings: toHealthFindings(baselineRows), pillarsWithData }).overall
   const retestOverall = computeHealthScore({ findings: toHealthFindings(retestRows), pillarsWithData }).overall
 
-  // ④ 落 retest_snapshots。
-  const rows = buildRetestSnapshotRows(summary, { baseline: baseOverall, retest: retestOverall }).map((row) => ({
+  // ④ 落 retest_snapshots：四态/健康分行 + probe 品牌指标行。
+  const snapshotRows = [
+    ...buildRetestSnapshotRows(summary, { baseline: baseOverall, retest: retestOverall }),
+    ...buildProbeMetricRows(baselineMetrics.probe, retestMetrics.probe),
+  ]
+  const rows = snapshotRows.map((row) => ({
     id: `rts_${crypto.randomUUID()}`,
     projectId,
     baselineRunId,

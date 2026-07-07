@@ -179,17 +179,24 @@ describe('generateFindingsHandler', () => {
 
   // —— 回测收尾（spec §5.1-3）——
   const baselineFindings = [
-    { id: 'f_b1', runId: 'run_base', fingerprint: 'fp_1', severity: 'high', pillar: 'P1', title: 'A', side: 'technical', claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'], status: 'open', dismissedAt: null, dismissReason: null },
-    { id: 'f_b2', runId: 'run_base', fingerprint: 'fp_2', severity: 'high', pillar: 'P1', title: 'B', side: 'seo', claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'], status: 'open', dismissedAt: null, dismissReason: null },
+    { id: 'f_b1', runId: 'run_base', fingerprint: 'fp_1', severity: 'high', pillar: 'P3', title: 'A', side: 'seo', claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'], status: 'open', dismissedAt: null, dismissReason: null, metricTarget: { keywords: ['widget'] } },
+    { id: 'f_b2', runId: 'run_base', fingerprint: 'fp_2', severity: 'high', pillar: 'P5', title: 'B', side: 'geo', claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'], status: 'open', dismissedAt: null, dismissReason: null, metricTarget: null },
   ]
   const retestFindings = [
-    { id: 'f_r2', runId: 'run_1', fingerprint: 'fp_2', severity: 'high', pillar: 'P1', title: 'B', side: 'seo', claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'], status: 'open', dismissedAt: null, dismissReason: null },
-    { id: 'f_r3', runId: 'run_1', fingerprint: 'fp_3', severity: 'mid', pillar: 'P2', title: 'C', side: 'seo', claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'], status: 'open', dismissedAt: null, dismissReason: null },
+    { id: 'f_r2', runId: 'run_1', fingerprint: 'fp_2', severity: 'high', pillar: 'P5', title: 'B', side: 'geo', claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'], status: 'open', dismissedAt: null, dismissReason: null, metricTarget: null },
+    { id: 'f_r3', runId: 'run_1', fingerprint: 'fp_3', severity: 'mid', pillar: 'P2', title: 'C', side: 'seo', claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'], status: 'open', dismissedAt: null, dismissReason: null, metricTarget: null },
   ]
+  // rec_b1(P3/gsc impressions)：目标 widget，baseline 100→retest 300 → effective（真标量压过 fp_1 四态 resolved 也仍 effective）
+  // rec_b2(P5/probe brand_presence)：fp_2 persistent（四态=ineffective），但 presence 2/10→5/10 上升 → effective（真标量翻盘）
   const baseRecs = [
-    { id: 'rec_b1', runId: 'run_base', findingId: 'f_b1', validationSpec: null },
-    { id: 'rec_b2', runId: 'run_base', findingId: 'f_b2', validationSpec: null },
+    { id: 'rec_b1', runId: 'run_base', findingId: 'f_b1', validationSpec: { metricSource: 'gsc', metric: 'impressions', scope: 'keywords', direction: 'increase', windowDays: 28 } },
+    { id: 'rec_b2', runId: 'run_base', findingId: 'f_b2', validationSpec: { metricSource: 'probe', metric: 'brand_presence', scope: 'site', direction: 'increase', windowDays: 28 } },
   ]
+
+  const gscEv = (id: string, impressions: number) => ({
+    id, type: 'gsc', claimLevel: 'L4', source: 'gsc', sitePageId: null, rawText: '',
+    payload: { dimension: 'query', rows: [{ keys: ['widget'], clicks: 1, impressions, ctr: 0.01, position: 6 }] },
+  })
 
   function makeRetestDeps() {
     return makeDeps({
@@ -197,6 +204,18 @@ describe('generateFindingsHandler', () => {
       getRecommendations: vi.fn(async (rid: string) => (rid === 'run_base' ? baseRecs : [])),
       createRetestSnapshots: vi.fn(async (rows: unknown[]) => rows),
       setRecommendationOutcome: vi.fn(async () => undefined),
+      // 两轮各自证据（GSC impressions 差异）+ 探针结果（presence 差异）
+      getRunEvidence: vi.fn(async (rid: string) => [rid === 'run_base' ? gscEv('g_base', 100) : gscEv('g_retest', 300)]),
+      getRunProbeResults: vi.fn(async (rid: string) =>
+        (rid === 'run_base' ? [1, 2] : [1, 2, 3, 4, 5]).map((n) => ({
+          promptId: `p${n}`, brandPresent: true, competitorsMentioned: [], evidenceId: `pe${n}`, provider: 'openai', sentiment: 'neutral',
+        })),
+      ),
+      // presence = brandPresent 数 / 10（promptsTotal 固定 10）
+      aggregateProbeSummary: vi.fn((input: { results: unknown[] }) => ({
+        promptsTotal: 10, promptsPresent: input.results.length, totalSamples: input.results.length,
+        perPrompt: [], sov: [], perEngine: [], sentiment: { positive: 0, neutral: 0, negative: 0, comparison: 0, total: 0 }, sampleEvidenceId: null,
+      })),
     })
   }
 
@@ -229,8 +248,21 @@ describe('generateFindingsHandler', () => {
     })
   })
 
-  it('baseline 建议 outcome 按 fingerprint→四态对齐写入（恒由 delta 计算）', async () => {
-    const deps = makeRetestDeps()
+  it('无标量指标时 baseline 建议 outcome 按 fingerprint→四态兜底写入', async () => {
+    // 无 validationSpec + 无 probe/gsc 证据 → buildMetricPair 无从构建，回退纯四态。
+    const deps = makeDeps({
+      getFindings: vi.fn(async (rid: string) => (rid === 'run_base' ? baselineFindings : retestFindings)),
+      getRecommendations: vi.fn(async (rid: string) =>
+        rid === 'run_base'
+          ? [
+              { id: 'rec_b1', runId: 'run_base', findingId: 'f_b1', validationSpec: null },
+              { id: 'rec_b2', runId: 'run_base', findingId: 'f_b2', validationSpec: null },
+            ]
+          : [],
+      ),
+      setRecommendationOutcome: vi.fn(async () => undefined),
+      createRetestSnapshots: vi.fn(async (r: unknown[]) => r),
+    })
     const { args } = makeArgs({ baselineRunId: 'run_base' })
 
     await generateFindingsHandler(args, asDeps(deps))
@@ -239,6 +271,30 @@ describe('generateFindingsHandler', () => {
     expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b1', 'effective')
     expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b2', 'ineffective')
     expect(deps.setRecommendationOutcome).toHaveBeenCalledTimes(2)
+  })
+
+  it('P3 建议按 finding 关键词 GSC impressions 上升 → effective（真标量压过四态）', async () => {
+    const deps = makeRetestDeps()
+    const { args } = makeArgs({ baselineRunId: 'run_base' })
+    await generateFindingsHandler(args, asDeps(deps))
+    // rec_b1 目标 widget：100→300 增 → effective
+    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b1', 'effective')
+  })
+
+  it('P5 建议 probe brand_presence 上升 → effective（翻盘 fp_2 persistent 的四态 ineffective）', async () => {
+    const deps = makeRetestDeps()
+    const { args } = makeArgs({ baselineRunId: 'run_base' })
+    await generateFindingsHandler(args, asDeps(deps))
+    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b2', 'effective')
+  })
+
+  it('retest_snapshots 含 probe 品牌指标行', async () => {
+    const deps = makeRetestDeps()
+    const { args } = makeArgs({ baselineRunId: 'run_base' })
+    await generateFindingsHandler(args, asDeps(deps))
+    const snapRows = deps.createRetestSnapshots.mock.calls[0][0] as Array<Record<string, string>>
+    const names = snapRows.map((r) => r.metricName)
+    expect(names).toContain('probe.brand_presence')
   })
 
   it('无 baselineRunId 时不触发回测 delta（保持原行为）', async () => {
