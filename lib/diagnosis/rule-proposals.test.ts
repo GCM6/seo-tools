@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   hasValidEvidence,
   deriveNextRulesVersion,
+  assertReleasableVersion,
   computeArtifactUpdate,
   groupChangelog,
   rulesVersionDelta,
@@ -31,6 +32,25 @@ describe('deriveNextRulesVersion', () => {
   })
   it('按数值取最大而非字符串序（v10 > v9）', () => {
     expect(deriveNextRulesVersion(['rules_v9', 'rules_v10'], 'rules_v1')).toBe('rules_v11')
+  })
+})
+
+describe('assertReleasableVersion', () => {
+  it('数值严格大于已发布最大值时通过', () => {
+    expect(() => assertReleasableVersion('rules_v3', ['rules_v1', 'rules_v2'])).not.toThrow()
+    expect(() => assertReleasableVersion('rules_v2', [])).not.toThrow()
+  })
+  it('重发已发布版本抛错', () => {
+    expect(() => assertReleasableVersion('rules_v2', ['rules_v1', 'rules_v2'])).toThrow('rules_version_already_released')
+  })
+  it('发布不高于最大已发布版本抛错（含相等/更低）', () => {
+    expect(() => assertReleasableVersion('rules_v2', ['rules_v3'])).toThrow('rules_version_not_monotonic')
+  })
+  it('按数值比较而非字符串序（v10 > v9 通过）', () => {
+    expect(() => assertReleasableVersion('rules_v10', ['rules_v9'])).not.toThrow()
+  })
+  it('格式非法抛错', () => {
+    expect(() => assertReleasableVersion('v2', [])).toThrow('rules_version_format_invalid')
   })
 })
 

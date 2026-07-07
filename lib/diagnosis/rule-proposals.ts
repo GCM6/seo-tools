@@ -7,6 +7,21 @@ export function hasValidEvidence(refs: string[] | null | undefined): boolean {
 }
 
 /** 从已发布版本序列 + 当前代码版本推导下一个 rules_v<N>（取最大值 +1）。 */
+// 发布守卫：newVersion 必须格式合法、未发布过、且数值严格大于已发布最大值（单调递增）。
+// 违反即抛（校验器风格），阻止重发已发布版本或发布更低版本。releaseApprovedProposals 入口调用。
+export function assertReleasableVersion(newVersion: string, releasedVersions: string[]): void {
+  const parse = (v: string): number | null => {
+    const m = /^rules_v(\d+)$/.exec(v ?? '')
+    return m ? Number(m[1]) : null
+  }
+  const n = parse(newVersion)
+  if (n === null) throw new Error('rules_version_format_invalid')
+  if (releasedVersions.includes(newVersion)) throw new Error('rules_version_already_released')
+  const nums = releasedVersions.map(parse).filter((x): x is number => x !== null)
+  const max = nums.length ? Math.max(...nums) : 0
+  if (n <= max) throw new Error('rules_version_not_monotonic')
+}
+
 export function deriveNextRulesVersion(publishedVersions: string[], currentVersion: string): string {
   const nums = [...publishedVersions, currentVersion]
     .map((v) => /^rules_v(\d+)$/.exec(v ?? ''))

@@ -67,4 +67,14 @@ describe('releaseApprovedProposals', () => {
 
     expect(await repo.getReleasedVersions()).toEqual(['rules_v2'])
   })
+
+  it('重发已发布版本 / 降版发布被守卫拒绝', async () => {
+    await repo.createRuleChangeProposal({ id: 'rcp_g1', source: 'manual', changeType: 'new_rule', target: 'X01', evidenceRefs: ['https://x'], status: 'pending' })
+    await repo.setProposalStatus('rcp_g1', 'approved')
+    await repo.releaseApprovedProposals('rules_v3')
+
+    // 重发 v3（已发布）→ 抛；发布 v2（≤ 已发布最大 v3）→ 抛。
+    await expect(repo.releaseApprovedProposals('rules_v3')).rejects.toThrow('rules_version_already_released')
+    await expect(repo.releaseApprovedProposals('rules_v2')).rejects.toThrow('rules_version_not_monotonic')
+  })
 })

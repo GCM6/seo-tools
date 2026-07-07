@@ -1,7 +1,7 @@
 import { eq, asc, desc, and, isNull, isNotNull, inArray, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals, providerCredentials, reportShares } from '@/db/schema'
-import { hasValidEvidence, computeArtifactUpdate } from '@/lib/diagnosis/rule-proposals'
+import { hasValidEvidence, computeArtifactUpdate, assertReleasableVersion } from '@/lib/diagnosis/rule-proposals'
 import type { EvidenceType, EvidenceLevel, RunStatus, ClaimType } from '@/lib/types'
 import type { LightCheckExtra } from '@/lib/crawl/light-check'
 import { assertFindingClaimEvidence } from './validators'
@@ -377,29 +377,35 @@ export const getPendingProposalKeys = async (): Promise<Set<string>> => {
 export const releaseApprovedProposals = async (
   newVersion: string,
 ): Promise<{ released: number; artifactsUpdated: number }> => {
+  // 守卫：重发已发布版本 / 发布不高于最大已发布版本即抛（SP-A1）。
+  assertReleasableVersion(newVersion, await getReleasedVersions())
+
   const approved = await db
     .select()
     .from(ruleChangeProposals)
     .where(and(eq(ruleChangeProposals.status, 'approved'), isNull(ruleChangeProposals.releasedInRulesVersion)))
   let artifactsUpdated = 0
   const now = new Date()
-  for (const p of approved) {
-    if (p.changeType === 'update_artifact') {
-      const artifact = await db.query.referenceArtifacts.findFirst({
-        where: eq(referenceArtifacts.artifactKey, p.target),
-      })
-      if (artifact) {
-        const patch = computeArtifactUpdate(
-          { version: artifact.version, payload: artifact.payload },
-          p.diff as { payload?: unknown } | null,
-          now,
-        )
-        await db.update(referenceArtifacts).set(patch).where(eq(referenceArtifacts.artifactKey, p.target))
-        artifactsUpdated++
+  // 原子化：artifact 更新 + proposal 版本标记全成或全不成（本仓库首次用事务，SP-A1）。
+  await db.transaction(async (tx) => {
+    for (const p of approved) {
+      if (p.changeType === 'update_artifact') {
+        const artifact = await tx.query.referenceArtifacts.findFirst({
+          where: eq(referenceArtifacts.artifactKey, p.target),
+        })
+        if (artifact) {
+          const patch = computeArtifactUpdate(
+            { version: artifact.version, payload: artifact.payload },
+            p.diff as { payload?: unknown } | null,
+            now,
+          )
+          await tx.update(referenceArtifacts).set(patch).where(eq(referenceArtifacts.artifactKey, p.target))
+          artifactsUpdated++
+        }
       }
+      await tx.update(ruleChangeProposals).set({ releasedInRulesVersion: newVersion }).where(eq(ruleChangeProposals.id, p.id))
     }
-    await db.update(ruleChangeProposals).set({ releasedInRulesVersion: newVersion }).where(eq(ruleChangeProposals.id, p.id))
-  }
+  })
   return { released: approved.length, artifactsUpdated }
 }
 
