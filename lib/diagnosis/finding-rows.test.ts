@@ -23,3 +23,19 @@ describe('buildFindingRows', () => {
     expect(row.fingerprint).toBe('abc')
   })
 })
+
+const mkHit = (o: Partial<RuleHit>): RuleHit => ({
+  ruleId: 'K01', pillar: 'P3', side: 'seo', severity: 'warning', claimType: 'inferred',
+  title: 't', description: 'd', evidenceRefs: ['ev1'], scope: 'keywords:opportunity', fingerprint: 'fp1', ...o,
+})
+
+describe('buildFindingRows metricTarget', () => {
+  it('K 组 detail.keywords → metricTarget.keywords', () => {
+    const rows = buildFindingRows('run1', [mkHit({ detail: { keywords: [{ text: 'widget' }, { text: 'gadget' }] } })])
+    expect(rows[0].metricTarget).toEqual({ keywords: ['widget', 'gadget'] })
+  })
+  it('无关键词 detail → metricTarget null', () => {
+    const rows = buildFindingRows('run1', [mkHit({ detail: { url: 'https://x' } })])
+    expect(rows[0].metricTarget).toBeNull()
+  })
+})

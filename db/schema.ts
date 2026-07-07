@@ -176,6 +176,8 @@ export const findings = sqliteTable('findings', {
   status: text('status').notNull().default('open'),
   // 跨 run 身份：hash(rule_id + 归一化作用域)，retest delta 按此对齐四态（spec §5）。
   fingerprint: text('fingerprint'),
+  // 回测标量聚合目标（spec §5.1）：GSC 类 finding 存其关键词集，retest 据此精确取 impressions；非关键词类为 null。
+  metricTarget: text('metric_target', { mode: 'json' }).$type<{ keywords: string[] }>(),
   // 误报反馈（喂 §11.2 校准）
   dismissedAt: text('dismissed_at'),
   dismissReason: text('dismiss_reason'),

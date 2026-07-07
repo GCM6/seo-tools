@@ -1,6 +1,7 @@
 import type { ClaimType } from '@/lib/types'
 import { severityToFinding, type RuleHit, type Pillar } from './types'
 import type { ValidationSpec } from './validation-spec'
+import { extractMetricTarget, type MetricTarget } from './retest-metrics'
 
 // findings / recommendations 落库行的共享构造器。generate-findings（首轮）与
 // reevaluate-competitors（竞品确认后增量）两处同源使用，保证两条链落库形状一致。
@@ -49,6 +50,8 @@ export interface FindingRow {
   confidence: string
   evidenceRefs: string[]
   fingerprint: string
+  // 回测标量聚合目标（GSC 类存关键词集，其余 null）。
+  metricTarget: MetricTarget | null
   status: 'open'
 }
 
@@ -68,6 +71,7 @@ export function buildFindingRows(runId: string, hits: RuleHit[]): FindingRow[] {
     evidenceRefs: hit.evidenceRefs,
     // 跨 run 身份锚：retest delta 按 fingerprint 对齐 resolved/persistent/new/regressed。
     fingerprint: hit.fingerprint,
+    metricTarget: extractMetricTarget(hit.detail),
     status: 'open' as const,
   }))
 }
