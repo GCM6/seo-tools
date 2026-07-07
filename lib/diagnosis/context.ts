@@ -174,6 +174,26 @@ function buildThirdParty(evidence: DiagnosisEvidenceRow[]): RuleContext['thirdPa
   }
 }
 
+// GSC 证据 → keywordMetrics（query/page 单维）。context 与回测执行器共用（DRY）。
+export function parseGscKeywordMetrics(evidence: DiagnosisEvidenceRow[]): RuleContext['keywordMetrics'] {
+  const keywordMetrics: RuleContext['keywordMetrics'] = []
+  for (const e of evidence.filter((ev) => ev.type === 'gsc')) {
+    const payload = (e.payload ?? {}) as GscEvidencePayload
+    const rows = Array.isArray(payload.rows) ? payload.rows : []
+    if (payload.dimension === 'query' || payload.dimension === 'page') {
+      for (const r of rows) {
+        const key = r.keys?.[0]
+        if (!key) continue
+        keywordMetrics.push({
+          evidenceId: e.id, dimension: payload.dimension, keyText: key,
+          clicks: num(r.clicks), impressions: num(r.impressions), ctr: num(r.ctr), position: num(r.position),
+        })
+      }
+    }
+  }
+  return keywordMetrics
+}
+
 export function buildRuleContext(input: {
   project: RuleContext['project']
   evidence: DiagnosisEvidenceRow[]
@@ -244,8 +264,8 @@ export function buildRuleContext(input: {
     .map((e) => ({ id: e.id, source: e.source, sitePageId: e.sitePageId, result: normalizePsi(e.payload) }))
     .filter((c): c is { id: string; source: string; sitePageId: string | null; result: PsiResult } => c.result !== null)
 
-  // —— GSC 关键词（K 组）——：按 payload.dimension 归入 query/page 单维或 queryPage 交叉。
-  const keywordMetrics: RuleContext['keywordMetrics'] = []
+  // —— GSC 关键词（K 组）——：query/page 单维复用共享解析；queryPage 交叉单列。
+  const keywordMetrics = parseGscKeywordMetrics(evidence)
   const queryPageMetrics: RuleContext['queryPageMetrics'] = []
   for (const e of evidence.filter((ev) => ev.type === 'gsc')) {
     const payload = (e.payload ?? {}) as GscEvidencePayload
@@ -258,15 +278,6 @@ export function buildRuleContext(input: {
         queryPageMetrics.push({
           evidenceId: e.id, page, query,
           clicks: num(r.clicks), impressions: num(r.impressions), position: num(r.position),
-        })
-      }
-    } else if (payload.dimension === 'query' || payload.dimension === 'page') {
-      for (const r of rows) {
-        const key = r.keys?.[0]
-        if (!key) continue
-        keywordMetrics.push({
-          evidenceId: e.id, dimension: payload.dimension, keyText: key,
-          clicks: num(r.clicks), impressions: num(r.impressions), ctr: num(r.ctr), position: num(r.position),
         })
       }
     }

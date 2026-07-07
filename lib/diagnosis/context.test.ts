@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildRuleContext } from './context'
+import { buildRuleContext, parseGscKeywordMetrics } from './context'
 import type { DiagnosisEvidenceRow, RuleContext } from './types'
 
 const project: RuleContext['project'] = { domain: 'example.com', industry: '', market: 'US', language: 'en', competitors: [] }
@@ -63,5 +63,27 @@ describe('buildRuleContext — GSC parsing', () => {
     expect(ctx.psiChecks).toEqual([])
     expect(ctx.keywordMetrics).toEqual([])
     expect(ctx.queryPageMetrics).toEqual([])
+  })
+})
+
+describe('parseGscKeywordMetrics', () => {
+  const ev = (id: string, dimension: string, rows: unknown[]) => ({
+    id, type: 'gsc' as const, claimLevel: 'L4' as const, source: 'gsc', sitePageId: null, rawText: '',
+    payload: { dimension, rows },
+  })
+  it('解析 query 维行（num 归一）', () => {
+    const out = parseGscKeywordMetrics([
+      ev('g1', 'query', [{ keys: ['widget'], clicks: 2, impressions: 100, ctr: 0.02, position: 5.4 }]),
+    ])
+    expect(out).toEqual([
+      { evidenceId: 'g1', dimension: 'query', keyText: 'widget', clicks: 2, impressions: 100, ctr: 0.02, position: 5.4 },
+    ])
+  })
+  it('跳过 queryPage 维与无 key 行', () => {
+    const out = parseGscKeywordMetrics([
+      ev('g2', 'queryPage', [{ keys: ['p', 'q'], impressions: 5 }]),
+      ev('g3', 'query', [{ impressions: 9 }]),
+    ])
+    expect(out).toEqual([])
   })
 })
