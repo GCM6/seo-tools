@@ -139,8 +139,9 @@ export function NewAnalysisForm({
 
   function connectGsc() {
     if (!projectId) return
-    // 授权后跳回向导第 2 步闭环（callback 会附 gsc=connected）。
-    const returnTo = `/${locale}?step=connect`
+    // 授权后跳回 /new 向导第 2 步闭环（多项目：带 projectId 以显式续起在建项目；
+    // callback 会附 gsc=connected）。
+    const returnTo = `/${locale}/new?step=connect&projectId=${encodeURIComponent(projectId)}`
     window.location.href = `/api/gsc/auth?projectId=${encodeURIComponent(projectId)}&returnTo=${encodeURIComponent(returnTo)}`
   }
 

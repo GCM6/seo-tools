@@ -2286,3 +2286,52 @@ button {
   .share-page { padding: 0 !important; max-width: none !important; }
   .share-footer { margin-top: 24px; }
 }
+
+/* ---- SP-G1b 多项目列表 / 项目详情 ---- */
+.projects-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--sp-base) 0;
+}
+.projects-domain {
+  color: var(--ds-primary);
+  text-decoration: none;
+}
+.projects-domain:hover {
+  text-decoration: underline;
+}
+/* 项目详情页头：域名 + 「新建分析」右对齐。 */
+.sec-h > a.run-btn {
+  margin-left: auto;
+}
+.gsc-card {
+  margin-top: var(--sp-sm);
+}
+.gsc-card-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-sm);
+  margin-bottom: var(--sp-sm);
+}
+.gsc-card-title {
+  font-weight: 600;
+  color: var(--ds-ink);
+}
+.gsc-state {
+  font-size: 13px;
+  color: var(--ds-muted);
+}
+.gsc-state.ok {
+  color: var(--good);
+}
+.gsc-site {
+  margin-top: var(--sp-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  align-items: flex-start;
+}
+.gsc-msg {
+  color: var(--ds-primary);
+}

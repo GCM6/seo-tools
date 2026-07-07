@@ -5,6 +5,7 @@ import { hasValidEvidence, computeArtifactUpdate } from '@/lib/diagnosis/rule-pr
 import type { EvidenceType, EvidenceLevel, RunStatus, ClaimType } from '@/lib/types'
 import type { LightCheckExtra } from '@/lib/crawl/light-check'
 import { assertFindingClaimEvidence } from './validators'
+import { pickLatestRun } from '@/lib/projects/summary'
 import { encryptSecret } from '@/lib/crypto/secrets'
 import { encryptGscToken } from '@/lib/gsc/token-crypto'
 import { generateShareToken } from '@/lib/share/token'
@@ -240,10 +241,28 @@ export const createKeywordGaps = (rows: (typeof keywordGaps.$inferInsert)[]) =>
 export const getRunKeywordGaps = (runId: string) =>
   db.select().from(keywordGaps).where(eq(keywordGaps.runId, runId))
 
-// 单项目 V0：取唯一/首个项目（按创建时间）。无项目返回 null。
-export const getPrimaryProject = async () => {
-  const rows = await db.select().from(projects).orderBy(asc(projects.createdAt)).limit(1)
-  return rows[0] ?? null
+// 多项目列表 + 每项目摘要（SP-G1b）：域名 / 市场 / 最近 run（状态·类型·发现数）/ 下次回测。
+// V0 项目数个位数，逐项目查最近 run 与 finding 数可接受（不提前批量化，V1 再优化 N+1）。
+export const listProjectsWithSummary = async () => {
+  const projectRows = await db.select().from(projects).orderBy(desc(projects.createdAt))
+  return Promise.all(
+    projectRows.map(async (p) => {
+      const runRows = await db.select().from(runs).where(eq(runs.projectId, p.id))
+      const latest = pickLatestRun(runRows)
+      const findingCount = latest
+        ? (await db.select({ id: findings.id }).from(findings).where(eq(findings.runId, latest.id))).length
+        : 0
+      return {
+        id: p.id,
+        domain: p.domain,
+        market: p.market,
+        nextRetestDueAt: p.nextRetestDueAt,
+        latestRun: latest
+          ? { id: latest.id, runType: latest.runType, status: latest.status, startedAt: latest.startedAt, findingCount }
+          : null,
+      }
+    }),
+  )
 }
 
 // GSC OAuth 令牌存取（Phase B；SP-G1f：refresh_token 密文存储）。

@@ -76,7 +76,7 @@ export default async function RunDiagnosisPage({
   const sources = dataSourceStatus()
 
   // 数据源健康度：顶栏 pill 常驻 + 采集完成后的覆盖率横幅共用同一次汇总。（spec §SP-G2b-5/6）
-  const dataHealth = summarizeDataSourceHealth(await loadDataSourceStatuses())
+  const dataHealth = summarizeDataSourceHealth(await loadDataSourceStatuses(run?.projectId))
   const runCollected =
     run != null && (['collected', 'diagnosing', 'reviewing', 'output'] as RunStatus[]).includes(run.status as RunStatus)
   const showCoverage = runCollected && dataHealth.up < dataHealth.total

@@ -4,6 +4,7 @@
     "tagline": "SEO · GEO Diagnostics",
     "targetLabel": "Analysis target",
     "settingsLink": "Settings",
+    "projectsLink": "Projects",
     "steps": {
       "new": "New analysis",
       "diagnose": "Diagnose",
@@ -41,8 +42,7 @@
   },
   "settings": {
     "title": "Settings",
-    "subtitle": "Data-source connection status and GSC authorization (single-user, single-project)",
-    "noProject": "No project yet — create an analysis on the home page first.",
+    "subtitle": "Global data sources and API keys (BYOK). GSC connection is per-project on the project detail page.",
     "matrixTitle": "Data sources",
     "col": { "source": "Source", "status": "Status", "detail": "Detail" },
     "source": {
@@ -72,13 +72,53 @@
     "keySaved": "Saved ✓",
     "keyCleared": "Cleared",
     "credSource": { "db": "Set · DB", "env": "Set · env", "none": "Not set" },
-    "provider": { "label": "Service", "openai": "OpenAI", "perplexity": "Perplexity", "gemini": "Gemini", "deepseek": "DeepSeek", "googleCse": "Google CSE", "dataforseo": "DataForSEO", "cloudflare": "Cloudflare" },
-    "gscTitle": "Connect Google Search Console",
+    "provider": { "label": "Service", "openai": "OpenAI", "perplexity": "Perplexity", "gemini": "Gemini", "deepseek": "DeepSeek", "googleCse": "Google CSE", "dataforseo": "DataForSEO", "cloudflare": "Cloudflare" }
+  },
+  "projects": {
+    "title": "Projects",
+    "subtitle": "Manage each client site you own and revisit past diagnostic reports.",
+    "newAnalysis": "New analysis",
+    "empty": "No projects yet — start a new analysis.",
+    "colDomain": "Domain",
+    "colLatest": "Latest run",
+    "colFindings": "Findings",
+    "colRetest": "Next retest",
+    "noRun": "Not yet diagnosed",
+    "retestNone": "—",
+    "findingsUnit": "{count}",
+    "runType": {
+      "baseline": "Baseline",
+      "retest": "Retest"
+    },
+    "status": {
+      "draft": "Draft",
+      "collecting": "Collecting",
+      "collected": "Collected",
+      "diagnosing": "Diagnosing",
+      "reviewing": "In review",
+      "output": "Done",
+      "failed": "Failed"
+    }
+  },
+  "projectDetail": {
+    "runHistoryTitle": "Run history",
+    "colTime": "Time",
+    "colType": "Type",
+    "colStatus": "Status",
+    "colFindings": "Findings",
+    "colAction": "Action",
+    "viewRun": "View",
+    "viewReport": "Report",
+    "noRuns": "This project has no runs yet.",
+    "newRun": "New analysis",
+    "retestDue": "Next retest due: {date}",
+    "gscTitle": "Google Search Console",
+    "gscConnected": "Connected ✓",
+    "gscNotConnected": "Not connected — without GSC there's no L4 measured clicks/impressions/position.",
     "connectGsc": "Connect GSC",
     "reconnectGsc": "Reconnect GSC",
-    "connectedFlash": "GSC connected. Set the site URL below to enable keyword collection.",
-    "siteUrlLabel": "GSC site URL",
-    "siteUrlHint": "Enter sc-domain:example.com or the full https:// site URL (must match the property in GSC).",
+    "siteUrlLabel": "Site URL",
+    "siteUrlHint": "Like sc-domain:example.com or a full https:// URL; must match the property in GSC.",
     "saveSiteUrl": "Save site URL",
     "siteSaved": "Site URL saved.",
     "siteError": "Save failed, please retry."

@@ -1,53 +1,15 @@
+import { redirect } from 'next/navigation'
 import { setRequestLocale } from 'next-intl/server'
-import { Shell } from '@/components/Shell'
-import { NewAnalysisForm } from '@/components/NewAnalysisForm'
-import { getPrimaryProject, getProjectSettings } from '@/lib/repositories'
-import { loadDataSourceStatuses } from '@/lib/settings/load-statuses'
+import { listProjectsWithSummary } from '@/lib/repositories'
 
-// Screen 1 — 新建分析向导。Server Component：await params/searchParams（Next 16），
-// 载入（V0 单）项目与数据源状态供向导预填/三态，把交互交给 client 向导。
-// GSC 授权全页往返后回到 `/?step=connect&gsc=connected`：据此从第 2 步续起。
-export default async function NewAnalysisPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ locale: string }>
-  searchParams: Promise<{ step?: string; gsc?: string }>
-}) {
+// 依据实时项目集重定向：必须动态渲染，否则分诊决策会被固化在 build 时。
+export const dynamic = 'force-dynamic'
+
+// 首页薄壳（SP-G1b）：有项目 → 项目列表；无项目 → 新建向导。
+// 列表与向导各自单一真源在 /projects 与 /new，首页只做分诊重定向。
+export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params
-  const { step, gsc } = await searchParams
   setRequestLocale(locale)
-
-  const project = await getPrimaryProject()
-  const [settings, statuses] = await Promise.all([
-    project ? getProjectSettings(project.id) : Promise.resolve(null),
-    loadDataSourceStatuses(),
-  ])
-  const aiProbeConfigured = statuses.find((s) => s.key === 'aiProbe')?.configured ?? false
-  const gscConnected = settings?.gscConnected ?? false
-  // 从 GSC 授权返回（step=connect 或 gsc=connected）时从第 2 步续起，否则第 1 步。
-  const initialStep = step === 'connect' || gsc === 'connected' ? 2 : 1
-
-  return (
-    <Shell active={1} locale={locale}>
-      <NewAnalysisForm
-        locale={locale}
-        project={
-          project
-            ? {
-                id: project.id,
-                domain: project.domain,
-                industry: project.industry ?? '',
-                market: project.market ?? '',
-                language: project.language ?? '',
-                competitors: project.competitors ?? [],
-              }
-            : null
-        }
-        gscConnected={gscConnected}
-        aiProbeConfigured={aiProbeConfigured}
-        initialStep={initialStep}
-      />
-    </Shell>
-  )
+  const projects = await listProjectsWithSummary()
+  redirect(projects.length > 0 ? `/${locale}/projects` : `/${locale}/new`)
 }

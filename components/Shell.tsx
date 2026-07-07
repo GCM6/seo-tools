@@ -52,6 +52,7 @@ export async function Shell({
               locale={locale}
             />
           ) : null}
+          <Link href={`/${locale}/projects`} className="settings-link">{t('projectsLink')}</Link>
           <Link href={`/${locale}/settings`} className="settings-link">{t('settingsLink')}</Link>
           <LocaleSwitch />
         </div>
