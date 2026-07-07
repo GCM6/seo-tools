@@ -6,6 +6,7 @@ import type { EvidenceType, EvidenceLevel, RunStatus, ClaimType } from '@/lib/ty
 import type { LightCheckExtra } from '@/lib/crawl/light-check'
 import { assertFindingClaimEvidence } from './validators'
 import { encryptSecret } from '@/lib/crypto/secrets'
+import { encryptGscToken } from '@/lib/gsc/token-crypto'
 
 export const getRun = (id: string) => db.query.runs.findFirst({ where: eq(runs.id, id) })
 export const getProject = (id: string) => db.query.projects.findFirst({ where: eq(projects.id, id) })
@@ -243,13 +244,36 @@ export const getPrimaryProject = async () => {
   return rows[0] ?? null
 }
 
-// GSC OAuth 令牌存取（Phase B）
-export const setGscConnection = (projectId: string, data: { gscConnected: boolean; gscRefreshToken?: string | null; gscSiteUrl?: string | null }) =>
-  db.update(projectSettings).set(data).where(eq(projectSettings.projectId, projectId))
+// GSC OAuth 令牌存取（Phase B；SP-G1f：refresh_token 密文存储）。
+export const setGscConnection = (
+  projectId: string,
+  data: { gscConnected: boolean; gscRefreshToken?: string | null; gscSiteUrl?: string | null },
+) => {
+  // token 提供时加密；省略则不动该列（部分更新语义不变）；显式 null 清空保持 null。
+  const patch: typeof data = { ...data }
+  if (typeof data.gscRefreshToken === 'string') patch.gscRefreshToken = encryptGscToken(data.gscRefreshToken)
+  return db.update(projectSettings).set(patch).where(eq(projectSettings.projectId, projectId))
+}
 
 // GSC 站点 URL 单独写（连接后设，闭合采集器 gscConnected+refreshToken+siteUrl 条件）。
 export const setGscSiteUrl = (projectId: string, siteUrl: string) =>
   db.update(projectSettings).set({ gscSiteUrl: siteUrl }).where(eq(projectSettings.projectId, projectId))
+
+// 存量明文 refresh_token 迁移到密文（幂等：仅转非 v1. 前缀行）。部署后一次性跑（db:migrate-gsc）。
+export const migrateGscRefreshTokensToEncrypted = async (): Promise<{ migrated: number }> => {
+  const rows = await db
+    .select({ projectId: projectSettings.projectId, token: projectSettings.gscRefreshToken })
+    .from(projectSettings)
+    .where(isNotNull(projectSettings.gscRefreshToken))
+  let migrated = 0
+  for (const r of rows) {
+    if (r.token && !r.token.startsWith('v1.')) {
+      await db.update(projectSettings).set({ gscRefreshToken: encryptGscToken(r.token) }).where(eq(projectSettings.projectId, r.projectId))
+      migrated++
+    }
+  }
+  return { migrated }
+}
 
 export const getSiteAuditEvidence = async (runId: string) => {
   const rows = await db.select().from(evidenceArtifacts)

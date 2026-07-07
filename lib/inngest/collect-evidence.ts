@@ -37,6 +37,7 @@ import { collectProbesStage } from '@/lib/probes/run-probes'
 import { buildProbeProviders } from '@/lib/probes/providers'
 import { resolveCredentials } from '@/lib/credentials/store'
 import { PROBE_CREDENTIAL_KEYS } from '@/lib/credentials/keys'
+import { readGscToken } from '@/lib/gsc/token-crypto'
 import {
   createEvidenceArtifact,
   markRunStatus,
@@ -418,9 +419,9 @@ export async function collectEvidenceHandler(
 
   // —— GSC 关键词采集（K 组）——：已连接 OAuth 的项目拉 query 维 + page×query 交叉维，
   // 落 gsc 证据（供规则）+ keyword_metrics（供关键词现状 tab 与回测）。未连接则整块跳过，K 组 no-op。
-  if (settings?.gscConnected && settings.gscRefreshToken && settings.gscSiteUrl) {
+  const refreshToken = readGscToken(settings?.gscRefreshToken)
+  if (settings?.gscConnected && refreshToken && settings.gscSiteUrl) {
     const siteUrl = settings.gscSiteUrl
-    const refreshToken = settings.gscRefreshToken
     try {
       const gsc = await step.run('gsc-query', async () => {
         const { accessToken } = await deps.refreshGscAccessToken(refreshToken)

@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:push": "drizzle-kit push",
-    "db:seed": "tsx db/seed.ts"
+    "db:seed": "tsx db/seed.ts",
+    "db:migrate-gsc": "tsx db/migrate-gsc-tokens.ts"
   },
   "dependencies": {
     "@inngest/realtime": "^0.4.6",
