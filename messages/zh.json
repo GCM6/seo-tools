@@ -181,6 +181,15 @@
         "finish": "整理结果",
         "probe": "AI 探针"
       },
+      "phase": { "discover": "发现页面", "light_check": "轻量抓取", "cluster": "聚类归组", "deep_check": "深度检测", "probes": "AI 探针", "diagnose": "生成诊断" },
+      "phaseCount": "{checked}/{total}",
+      "findingsCount": "已生成 {n} 条发现",
+      "completedTitle": "诊断证据已就绪",
+      "viewResults": "查看诊断结果",
+      "retry": "重试采集",
+      "retrying": "正在重试…",
+      "retryFailed": "重试失败，请稍后再试。",
+      "streamLabel": "证据流",
       "evidence": {
         "serp_snapshot": "已保存 Google site: 可见性证据",
         "page_fetch": "已保存页面抓取证据",
@@ -188,7 +197,14 @@
         "render_check": "已保存渲染对比证据",
         "ai_answer": "已保存 AI 探针回答证据",
         "sitemap": "已保存站点地图证据",
-        "site_audit": "已保存全站审计证据"
+        "site_audit": "已保存全站审计证据",
+        "psi": "已保存 PageSpeed 证据",
+        "gsc": "已保存 Search Console 证据",
+        "dataforseo_serp": "已保存 SERP 排名证据",
+        "dataforseo_labs": "已保存关键词数据证据",
+        "dataforseo_backlinks": "已保存外链证据",
+        "ua_probe": "已保存 UA 探测证据",
+        "third_party_presence": "已保存第三方存在性证据"
       },
       "status": {
         "draft": "尚未开始",
