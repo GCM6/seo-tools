@@ -2,12 +2,12 @@
 
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { useActionState, useState } from 'react'
+import { useState } from 'react'
+import { guessMarketLanguage } from '@/lib/analysis/locale-guess'
+import { estimateRun } from '@/lib/analysis/estimate'
 
-// Probe engines are proper nouns (brand names), not translatable copy.
-// ChatGPT / Perplexity / Gemini / DeepSeek are on by default; Google AI
-// Overviews off — mirrors the prototype STEP1 chip state (DeepSeek added
-// for the zh market; its open API has no web search, evidence records that).
+// 探测引擎是专有名词（品牌名），不翻译。ChatGPT/Perplexity/Gemini/DeepSeek 默认开，
+// Google AI Overviews 默认关（沿用原型 STEP1）。
 const ENGINES = ['ChatGPT', 'Perplexity', 'Gemini', 'DeepSeek', 'Google AI Overviews'] as const
 const DEFAULT_ENGINES: Record<string, boolean> = {
   ChatGPT: true,
@@ -16,23 +16,75 @@ const DEFAULT_ENGINES: Record<string, boolean> = {
   DeepSeek: true,
   'Google AI Overviews': false,
 }
+// V0 固定 20 prompts × n=5（§8）——预估用。
+const PROMPT_COUNT = 20
+const PROBE_N = 5
 
-// Screen 1 new-analysis form. Client leaf: chip selection + GSC toggle are
-// controlled state; submit creates a real project + run and navigates to it.
-export function NewAnalysisForm({ locale }: { locale: string }) {
+export interface WizardProject {
+  id: string
+  domain: string
+  industry: string
+  market: string
+  language: string
+  competitors: string[]
+}
+
+// Screen 1 新建分析 3 步向导（spec §SP-G2a）。client leaf：跨步共享表单 state 由本组件编排。
+// 第 1 步 upsert 单项目 → 第 2 步连数据（GSC 授权全页往返回到本步）→ 第 3 步预估并建 run。
+export function NewAnalysisForm({
+  locale,
+  project = null,
+  gscConnected = false,
+  aiProbeConfigured = false,
+  initialStep = 1,
+}: {
+  locale: string
+  project?: WizardProject | null
+  gscConnected?: boolean
+  aiProbeConfigured?: boolean
+  initialStep?: 1 | 2 | 3
+}) {
   const t = useTranslations('screen1')
   const router = useRouter()
   const industryOptions = t.raw('industryOptions') as string[]
   const marketOptions = t.raw('marketOptions') as string[]
+
+  const [step, setStep] = useState<1 | 2 | 3>(initialStep)
+  const [projectId, setProjectId] = useState<string | null>(project?.id ?? null)
+  const [domain, setDomain] = useState(project?.domain ?? '')
+  const [industryIndex, setIndustryIndex] = useState(() => {
+    const i = industryOptions.indexOf(project?.industry ?? '')
+    return i >= 0 ? i : 0
+  })
+  const [marketIndex, setMarketIndex] = useState(() => {
+    const i = marketOptions.indexOf(project?.market ?? '')
+    return i >= 0 ? i : 0
+  })
+  const [competitors, setCompetitors] = useState((project?.competitors ?? []).join(', '))
   const [engines, setEngines] = useState<Record<string, boolean>>(DEFAULT_ENGINES)
-  const [gsc, setGsc] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
+
   const selectedEngines = ENGINES.filter((name) => engines[name])
+  const estimate = estimateRun({
+    engineCount: selectedEngines.length,
+    promptCount: PROMPT_COUNT,
+    n: PROBE_N,
+    gsc: gscConnected,
+    render: true,
+  })
+
+  function onDomainChange(v: string) {
+    setDomain(v)
+    // 输入域名即智能预填市场（ccTLD 启发）；用户随后仍可手动改。
+    if (v.trim()) setMarketIndex(guessMarketLanguage(v).marketIndex)
+  }
 
   function toggleEngine(name: string) {
     setEngines((prev) => ({ ...prev, [name]: !prev[name] }))
   }
 
-  // 把后端错误码映射为可行动的用户文案；未知码回退到笼统重试提示。
+  // 后端错误码 → 可行动的用户文案；未知码回退笼统重试提示。
   async function toErrorMessage(res: Response): Promise<string> {
     const body = (await res.json().catch(() => ({}))) as { error?: string }
     switch (body.error) {
@@ -46,147 +98,291 @@ export function NewAnalysisForm({ locale }: { locale: string }) {
     }
   }
 
-  // React 19 Actions：提交态用 useActionState 的 isPending，不手搓 loading 布尔。
-  // action 返回错误文案（或 null）作为下一个 state。
-  const [error, submitAction, pending] = useActionState<string | null, FormData>(
-    async (_prev, form) => {
-      const domain = String(form.get('url') ?? '')
-      const industry = String(form.get('industry') ?? '')
-      const market = String(form.get('market') ?? '')
-      const competitors = String(form.get('competitors') ?? '')
-      try {
-        const projectRes = await fetch('/api/projects', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            domain,
-            industry,
-            market,
-            competitors,
-            language: locale,
-            gscConnected: gsc,
-            defaultModels: selectedEngines,
-          }),
-        })
-        if (!projectRes.ok) return await toErrorMessage(projectRes)
-        const project = await projectRes.json()
+  const jsonHeaders = { 'content-type': 'application/json' }
 
-        const runRes = await fetch('/api/runs', {
+  // 复用单项目：无则 POST 建，有则 PATCH 更新。返回 projectId 或 null（失败已置 error）。
+  async function upsertProject(): Promise<string | null> {
+    const shared = {
+      domain,
+      industry: industryOptions[industryIndex],
+      market: marketOptions[marketIndex],
+      language: guessMarketLanguage(domain).language,
+      competitors,
+    }
+    const res = projectId
+      ? await fetch(`/api/projects/${projectId}`, { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify(shared) })
+      : await fetch('/api/projects', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ projectId: project.id, runType: 'baseline' }),
+          headers: jsonHeaders,
+          body: JSON.stringify({ ...shared, gscConnected, defaultModels: selectedEngines }),
         })
-        if (!runRes.ok) return await toErrorMessage(runRes)
-        const run = await runRes.json()
+    if (!res.ok) {
+      setError(await toErrorMessage(res))
+      return null
+    }
+    const p = (await res.json()) as { id: string }
+    setProjectId(p.id)
+    return p.id
+  }
 
-        router.push(`/${locale}/runs/${run.id}`)
-        return null
-      } catch {
-        return t('submitError')
-      }
-    },
-    null,
-  )
+  async function goToConnect() {
+    if (!domain.trim()) {
+      setError(t('errorInvalidDomain'))
+      return
+    }
+    setError(null)
+    setPending(true)
+    const id = await upsertProject()
+    setPending(false)
+    if (id) setStep(2)
+  }
+
+  function connectGsc() {
+    if (!projectId) return
+    // 授权后跳回向导第 2 步闭环（callback 会附 gsc=connected）。
+    const returnTo = `/${locale}?step=connect`
+    window.location.href = `/api/gsc/auth?projectId=${encodeURIComponent(projectId)}&returnTo=${encodeURIComponent(returnTo)}`
+  }
+
+  async function start() {
+    setError(null)
+    setPending(true)
+    const id = projectId ?? (await upsertProject())
+    if (!id) {
+      setPending(false)
+      return
+    }
+    // 建 run 前把最终引擎选择同步进 settings（run-probes 据 defaultModels 选 provider）。
+    await fetch(`/api/projects/${id}`, {
+      method: 'PATCH',
+      headers: jsonHeaders,
+      body: JSON.stringify({ defaultModels: selectedEngines }),
+    })
+    const runRes = await fetch('/api/runs', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ projectId: id, runType: 'baseline' }),
+    })
+    setPending(false)
+    if (!runRes.ok) {
+      setError(await toErrorMessage(runRes))
+      return
+    }
+    const run = (await runRes.json()) as { id: string }
+    router.push(`/${locale}/runs/${run.id}`)
+  }
+
+  const steps: [1 | 2 | 3, string][] = [
+    [1, t('stepSite')],
+    [2, t('stepConnect')],
+    [3, t('stepConfirm')],
+  ]
+  const dataSummary = gscConnected ? t('briefGscOn') : t('briefGscOff')
 
   return (
     <section className="screen show">
       <p className="intro">{t('intro')}</p>
 
-      <form className="analysis-layout" action={submitAction}>
-        <div className="card analysis-form">
-          <div className="field">
-            <label>{t('urlLabel')}</label>
-            <input
-              name="url"
-              className="url-in"
-              placeholder={t('urlPlaceholder')}
-              aria-label={t('urlLabel')}
-            />
-          </div>
+      <ol className="wizard-steps" aria-label={t('stepConfirm')}>
+        {steps.map(([n, label]) => (
+          <li key={n} className={`wizard-step${step === n ? ' current' : step > n ? ' done' : ''}`}>
+            <span className="ws-n">{n}</span>
+            <span className="ws-label">{label}</span>
+          </li>
+        ))}
+      </ol>
 
-          <div className="row2">
+      <div className="card wizard-body">
+        {step === 1 && (
+          <div className="wizard-panel">
+            <h2 className="wizard-h">{t('stepSite')}</h2>
+            <p className="wizard-sub">{t('step1Sub')}</p>
+
             <div className="field">
-              <label>{t('industryLabel')}</label>
-              <select name="industry" className="sel" aria-label={t('industryLabel')}>
-                {industryOptions.map((opt) => (
-                  <option key={opt}>{opt}</option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label>{t('marketLabel')}</label>
-              <select name="market" className="sel" aria-label={t('marketLabel')}>
-                {marketOptions.map((opt) => (
-                  <option key={opt}>{opt}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="field">
-            <label>{t('competitorsLabel')}</label>
-            <input name="competitors" className="txt" placeholder={t('competitorsPlaceholder')} />
-          </div>
-
-          <div className="field">
-            <label>{t('enginesLabel')}</label>
-            <div className="chips">
-              {ENGINES.map((name) => (
-                <label key={name} className={`chip${engines[name] ? ' on' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={engines[name]}
-                    onChange={() => toggleEngine(name)}
-                  />
-                  {name}
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="field">
-            <label>{t('dataSourceLabel')}</label>
-            <div className="toggle-row">
+              <label htmlFor="wiz-url">{t('urlLabel')}</label>
               <input
-                type="checkbox"
-                checked={gsc}
-                onChange={() => setGsc((v) => !v)}
-                aria-label={t('gscTitle')}
-                style={{ accentColor: 'var(--measured)', width: 17, height: 17 }}
+                id="wiz-url"
+                className="url-in"
+                placeholder={t('urlPlaceholder')}
+                aria-label={t('urlLabel')}
+                value={domain}
+                onChange={(e) => onDomainChange(e.target.value)}
               />
-              <div>
-                <div className="t">{t('gscTitle')}</div>
-                <div className="d">{t('gscDesc')}</div>
+            </div>
+
+            <div className="row2">
+              <div className="field">
+                <label htmlFor="wiz-industry">{t('industryLabel')}</label>
+                <select
+                  id="wiz-industry"
+                  className="sel"
+                  aria-label={t('industryLabel')}
+                  value={industryOptions[industryIndex]}
+                  onChange={(e) => setIndustryIndex(Math.max(0, industryOptions.indexOf(e.target.value)))}
+                >
+                  {industryOptions.map((opt) => (
+                    <option key={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="wiz-market">{t('marketLabel')}</label>
+                <select
+                  id="wiz-market"
+                  className="sel"
+                  aria-label={t('marketLabel')}
+                  value={marketOptions[marketIndex]}
+                  onChange={(e) => setMarketIndex(Math.max(0, marketOptions.indexOf(e.target.value)))}
+                >
+                  {marketOptions.map((opt) => (
+                    <option key={opt}>{opt}</option>
+                  ))}
+                </select>
               </div>
             </div>
-          </div>
 
-          <button type="submit" className="run-btn" disabled={pending}>
-            {pending ? t('starting') : t('run')}
-          </button>
-          {error && <p className="note" style={{ color: 'var(--ds-error, red)' }}>{error}</p>}
-        </div>
+            <div className="field">
+              <label htmlFor="wiz-competitors">{t('competitorsOptional')}</label>
+              <input
+                id="wiz-competitors"
+                className="txt"
+                placeholder={t('competitorsPlaceholder')}
+                value={competitors}
+                onChange={(e) => setCompetitors(e.target.value)}
+              />
+              <p className="wizard-hint">{t('competitorsOptionalHint')}</p>
+            </div>
 
-        <aside className="card analysis-brief">
-          <div className="brief-label">{t('briefLabel')}</div>
-          <h2>{t('briefTitle')}</h2>
-          <div className="brief-list">
-            <div>
-              <span>{t('briefEvidence')}</span>
-              <b>{gsc ? t('briefGscOn') : t('briefGscOff')}</b>
-            </div>
-            <div>
-              <span>{t('briefEngines')}</span>
-              <b>{selectedEngines.length ? selectedEngines.join(' · ') : t('briefNoEngines')}</b>
-            </div>
-            <div>
-              <span>{t('briefFlow')}</span>
-              <b>{t('briefFlowValue')}</b>
+            <div className="wizard-nav">
+              <button type="button" className="run-btn" onClick={goToConnect} disabled={pending}>
+                {pending ? t('starting') : t('next')}
+              </button>
             </div>
           </div>
-          <div className="brief-note">{t('briefNote')}</div>
-        </aside>
-      </form>
+        )}
+
+        {step === 2 && (
+          <div className="wizard-panel">
+            <h2 className="wizard-h">{t('stepConnect')}</h2>
+            <p className="wizard-sub">{t('step2Sub')}</p>
+
+            <div className={`connect-card${gscConnected ? ' connected' : ''}`}>
+              <div className="cc-body">
+                <div className="cc-title">{t('gscTitle')}</div>
+                <div className="cc-desc">{gscConnected ? t('gscDesc') : t('gscImpact')}</div>
+              </div>
+              {gscConnected ? (
+                <span className="cc-state ok">{t('stateConnected')}</span>
+              ) : (
+                <button type="button" className="cc-action" onClick={connectGsc}>
+                  {t('gscConnectCta')}
+                </button>
+              )}
+            </div>
+
+            <div className={`connect-card${aiProbeConfigured ? ' connected' : ''}`}>
+              <div className="cc-body">
+                <div className="cc-title">{t('aiProbeTitle')}</div>
+                <div className="cc-desc">{aiProbeConfigured ? t('aiProbeDesc') : t('aiProbeImpact')}</div>
+              </div>
+              {aiProbeConfigured ? (
+                <span className="cc-state ok">{t('stateConfigured')}</span>
+              ) : (
+                <a className="cc-action" href={`/${locale}/settings#source-aiProbe`}>
+                  {t('aiProbeCta')}
+                </a>
+              )}
+            </div>
+
+            <div className="field">
+              <label>{t('enginesLabel')}</label>
+              <div className="chips">
+                {ENGINES.map((name) => (
+                  <label key={name} className={`chip${engines[name] ? ' on' : ''}`}>
+                    <input type="checkbox" checked={engines[name]} onChange={() => toggleEngine(name)} />
+                    {name}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <p className="wizard-hint">{t('skipHint')}</p>
+
+            <div className="wizard-nav">
+              <button type="button" className="ghost-btn" onClick={() => setStep(1)}>
+                {t('back')}
+              </button>
+              <button type="button" className="run-btn" onClick={() => setStep(3)}>
+                {t('next')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="wizard-panel">
+            <h2 className="wizard-h">{t('stepConfirm')}</h2>
+            <p className="wizard-sub">{t('step3Sub')}</p>
+
+            <dl className="scope-grid">
+              <div>
+                <dt>{t('scopeDomain')}</dt>
+                <dd className="mono">{domain || '—'}</dd>
+              </div>
+              <div>
+                <dt>{t('scopeIndustry')}</dt>
+                <dd>{industryOptions[industryIndex]}</dd>
+              </div>
+              <div>
+                <dt>{t('scopeMarket')}</dt>
+                <dd>{marketOptions[marketIndex]}</dd>
+              </div>
+              <div>
+                <dt>{t('scopeEngines')}</dt>
+                <dd>{selectedEngines.length ? selectedEngines.join(' · ') : t('briefNoEngines')}</dd>
+              </div>
+              <div>
+                <dt>{t('scopeData')}</dt>
+                <dd>{dataSummary}</dd>
+              </div>
+            </dl>
+
+            <div className="estimate-box">
+              <div className="estimate-title">{t('estimateTitle')}</div>
+              <div className="estimate-grid">
+                <div>
+                  <span>{t('estimateTime')}</span>
+                  <b>{t('estimateTimeValue', { low: estimate.timeLowMin, high: estimate.timeHighMin })}</b>
+                </div>
+                <div>
+                  <span>{t('estimateCost')}</span>
+                  <b>{t('estimateCostValue', { low: estimate.costLowUsd, high: estimate.costHighUsd })}</b>
+                </div>
+                <div>
+                  <span>{t('estimateProbeCalls')}</span>
+                  <b>{t('estimateProbeCallsValue', { calls: estimate.probeCalls })}</b>
+                </div>
+              </div>
+              <p className="estimate-disclaimer">{t('estimateDisclaimer')}</p>
+            </div>
+
+            <div className="wizard-nav">
+              <button type="button" className="ghost-btn" onClick={() => setStep(2)}>
+                {t('back')}
+              </button>
+              <button type="button" className="run-btn" onClick={start} disabled={pending}>
+                {pending ? t('starting') : t('run')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <p className="note" style={{ color: 'var(--ds-error, red)' }}>
+            {error}
+          </p>
+        )}
+      </div>
 
       <div className="note">{t('note')}</div>
     </section>

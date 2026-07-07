@@ -46,6 +46,30 @@ export function buildAuthUrl(state: string, env: Env = process.env): string {
   return `${AUTH_ENDPOINT}?${params.toString()}`
 }
 
+// OAuth state 编解码：把 projectId 与可选的向导返回路径塞进单个 state 里往返
+// （Google 只回传 state）。分隔符 `::`——projectId 是 `proj_<uuid>` 不含它。
+// 无 returnTo 时 state 就等于 projectId，设置页既有流程零改动。（spec §SP-G2a-4）
+const STATE_SEP = '::'
+
+export function encodeOAuthState(projectId: string, returnTo?: string | null): string {
+  return returnTo ? `${projectId}${STATE_SEP}${returnTo}` : projectId
+}
+
+export function decodeOAuthState(state: string): { projectId: string; returnTo: string | null } {
+  const i = state.indexOf(STATE_SEP)
+  if (i === -1) return { projectId: state, returnTo: null }
+  return { projectId: state.slice(0, i), returnTo: state.slice(i + STATE_SEP.length) }
+}
+
+// 只放行站内绝对路径（以单个 `/` 开头），挡掉开放重定向（协议相对 `//`、
+// 绝对 URL、javascript: 等）。回调据此决定跳向导还是回落设置页。
+export function sanitizeReturnTo(raw: string | null): string | null {
+  if (!raw) return null
+  if (!raw.startsWith('/') || raw.startsWith('//')) return null
+  if (/[\x00-\x1f]/.test(raw)) return null
+  return raw
+}
+
 interface GoogleTokenResponse {
   access_token?: string
   refresh_token?: string

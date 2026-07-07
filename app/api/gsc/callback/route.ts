@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { isGscConfigured, exchangeCodeForTokens } from '@/lib/gsc/oauth'
+import { isGscConfigured, exchangeCodeForTokens, decodeOAuthState, sanitizeReturnTo } from '@/lib/gsc/oauth'
 import { setGscConnection } from '@/lib/repositories'
 
-// GET /api/gsc/callback?code=...&state=<projectId> — Google 授权回调。
-// 换取 refresh_token 并落库到 project_settings，随后跳回设置页并带上连接状态。
+// GET /api/gsc/callback?code=...&state=<projectId[::returnTo]> — Google 授权回调。
+// 换取 refresh_token 落库，随后跳回来源：向导（state 带 returnTo）或设置页（默认）。
 // 未配 env / 用户拒绝授权 / 换令牌失败 → 返回 JSON 错误，不崩溃。
 export async function GET(req: Request) {
   if (!isGscConfigured()) {
@@ -11,13 +11,17 @@ export async function GET(req: Request) {
   }
   const params = new URL(req.url).searchParams
   const code = params.get('code')
-  const projectId = params.get('state')
+  const state = params.get('state')
   const oauthError = params.get('error') // 用户在同意页点了拒绝时 Google 回传 error
 
   if (oauthError) {
     return NextResponse.json({ error: 'gsc_auth_denied', detail: oauthError }, { status: 400 })
   }
-  if (!code || !projectId) {
+  if (!code || !state) {
+    return NextResponse.json({ error: 'missing_code_or_state' }, { status: 400 })
+  }
+  const { projectId, returnTo } = decodeOAuthState(state)
+  if (!projectId) {
     return NextResponse.json({ error: 'missing_code_or_state' }, { status: 400 })
   }
 
@@ -31,6 +35,11 @@ export async function GET(req: Request) {
     )
   }
 
-  // 单项目内部工具跳回设置页并标记已连接；设置页用 getPrimaryProject() 解析项目，next-intl 中间件补 locale 前缀。
-  return NextResponse.redirect(new URL('/settings?gsc=connected', req.url))
+  // 单项目内部工具：有向导返回路径则跳回向导闭环，否则回落设置页并标记已连接。
+  // next-intl 中间件补 locale 前缀。returnTo 再过一次 sanitize 防篡改开放重定向。
+  const safeReturn = sanitizeReturnTo(returnTo)
+  const dest = safeReturn
+    ? `${safeReturn}${safeReturn.includes('?') ? '&' : '?'}gsc=connected`
+    : '/settings?gsc=connected'
+  return NextResponse.redirect(new URL(dest, req.url))
 }

@@ -1,21 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db/client'
 import { projectSettings, projects } from '@/db/schema'
-
-// 规范化用户输入的站点地址：裸域名补 https://，并校验可解析为
-// http(s) URL。domain 会被下游当作抓取入口 URL 喂给 assertPublicUrl(new URL(...))，
-// 若在此不补 scheme，裸域名会让 new URL 抛错，使新建 run 一创建就 failed。
-function normalizeDomain(raw: string): string | null {
-  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
-  try {
-    const u = new URL(withScheme)
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
-    if (!u.hostname.includes('.')) return null
-    return u.toString()
-  } catch {
-    return null
-  }
-}
+import { normalizeDomain } from '@/lib/analysis/normalize-domain'
 
 // POST /projects — 新建项目（§7）。domain 必填并在写入边界规范化，其余可选。
 // id 由服务端生成（seed 用语义 id，运行期新建用带前缀的 uuid），与真实版形状一致。

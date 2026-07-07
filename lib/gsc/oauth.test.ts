@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { isGscConfigured, buildAuthUrl, exchangeCodeForTokens, refreshAccessToken } from './oauth'
+import { isGscConfigured, buildAuthUrl, exchangeCodeForTokens, refreshAccessToken, encodeOAuthState, decodeOAuthState, sanitizeReturnTo } from './oauth'
 
 const fullEnv = {
   GOOGLE_OAUTH_CLIENT_ID: 'cid.apps.googleusercontent.com',
@@ -81,5 +81,28 @@ describe('refreshAccessToken', () => {
   it('throws when refresh fails', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ error: 'invalid_grant' }, 400))
     await expect(refreshAccessToken('rt_1', fullEnv, fetchMock)).rejects.toThrow('gsc token refresh failed')
+  })
+})
+
+describe('OAuth state 编解码 + returnTo 防开放重定向', () => {
+  it('无 returnTo 时 state 就是 projectId，回落设置页流程不变', () => {
+    const s = encodeOAuthState('proj_1')
+    expect(s).toBe('proj_1')
+    expect(decodeOAuthState(s)).toEqual({ projectId: 'proj_1', returnTo: null })
+  })
+
+  it('有 returnTo 时往返一致', () => {
+    const s = encodeOAuthState('proj_1', '/zh?step=connect')
+    expect(decodeOAuthState(s)).toEqual({ projectId: 'proj_1', returnTo: '/zh?step=connect' })
+  })
+
+  it('sanitizeReturnTo 只放行站内相对路径', () => {
+    expect(sanitizeReturnTo('/zh?step=connect')).toBe('/zh?step=connect')
+    expect(sanitizeReturnTo('https://evil.com')).toBeNull()
+    expect(sanitizeReturnTo('//evil.com')).toBeNull()
+    expect(sanitizeReturnTo('javascript:alert(1)')).toBeNull()
+    expect(sanitizeReturnTo(null)).toBeNull()
+    expect(sanitizeReturnTo('')).toBeNull()
+    expect(sanitizeReturnTo('relative/no/slash')).toBeNull()
   })
 })
