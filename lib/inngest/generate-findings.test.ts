@@ -281,6 +281,43 @@ describe('generateFindingsHandler', () => {
     expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b1', 'effective')
   })
 
+  it('P3 建议：目标 finding 两轮 persistent(四态=ineffective) 但目标词 impressions 上升 → effective（锁死 GSC 整链）', async () => {
+    // 分叉用例（独立局部 fixtures，不碰共享 baselineFindings/retestFindings/baseRecs）：
+    // 目标 finding 的 fingerprint 两轮都出现 → 四态=persistent → 兜底会给 ineffective；
+    // 但该 finding 的目标词 gizmo 在 GSC 两轮 impressions 100→300 上升。
+    // 断言 outcome=effective——此结果【只可能】来自 GSC 真标量（四态给的是 ineffective），
+    // 故本用例真正锁死 evidence→parseGscKeywordMetrics→buildMetricPair(gsc)→computeOutcome 整链：
+    // 一旦 GSC wiring 静默失效（buildMetricPair 误返 null），outcome 会回退 ineffective，本断言即失败。
+    const targetFinding = (id: string, runId: string) => ({
+      id, runId, fingerprint: 'fp_gsc_lock', severity: 'high', pillar: 'P3', title: 'G', side: 'seo',
+      claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'],
+      status: 'open', dismissedAt: null, dismissReason: null, metricTarget: { keywords: ['gizmo'] },
+    })
+    const gizmoEv = (id: string, impressions: number) => ({
+      id, type: 'gsc', claimLevel: 'L4', source: 'gsc', sitePageId: null, rawText: '',
+      payload: { dimension: 'query', rows: [{ keys: ['gizmo'], clicks: 1, impressions, ctr: 0.01, position: 6 }] },
+    })
+    const deps = makeDeps({
+      getFindings: vi.fn(async (rid: string) =>
+        rid === 'run_base' ? [targetFinding('f_gb', 'run_base')] : [targetFinding('f_gr', 'run_1')],
+      ),
+      getRecommendations: vi.fn(async (rid: string) =>
+        rid === 'run_base'
+          ? [{ id: 'rec_gsc', runId: 'run_base', findingId: 'f_gb', validationSpec: { metricSource: 'gsc', metric: 'impressions', scope: 'keywords', direction: 'increase', windowDays: 28 } }]
+          : [],
+      ),
+      getRunEvidence: vi.fn(async (rid: string) => [rid === 'run_base' ? gizmoEv('g_b', 100) : gizmoEv('g_r', 300)]),
+      setRecommendationOutcome: vi.fn(async () => undefined),
+      createRetestSnapshots: vi.fn(async (rows: unknown[]) => rows),
+    })
+    const { args } = makeArgs({ baselineRunId: 'run_base' })
+
+    await generateFindingsHandler(args, asDeps(deps))
+
+    // effective 只能来自 GSC 标量；四态 persistent 兜底会给 ineffective。
+    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_gsc', 'effective')
+  })
+
   it('P5 建议 probe brand_presence 上升 → effective（翻盘 fp_2 persistent 的四态 ineffective）', async () => {
     const deps = makeRetestDeps()
     const { args } = makeArgs({ baselineRunId: 'run_base' })
