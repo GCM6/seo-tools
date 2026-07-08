@@ -80,6 +80,10 @@ export const sitePages = sqliteTable('site_pages', {
   mainTextChars: integer('main_text_chars'),
   contentHash: text('content_hash'),
   inboundLinkCount: integer('inbound_link_count').notNull().default(0),
+  // 出向同站内链（归一化 URL 列表）——供 TA01/TA02 重建「忠实群内有向邻接」，
+  // 区别于 inboundLinkCount 的全站聚合入度。历史证据无此列时为 null，规则回退全站入度近似
+  // （SP-A2 #2 群内邻接图）。
+  internalLinks: text('internal_links', { mode: 'json' }).$type<string[]>(),
   // 轻检扩展字段（viewport/hreflang/alt/结构可扫描性/协议/重定向链等）——单 JSON 列，
   // 供 T06/T08/T13/T14/C09/C11 规则消费（spec §4.2 通道一 / Phase A 轻检补字段）。
   lightCheckExtra: text('light_check_extra', { mode: 'json' }),

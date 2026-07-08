@@ -413,6 +413,32 @@ describe('TA01 主题覆盖浅 / 话题群割裂', () => {
     expect(rule('TA01').evaluate(ctx)).toBeNull()
   })
 
+  it('忠实群内邻接：高全站入度但群内零互链 → 判孤立（旧口径会漏）', () => {
+    const ctx = baseCtx()
+    // /blog 群 5 页，全站入度高（模拟全局导航），但彼此无群内边 => 群内入度均值 0 => 孤立
+    const pages = Array.from({ length: 5 }, (_, i) =>
+      page({ url: `https://example.com/blog/p${i}`, inboundLinkCount: 9, internalLinks: [] }),
+    )
+    ctx.siteAudit = audit(pages)
+    const hit = rule('TA01').evaluate(ctx) as RuleHitDraft
+    expect(hit).not.toBeNull()
+    const detail = hit.detail as { isolatedClusters: unknown[] }
+    expect(detail.isolatedClusters.length).toBeGreaterThanOrEqual(1)
+    expect(hit.description).toContain('群内邻接')
+    expect(hit.description).not.toContain('非严格群内邻接') // 忠实模式去掉近似免责
+  })
+
+  it('忠实群内邻接：成员互链充分 → 不判孤立', () => {
+    const ctx = baseCtx()
+    // 每页群内链向另 2 页 => 群内入度均值 2（>=1）=> 不孤立；6 页不浅 => null
+    const urls = Array.from({ length: 6 }, (_, i) => `https://example.com/guide/p${i}`)
+    const pages = urls.map((url, i) =>
+      page({ url, inboundLinkCount: 0, internalLinks: [urls[(i + 1) % 6], urls[(i + 2) % 6]] }),
+    )
+    ctx.siteAudit = audit(pages)
+    expect(rule('TA01').evaluate(ctx)).toBeNull()
+  })
+
   it('无 siteAudit 时 no-op', () => {
     const ctx = baseCtx()
     expect(rule('TA01').evaluate(ctx)).toBeNull()
@@ -447,6 +473,30 @@ describe('TA02 话题群缺 Hub 页', () => {
     const ctx = baseCtx()
     const pages = Array.from({ length: 3 }, (_, i) =>
       page({ url: `https://example.com/docs/p${i}`, inboundLinkCount: 0 }),
+    )
+    ctx.siteAudit = audit(pages)
+    expect(rule('TA02').evaluate(ctx)).toBeNull()
+  })
+
+  it('忠实群内邻接：高全站入度但群内无中心 → 判缺 Hub（旧口径会漏）', () => {
+    const ctx = baseCtx()
+    // 6 页全站入度高但群内零边 => 群内最大入度 0（<5）=> 缺 hub
+    const pages = Array.from({ length: 6 }, (_, i) =>
+      page({ url: `https://example.com/docs/p${i}`, inboundLinkCount: 9, internalLinks: [] }),
+    )
+    ctx.siteAudit = audit(pages)
+    const hit = rule('TA02').evaluate(ctx) as RuleHitDraft
+    expect(hit).not.toBeNull()
+    const detail = hit.detail as { clustersWithoutHub: { maxInbound: number }[] }
+    expect(detail.clustersWithoutHub[0].maxInbound).toBe(0)
+  })
+
+  it('忠实群内邻接：存在群内高入度中心页 → 不判缺 Hub', () => {
+    const ctx = baseCtx()
+    // p0 被其余 5 页群内链接 => 群内入度 5（>=5）=> 有 hub => null
+    const urls = Array.from({ length: 6 }, (_, i) => `https://example.com/docs/p${i}`)
+    const pages = urls.map((url, i) =>
+      page({ url, inboundLinkCount: 0, internalLinks: i === 0 ? [] : [urls[0]] }),
     )
     ctx.siteAudit = audit(pages)
     expect(rule('TA02').evaluate(ctx)).toBeNull()

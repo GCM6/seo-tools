@@ -14,6 +14,9 @@ export interface SiteAuditPage {
   metaRobots: string | null
   mainTextChars: number | null
   inboundLinkCount: number
+  // 出向同站内链（归一化 URL）：TA01/TA02 用它重建「忠实群内有向邻接」（区别于全站聚合 inboundLinkCount）。
+  // 历史证据无此字段时为 undefined/null，规则回退全站入度近似（SP-A2 #2）。
+  internalLinks?: string[] | null
   checkStatus: string
   errorReason: string | null
   isKeyPage: boolean

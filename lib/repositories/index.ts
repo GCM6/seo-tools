@@ -116,6 +116,8 @@ export interface SitePageUpsert {
   metaRobots: string | null
   mainTextChars: number | null
   contentHash: string | null
+  // 出向同站内链（TA01/TA02 群内邻接）；discovered_only 兜底页未抓 → null。
+  internalLinks: string[] | null
   lightCheckExtra: LightCheckExtra | null
   checkStatus: 'checked' | 'discovered_only' | 'blocked_by_robots' | 'error'
   errorReason: string | null
@@ -140,6 +142,7 @@ export const upsertSitePages = async (projectId: string, runId: string, rows: Si
           metaRobots: row.metaRobots,
           mainTextChars: row.mainTextChars,
           contentHash: row.contentHash,
+          internalLinks: row.internalLinks,
           lightCheckExtra: row.lightCheckExtra,
           checkStatus: row.checkStatus,
           errorReason: row.errorReason,

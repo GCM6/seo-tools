@@ -320,6 +320,7 @@ export async function collectEvidenceHandler(
       metaRobots: r.metaRobots,
       mainTextChars: r.mainTextChars,
       contentHash: r.contentHash || null,
+      internalLinks: r.internalLinks,
       lightCheckExtra: r.extra,
       checkStatus: r.checkStatus,
       errorReason: r.errorReason,
@@ -347,7 +348,7 @@ export async function collectEvidenceHandler(
           leftover.map((l) => ({
             url: l.url, discoveredVia: l.via, depth: l.depth, httpStatus: null, finalUrl: null,
             title: null, canonicalUrl: null, metaRobots: null, mainTextChars: null, contentHash: null,
-            lightCheckExtra: null, checkStatus: 'discovered_only' as const, errorReason: null,
+            internalLinks: null, lightCheckExtra: null, checkStatus: 'discovered_only' as const, errorReason: null,
           })),
         ),
       )
@@ -571,6 +572,7 @@ export async function collectEvidenceHandler(
           url: p.url, discoveredVia: p.discoveredVia, depth: p.depth, httpStatus: p.httpStatus,
           finalUrl: p.finalUrl, canonicalUrl: p.canonicalUrl, metaRobots: p.metaRobots,
           mainTextChars: p.mainTextChars, inboundLinkCount: p.inboundLinkCount,
+          internalLinks: p.internalLinks,
           checkStatus: p.checkStatus, errorReason: p.errorReason, isKeyPage: p.isKeyPage,
           contentHash: p.contentHash, templateId: p.templateId,
           lightCheckExtra: p.lightCheckExtra as LightCheckExtra | null,

@@ -1,0 +1,1 @@
+ALTER TABLE `site_pages` ADD `internal_links` text;

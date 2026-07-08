@@ -636,8 +636,30 @@ const C11: Rule = {
   },
 }
 
+// 群内忠实有向邻接（SP-A2 #2）：只统计「群内成员 → 群内成员」的出向内链，避开全站导航/页脚
+// 对入度的膨胀。payload 带 internalLinks（新证据）→ 群内入度；全 undefined（历史证据）→ 回退
+// 全站 inboundLinkCount（不回归旧行为）。discovered_only 页 internalLinks 为 null，作零出向源、
+// 但仍可作他页的群内目标。
+function clusterInbound(pages: SiteAuditPage[]): { faithful: boolean; countOf: (p: SiteAuditPage) => number } {
+  const strip = (u: string) => u.replace(/\/$/, '')
+  const members = new Set(pages.map((p) => strip(p.url)))
+  const faithful = pages.some((p) => Array.isArray(p.internalLinks))
+  const inbound = new Map<string, number>() // strip(目标 url) -> 群内入度
+  for (const src of pages) {
+    if (!Array.isArray(src.internalLinks)) continue
+    const from = strip(src.url)
+    const targets = new Set<string>() // 每源→目标去重：同页多次链接同目标只计 1
+    for (const link of src.internalLinks) {
+      const t = strip(link)
+      if (t !== from && members.has(t)) targets.add(t) // 群内、去自链
+    }
+    for (const t of targets) inbound.set(t, (inbound.get(t) ?? 0) + 1)
+  }
+  return { faithful, countOf: (p) => (faithful ? inbound.get(strip(p.url)) ?? 0 : p.inboundLinkCount) }
+}
+
 // TA01：主题覆盖浅/话题群割裂。用 clusterTemplates 从页面 URL 重建话题群（排除语言路径群），
-// 群内内链密度以站内入度均值近似（非严格群内邻接）。恒结构性建议、不作排名断言。
+// 群内密度用忠实群内有向邻接（历史证据回退站内入度近似）。恒结构性建议、不作排名断言。
 const TA01: Rule = {
   id: 'TA01',
   pillar: 'P2',
@@ -659,13 +681,16 @@ const TA01: Rule = {
         .filter((m) => stripSlash(m.page) === stripSlash(url))
         .reduce((s, m) => s + m.impressions, 0)
 
+    // 邻接口径：payload 带 internalLinks 即忠实群内邻接，否则回退站内入度近似（措辞随之切换）。
+    const faithful = auditCtx.payload.pages.some((p) => Array.isArray(p.internalLinks))
     type ClusterRow = { pattern: string; pageCount: number; avgInbound: number; gscImpressions: number }
     const shallow: ClusterRow[] = []
     const isolated: ClusterRow[] = []
     for (const c of clusters) {
       const pages = c.urls.map((u) => byUrl.get(u)).filter((p): p is SiteAuditPage => !!p)
       if (pages.length === 0) continue
-      const avgInbound = pages.reduce((s, p) => s + p.inboundLinkCount, 0) / pages.length
+      const { countOf } = clusterInbound(pages)
+      const avgInbound = pages.reduce((s, p) => s + countOf(p), 0) / pages.length
       const row: ClusterRow = {
         pattern: c.pattern,
         pageCount: pages.length,
@@ -677,12 +702,14 @@ const TA01: Rule = {
     }
     if (shallow.length === 0 && isolated.length === 0) return null
 
+    const densityLabel = faithful ? '群内邻接（成员互链）密度' : '站内入度均值'
+    const caveat = faithful ? '' : '（群内内链密度以站内入度均值近似，非严格群内邻接。）'
     const parts: string[] = []
     if (shallow.length) parts.push(`${shallow.length} 个话题群仅 1-2 页（有话题无深度）`)
-    if (isolated.length) parts.push(`${isolated.length} 个话题群站内入度均值近乎为 0（话题群孤立）`)
+    if (isolated.length) parts.push(`${isolated.length} 个话题群${densityLabel}近乎为 0（话题群孤立）`)
     return {
       title: '主题覆盖浅 / 话题群割裂',
-      description: `${parts.join('；')}。（群内内链密度以站内入度均值近似，非严格群内邻接。）主题权威系行业经验框架、非官方排名因子，此处仅作结构性建议。`,
+      description: `${parts.join('；')}。${caveat}主题权威系行业经验框架、非官方排名因子，此处仅作结构性建议。`,
       evidenceRefs: [auditCtx.id],
       scope: 'site',
       detail: { shallowClusters: shallow, isolatedClusters: isolated },
@@ -690,8 +717,8 @@ const TA01: Rule = {
   },
 }
 
-// TA02：话题群缺 Hub 页（Pillar-Cluster 结构缺失）。群内最大站内入度 < 阈值即判缺中心页。
-// 「主题权威」系行业经验框架、非官方排名因子，恒作结构性建议、不作排名断言。
+// TA02：话题群缺 Hub 页（Pillar-Cluster 结构缺失）。群内最大群内邻接入度 < 阈值即判缺中心页
+// （历史证据回退站内入度近似）。「主题权威」系行业经验框架、非官方排名因子，恒结构性建议、不作排名断言。
 const TA02: Rule = {
   id: 'TA02',
   pillar: 'P2',
@@ -709,7 +736,8 @@ const TA02: Rule = {
     for (const c of clusters) {
       const pages = c.urls.map((u) => byUrl.get(u)).filter((p): p is SiteAuditPage => !!p)
       if (pages.length < TA02_HUB_CLUSTER_MIN_PAGES) continue
-      const maxInbound = Math.max(...pages.map((p) => p.inboundLinkCount))
+      const { countOf } = clusterInbound(pages)
+      const maxInbound = Math.max(...pages.map(countOf))
       if (maxInbound < TA02_HUB_MIN_INBOUND) {
         noHub.push({ pattern: c.pattern, pageCount: pages.length, maxInbound, representativeUrl: pages[0].url })
       }
