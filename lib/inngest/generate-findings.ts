@@ -137,6 +137,10 @@ export async function generateFindingsHandler(
     }))
 
     const competitors = project.competitors ?? []
+    // 原始回答文本按 evidenceId 归档，供聚合期对竞品集重解析（SP-A2 #6）。
+    const answerByEvidence = new Map(
+      evidence.map((e) => [e.id, (e.payload as { answerText?: string } | null)?.answerText]),
+    )
     const probe = deps.aggregateProbeSummary({
       prompts: prompts.map((p) => ({ id: p.id, text: p.text, priority: p.priority })),
       results: probeResults.map((r) => ({
@@ -146,6 +150,7 @@ export async function generateFindingsHandler(
         evidenceId: r.evidenceId,
         provider: r.provider,
         sentiment: r.sentiment,
+        answerText: answerByEvidence.get(r.evidenceId),
       })),
       brand: brandFromDomain(project.domain),
       competitors,

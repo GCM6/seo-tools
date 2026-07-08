@@ -58,6 +58,10 @@ export default async function RunDiagnosisPage({
   const retestDue = retestDueAt ? Date.parse(retestDueAt) <= new Date().getTime() : false
 
   // AI 探针聚合：可见度卡 / 答案地图 / SoV 的唯一数据来源；无结果时为 null（保持空态）。
+  // 原始回答按 evidenceId 归档，供聚合期对竞品集重解析（SP-A2 #6）。
+  const answerByEvidence = new Map(
+    evidenceRows.map((e) => [e.id, (e.payload as { answerText?: string } | null)?.answerText]),
+  )
   const probeSummary = project
     ? aggregateProbeSummary({
         prompts: promptRows,
@@ -68,6 +72,7 @@ export default async function RunDiagnosisPage({
           evidenceId: r.evidenceId,
           provider: r.provider,
           sentiment: r.sentiment,
+          answerText: answerByEvidence.get(r.evidenceId),
         })),
         brand: brandFromDomain(project.domain),
         competitors: project.competitors ?? [],
@@ -221,6 +226,26 @@ export default async function RunDiagnosisPage({
             actionLabel={t('dataHealth.connect')}
             href={probeAnchor}
           />
+        )}
+
+        {/* 分引擎 SoV（SP-A2 #6，引擎不可互推）——多于一个引擎才展示 */}
+        {probeSummary && (probeSummary.sovByEngine?.length ?? 0) > 1 && (
+          <>
+            <div className="sec-h">
+              <h2>{t('screen2.sovPerEngineTitle')}</h2>
+              <span className="meta">{t('screen2.sovPerEngineMeta')}</span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {probeSummary.sovByEngine!.map((e) => (
+                <div key={e.engine}>
+                  <div className="text-xs text-neutral-500">
+                    {e.engine} · n={e.samples}
+                  </div>
+                  <SovBar rows={e.sov} />
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         {/* 分引擎可见度（G05/G06 分引擎报告，引擎间不可互推）——多于一个引擎才展示 */}

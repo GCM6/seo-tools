@@ -4,7 +4,9 @@
 import { classifyProbeSentiment, type ProbeSentiment } from './sentiment'
 
 // v2：新增 G09 引用情感分类（sentiment），判定规则已变，故升版本。
-export const PROBE_PARSER_VERSION = 'v2'
+// v3：SoV 竞品匹配改为聚合期对「确认竞品集」重解析原始回答（不再用探针期冻结的 competitorsMentioned）
+//     + 分引擎 SoV。语义变更，跨版回测不可比（SP-A2 #6）。
+export const PROBE_PARSER_VERSION = 'v3'
 
 export interface ParseInput {
   answerText: string
@@ -36,6 +38,12 @@ function mentions(text: string, term: string): boolean {
   return new RegExp(`\\b${escapeRegExp(term)}\\b`, 'i').test(text)
 }
 
+// 竞品命中：对给定竞品集逐个词/子串匹配答案文本。聚合期（aggregateProbeSummary）用它对
+// 「当前确认竞品集」重解析原文，解掉探针期冻结（SP-A2 #6）。纯确定性、LLM 不参与。
+export function competitorsInText(answerText: string, competitors: string[]): string[] {
+  return competitors.filter((c) => mentions(answerText, c))
+}
+
 function normalizeHost(host: string): string {
   return host.replace(/^www\./, '').toLowerCase()
 }
@@ -60,7 +68,7 @@ export function parseProbeAnswer(input: ParseInput): ParsedProbeAnswer {
   return {
     brandPresent,
     targetDomainCited: citesDomain(citedUrls, domain),
-    competitorsMentioned: competitors.filter((c) => mentions(answerText, c)),
+    competitorsMentioned: competitorsInText(answerText, competitors),
     citedUrls,
     // 情感分类只在品牌出现时有意义；未出现一律 'neutral'。
     sentiment: brandPresent ? classifyProbeSentiment(answerText, brand) : 'neutral',

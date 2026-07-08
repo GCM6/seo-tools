@@ -298,6 +298,8 @@
     "legendAbsent": "你缺席（{count}）",
     "legendHover": "悬停查看具体提问",
     "sovTitle": "竞品可见度对比（Share of Voice）",
+    "sovPerEngineTitle": "分引擎 SoV",
+    "sovPerEngineMeta": "各 AI 引擎单独统计的竞品提及占比（引擎不可互推、分列）",
     "youSuffix": "（你）",
     "findingsTitle": "问题清单",
     "findingsMeta": "点开任意一条查看原始证据",

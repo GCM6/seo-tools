@@ -68,7 +68,7 @@ const Q01: Rule = {
 }
 
 // Q02 竞品 AI SoV 对比：复用既有探针 SoV，本站 vs 确认竞品在 AI 答案中的出现占比。measured_sample，方向性 n=5。
-// 局限：当前 ProbeSummary.sov 为跨引擎合并聚合，未分引擎；分引擎拆分待 probe 聚合扩展，此处为合并 SoV。
+// SP-A2 #6：SoV 现按确认竞品集重解析原文（解冻探针期匹配）+ 分引擎分列（引擎不可互推，§7.3）。
 const Q02: Rule = {
   id: 'Q02',
   pillar: 'P4',
@@ -80,28 +80,38 @@ const Q02: Rule = {
     if (comps.length === 0) return null
     const { probe, probeEvidenceId } = ctx
     if (!probe || !probeEvidenceId) return null
-    const ownSov = probe.sov.find((s) => s.you)
-    if (!ownSov) return null
-    // 匹配确认竞品到探针 SoV 条目（reeval 时确认竞品域已并入探针竞品集）：按归一域或名称匹配。
-    const matched = comps
-      .map((c) => {
-        const nd = normalizeDomain(c.domain)
-        const entry = probe.sov.find((s) => !s.you && (normalizeDomain(s.name) === nd || s.name.toLowerCase() === c.name.toLowerCase()))
-        return entry ? { name: c.name, domain: nd, pct: entry.pct } : null
-      })
-      .filter((x): x is { name: string; domain: string; pct: number } => x !== null)
-    if (matched.length === 0) return null // 确认竞品均未进入探针竞品集 → 无对比数据
-    const comparison = [
-      { name: ctx.project.domain, pct: ownSov.pct, you: true },
-      ...matched.map((m) => ({ name: m.name, pct: m.pct, you: false })),
-    ].sort((a, b) => b.pct - a.pct)
+
+    // 给定一份 SoV 条目，匹配本站 + 确认竞品（按归一域或名称）并组对比行；无本站或零匹配返回 null。
+    const compareFor = (sov: NonNullable<typeof probe>['sov']): { name: string; pct: number; you: boolean }[] | null => {
+      const own = sov.find((s) => s.you)
+      if (!own) return null
+      const matched = comps
+        .map((c) => {
+          const nd = normalizeDomain(c.domain)
+          const entry = sov.find((s) => !s.you && (normalizeDomain(s.name) === nd || s.name.toLowerCase() === c.name.toLowerCase()))
+          return entry ? { name: c.name, pct: entry.pct } : null
+        })
+        .filter((x): x is { name: string; pct: number } => x !== null)
+      if (matched.length === 0) return null
+      return [
+        { name: ctx.project.domain, pct: own.pct, you: true },
+        ...matched.map((m) => ({ name: m.name, pct: m.pct, you: false })),
+      ].sort((a, b) => b.pct - a.pct)
+    }
+
+    const comparison = compareFor(probe.sov)
+    if (comparison === null) return null // 确认竞品均未进入探针竞品集 → 无对比数据
+    // 分引擎对比（有 sovByEngine 时）：各引擎独立给出本站 vs 确认竞品，仅保留有匹配的引擎。
+    const perEngine = (probe.sovByEngine ?? [])
+      .map((e) => ({ engine: e.engine, samples: e.samples, comparison: compareFor(e.sov) }))
+      .filter((e): e is { engine: string; samples: number; comparison: { name: string; pct: number; you: boolean }[] } => e.comparison !== null)
     return {
       title: '竞品 AI 可见度（SoV）对比',
       description:
-        '在同一探针问题集上，统计本站与确认竞品在 AI 答案（ChatGPT/Perplexity/Gemini/Claude）中被提及的占比（Share of Voice）。当前 n=5 为方向性样本、跨引擎合并口径，非硬指标；分引擎拆分待后续。',
+        '在同一探针问题集上，统计本站与确认竞品在 AI 答案（ChatGPT/Perplexity/Gemini/Claude）中被提及的占比（Share of Voice）。SoV 按确认竞品集重解析原文得出；n=5 为方向性样本、非硬指标。已分引擎分列（引擎间引用不可互推）。',
       evidenceRefs: [probeEvidenceId],
       scope: 'competitors:ai-sov',
-      detail: { comparison, directional: true, totalSamples: probe.totalSamples },
+      detail: { comparison, perEngine, directional: true, totalSamples: probe.totalSamples },
     }
   },
 }

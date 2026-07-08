@@ -131,8 +131,9 @@ describe('reevaluateCompetitorsHandler', () => {
     expect(ctxInput.keywordGaps).toEqual([
       { keyword: 'best crm', gapType: 'missing', ourPosition: null, opportunityScore: 80, searchVolume: 500, evidenceId: 'ev_serp' },
     ])
+    // SP-A2 #6：探针 SoV 竞品集并入确认竞品「名」（可被答案原文匹配），非纯域。
     const probeInput = deps.aggregateProbeSummary.mock.calls[0][0] as { competitors: string[] }
-    expect(probeInput.competitors.sort()).toEqual(['manual.com', 'rival.com'])
+    expect(probeInput.competitors.sort()).toEqual(['Rival', 'manual.com'])
   })
 
   it('无确认竞品 → 不算 gap、不落 keyword_gaps', async () => {

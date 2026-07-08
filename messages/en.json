@@ -298,6 +298,8 @@
     "legendAbsent": "You're absent ({count})",
     "legendHover": "Hover to see the exact prompt",
     "sovTitle": "Competitor visibility (Share of Voice)",
+    "sovPerEngineTitle": "Per-engine SoV",
+    "sovPerEngineMeta": "Share of mentions computed separately per AI engine (engines aren't interchangeable — listed separately)",
     "youSuffix": " (you)",
     "findingsTitle": "Issue list",
     "findingsMeta": "Expand any item to see the raw evidence",

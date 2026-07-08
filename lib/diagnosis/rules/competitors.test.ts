@@ -86,6 +86,25 @@ describe('Q02 AI SoV comparison', () => {
     expect(hit.evidenceRefs).toEqual(['probeEv'])
     expect(hit.detail!.directional).toBe(true)
   })
+  it('SP-A2 #6：detail.perEngine 给出分引擎对比（有 sovByEngine 时）', () => {
+    const ctx = baseCtx()
+    ctx.confirmedCompetitors = [{ domain: 'rival.com', name: 'Rival' }]
+    const p = probe([
+      { name: 'example.com', pct: 40, you: true },
+      { name: 'Rival', pct: 60, you: false },
+    ])
+    p.sovByEngine = [
+      { engine: 'openai', samples: 3, sov: [{ name: 'example.com', pct: 33, you: true }, { name: 'Rival', pct: 67, you: false }] },
+      { engine: 'perplexity', samples: 2, sov: [{ name: 'example.com', pct: 50, you: true }] }, // 无 Rival → 该引擎被过滤
+    ]
+    ctx.probe = p
+    ctx.probeEvidenceId = 'probeEv'
+    const hit = rule('Q02').evaluate(ctx) as RuleHitDraft
+    const perEngine = hit.detail!.perEngine as { engine: string; comparison: unknown[] }[]
+    expect(perEngine.map((e) => e.engine)).toEqual(['openai']) // 仅保留有确认竞品匹配的引擎
+    expect(perEngine[0].comparison).toHaveLength(2)
+  })
+
   it('null when competitor not present in probe SoV set', () => {
     const ctx = baseCtx()
     ctx.confirmedCompetitors = [{ domain: 'notprobed.com', name: 'Other' }]

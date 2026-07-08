@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseProbeAnswer, PROBE_PARSER_VERSION } from './parse'
+import { parseProbeAnswer, competitorsInText, PROBE_PARSER_VERSION } from './parse'
 
 const base = {
   brand: 'metadocu',
@@ -60,7 +60,14 @@ describe('parseProbeAnswer', () => {
   })
 
   it('exposes a parser version for protocol provenance', () => {
-    expect(PROBE_PARSER_VERSION).toBe('v2')
+    expect(PROBE_PARSER_VERSION).toBe('v3') // SP-A2 #6：聚合期重解析 + 分引擎 SoV
+  })
+
+  it('competitorsInText 复用同一匹配口径（拉丁词边界 / CJK 子串 / 空集）', () => {
+    expect(competitorsInText('use Notion and confluence today', ['Notion', 'Confluence', 'Coda'])).toEqual(['Notion', 'Confluence'])
+    expect(competitorsInText('metadocu 对比 语雀 更轻', ['语雀'])).toEqual(['语雀']) // CJK 子串
+    expect(competitorsInText('no notionally related term', ['Notion'])).toEqual([]) // 词边界避免 notionally
+    expect(competitorsInText('anything', [])).toEqual([])
   })
 
   it('classifies a positive brand mention as positive', () => {

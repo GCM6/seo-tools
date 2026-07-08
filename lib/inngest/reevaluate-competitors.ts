@@ -186,8 +186,14 @@ export async function reevaluateCompetitorsHandler(
       await deps.createKeywordGaps(gapRows)
     }
 
-    // 探针 SoV 竞品集并入确认竞品域（Q02/G05/G06 竞品对比）。
-    const competitors = [...new Set([...(project.competitors ?? []), ...confirmedDomains])]
+    // 探针 SoV 竞品集并入确认竞品「名」（优先品牌名、缺名回退域）——名才能被答案原文匹配到，
+    // 配合下方重解析解掉探针期冻结（SP-A2 #6）。Q02 按 s.name===c.name 匹配到位。
+    const confirmedTokens = confirmedCompetitors.map((c) => c.name || c.domain)
+    const competitors = [...new Set([...(project.competitors ?? []), ...confirmedTokens])]
+    // 原始回答文本按 evidenceId 归档：聚合期对当前竞品集重解析（解冻），无原文者回退冻结值。
+    const answerByEvidence = new Map(
+      evidence.map((e) => [e.id, (e.payload as { answerText?: string } | null)?.answerText]),
+    )
     const probe = deps.aggregateProbeSummary({
       prompts: prompts.map((p) => ({ id: p.id, text: p.text, priority: p.priority })),
       results: probeResults.map((r) => ({
@@ -197,6 +203,7 @@ export async function reevaluateCompetitorsHandler(
         evidenceId: r.evidenceId,
         provider: r.provider,
         sentiment: r.sentiment,
+        answerText: answerByEvidence.get(r.evidenceId),
       })),
       brand: brandFromDomain(project.domain),
       competitors,

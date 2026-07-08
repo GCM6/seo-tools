@@ -62,6 +62,53 @@ describe('aggregateProbeSummary', () => {
     ])
   })
 
+  it('SP-A2 #6：带 answerText 时对当前竞品集重解析（解冻探针期确认竞品）', () => {
+    // 'Rival' 不在任何冻结的 competitorsMentioned（模拟探针后才确认的竞品），但原文提到 → 重解析命中
+    const s = aggregateProbeSummary({
+      prompts,
+      results: [
+        { promptId: 'p1', brandPresent: true, competitorsMentioned: [], evidenceId: 'e1', provider: 'openai', answerText: '可以试试 Rival 这个工具' },
+        { promptId: 'p2', brandPresent: false, competitorsMentioned: [], evidenceId: 'e2', provider: 'openai', answerText: '暂无推荐' },
+      ],
+      brand: 'metadocu',
+      competitors: ['Rival'],
+    })!
+    expect(s.sov.find((x) => x.name === 'Rival')!.pct).toBe(50) // 2 样本 1 命中
+  })
+
+  it('SP-A2 #6：无 answerText 回退冻结 competitorsMentioned（不回归旧调用方）', () => {
+    const s = aggregateProbeSummary({
+      prompts,
+      results: [
+        { promptId: 'p1', brandPresent: true, competitorsMentioned: ['Rival'], evidenceId: 'e1' },
+        { promptId: 'p2', brandPresent: false, competitorsMentioned: [], evidenceId: 'e2' },
+      ],
+      brand: 'metadocu',
+      competitors: ['Rival'],
+    })!
+    expect(s.sov.find((x) => x.name === 'Rival')!.pct).toBe(50)
+  })
+
+  it('SP-A2 #6：分引擎 SoV 各引擎独立计（引擎不可互推）', () => {
+    const s = aggregateProbeSummary({
+      prompts,
+      results: [
+        { promptId: 'p1', brandPresent: true, competitorsMentioned: ['Notion'], evidenceId: 'e1', provider: 'openai' },
+        { promptId: 'p2', brandPresent: false, competitorsMentioned: ['Notion'], evidenceId: 'e2', provider: 'openai' },
+        { promptId: 'p1', brandPresent: true, competitorsMentioned: [], evidenceId: 'e3', provider: 'perplexity' },
+      ],
+      brand: 'metadocu',
+      competitors: ['Notion'],
+    })!
+    const openai = s.sovByEngine!.find((e) => e.engine === 'openai')!
+    expect(openai.samples).toBe(2)
+    expect(openai.sov.find((x) => x.name === 'Notion')!.pct).toBe(100) // openai 2/2
+    const px = s.sovByEngine!.find((e) => e.engine === 'perplexity')!
+    expect(px.samples).toBe(1)
+    expect(px.sov.find((x) => x.name === 'Notion')!.pct).toBe(0) // perplexity 0/1
+    expect(s.sovByEngine!.map((e) => e.engine)).toEqual(['openai', 'perplexity']) // samples 降序
+  })
+
   it('keeps prompt order by priority and falls back sampleEvidenceId to the first result', () => {
     const s = aggregateProbeSummary({
       prompts: [prompts[2], prompts[0], prompts[1]],
