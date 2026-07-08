@@ -16,6 +16,7 @@ vi.mock('@/lib/repositories', () => ({
   getRun: async () => store.run,
   getProject: async () => store.project,
   getBrandFacts: async () => store.facts,
+  getRunEvidence: async () => (store as { evidence?: unknown[] }).evidence ?? [],
   createGeneratedPrompt: async (row: Record<string, unknown>) => {
     created.push(row)
     return [row]

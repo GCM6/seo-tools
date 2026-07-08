@@ -5,12 +5,14 @@ import {
   getRun,
   getProject,
   getBrandFacts,
+  getRunEvidence,
   createGeneratedPrompt,
   assertCanGeneratePrompt,
 } from '@/lib/repositories'
 import type { RecommendationStatus } from '@/lib/types'
 import { assemblePrompt, assembleContentBrief } from '@/lib/diagnosis/prompt-assembler'
 import { GLOBAL_CONTENT_BLOCKERS } from '@/lib/diagnosis/templates'
+import { summarizeCompetitorForm, type CompetitorFormSignal } from '@/lib/collection/competitor-form'
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -59,6 +61,14 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
     // 内容类建议另产出面向人类作者的结构化写作简报（promptType='brief'，Phase D §5，同受人工闸门约束）。
     if (promptType === 'content') {
+      // Q03 竞品内容形态（SP-A2）：有 competitor_content_form 证据时汇总注入 brief 第 2 段，否则留「待补」。
+      const evidence = run ? await getRunEvidence(run.id) : []
+      const formRow = evidence.find(
+        (e) => e.type === 'dataforseo_serp' && (e.payload as { kind?: string } | null)?.kind === 'competitor_content_form',
+      )
+      const signals = formRow ? ((formRow.payload as { signals?: CompetitorFormSignal[] }).signals ?? []) : []
+      const competitorForm = summarizeCompetitorForm(signals) || undefined
+
       const brief = assembleContentBrief({
         rec: {
           what: rec.what,
@@ -70,6 +80,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
         },
         verifiedFacts,
         domain: project?.domain ?? '',
+        competitorForm,
         negativeConstraints: GLOBAL_CONTENT_BLOCKERS,
       })
       await createGeneratedPrompt({

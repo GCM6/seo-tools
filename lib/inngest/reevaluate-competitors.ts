@@ -22,7 +22,11 @@ import {
   createKeywordGaps,
   createFindings,
   createRecommendations,
+  createEvidenceArtifact,
 } from '@/lib/repositories'
+import { fetchLightCheck } from '@/lib/crawl/light-check'
+import { sha256Hex } from '@/lib/collection/hash'
+import { selectCompetitorFormTargets, collectCompetitorForm } from '@/lib/collection/competitor-form'
 
 // —— 竞品确认后增量再评估（Phase C 两段式诊断第二段，spec §5.1-4）——
 // 触发：用户在 competitors 页确认/驳回竞品后（COMPETITORS_CONFIRMED_EVENT）。
@@ -54,6 +58,8 @@ interface ReevaluateDeps {
   evaluateRules: typeof evaluateRules
   buildRuleContext: typeof buildRuleContext
   aggregateProbeSummary: typeof aggregateProbeSummary
+  createEvidenceArtifact: typeof createEvidenceArtifact
+  fetchLightCheck: typeof fetchLightCheck
   allRules: () => Promise<Rule[]> | Rule[]
   generateRecommendation: (hit: RuleHit, opts: { domain: string }) => Promise<RecommendationDraft> | RecommendationDraft
 }
@@ -81,6 +87,8 @@ function defaultDeps(): ReevaluateDeps {
     evaluateRules,
     buildRuleContext,
     aggregateProbeSummary,
+    createEvidenceArtifact,
+    fetchLightCheck,
     allRules: async () => (await import('@/lib/diagnosis/rules')).allRules,
     generateRecommendation: async (hit, opts) => (await import('@/lib/diagnosis/recommend')).generateRecommendation(hit, opts),
   }
@@ -230,6 +238,44 @@ export async function reevaluateCompetitorsHandler(
     const rows = await buildRecommendationRows(runId, newHits, findingRows, deps.generateRecommendation, domain)
     await deps.createRecommendations(rows)
     return rows.length
+  })
+
+  // —— Q03 竞品内容形态轻检（SP-A2）：确认竞品在种子词的排名页轻检，落 competitor_content_form
+  // 证据（复用 dataforseo_serp + payload.kind，免 migration），供 content_brief 第 2 段消费。
+  // 整步 try/catch 吞掉——采集失败不污染 reeval 主流程，brief 回落「待补」。
+  await step.run('collect-competitor-form', async () => {
+    try {
+      const [confirmed, evidenceRaw] = await Promise.all([
+        deps.getConfirmedCompetitors(projectId),
+        deps.getRunEvidence(runId),
+      ])
+      const confirmedDomains = confirmed.map((c) => c.domain)
+      const serpRow = evidenceRaw.find(
+        (e) => e.type === 'dataforseo_serp' && (e.payload as { kind?: string } | null)?.kind === 'seed_serp',
+      )
+      const serpResults = serpRow ? ((serpRow.payload as { results?: SeedSerpEntry[] }).results ?? []) : []
+      const targets = selectCompetitorFormTargets(serpResults, confirmedDomains)
+      if (!targets.length) return { collected: 0 }
+      const signals = await collectCompetitorForm(targets, { fetchLightCheck: deps.fetchLightCheck })
+      if (!signals.length) return { collected: 0 }
+      const payload = { kind: 'competitor_content_form', signals }
+      const rawText = JSON.stringify(payload)
+      await deps.createEvidenceArtifact({
+        id: `ev_${crypto.randomUUID()}`,
+        projectId,
+        runId,
+        type: 'dataforseo_serp',
+        claimLevel: 'L3',
+        source: 'competitor_light_check',
+        payload,
+        rawText,
+        rawHash: sha256Hex(rawText),
+      })
+      await emit({ type: 'evidence_created', evidenceType: 'dataforseo_serp' })
+      return { collected: signals.length }
+    } catch {
+      return { collected: 0 }
+    }
   })
 
   await emit({ type: 'done' })

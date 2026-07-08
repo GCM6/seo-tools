@@ -40,6 +40,12 @@ function makeDeps(over: Record<string, unknown> = {}) {
     evaluateRules: vi.fn(() => [makeHit({ fingerprint: 'fp_new' }), makeHit({ ruleId: 'T01', fingerprint: 'fp_existing' })]),
     buildRuleContext: vi.fn((_input: unknown) => ({}) as never),
     aggregateProbeSummary: vi.fn((_input: unknown) => null),
+    createEvidenceArtifact: vi.fn(async (row: unknown) => row),
+    fetchLightCheck: vi.fn(async (url: string) => ({
+      url, finalUrl: url, httpStatus: 200, title: 'Rival CRM', canonicalUrl: null, metaRobots: null,
+      mainTextChars: 3000, contentHash: 'h', internalLinks: [], checkStatus: 'checked' as const, errorReason: null,
+      extra: { hasViewport: true, hreflangEntries: [], imgCount: 0, imgAltMissing: 0, listCount: 6, tableCount: 0, avgParagraphLen: 0, h2QuestionRate: 0, isHttps: true, mixedContentCount: 0, redirected: false },
+    })),
     allRules: async () => [],
     generateRecommendation: vi.fn(async (hit: RuleHit) => ({ what: `修：${hit.title}`, why: hit.description, effort: 'mid', validationMethod: '复测' })),
     ...over,
@@ -74,6 +80,27 @@ describe('reevaluateCompetitorsHandler', () => {
     expect(findingRows[0].fingerprint).toBe('fp_new')
     const recRows = deps.createRecommendations.mock.calls[0][0] as unknown[]
     expect(recRows).toHaveLength(1)
+  })
+
+  it('确认竞品 + seed_serp → 轻检并落 competitor_content_form 证据（SP-A2）', async () => {
+    const deps = makeDeps()
+    const { args } = makeArgs()
+    await reevaluateCompetitorsHandler(args, asDeps(deps))
+
+    expect(deps.fetchLightCheck).toHaveBeenCalledWith('https://rival.com', 'rival.com')
+    expect(deps.createEvidenceArtifact).toHaveBeenCalledOnce()
+    const ev = deps.createEvidenceArtifact.mock.calls[0][0] as { type: string; claimLevel: string; payload: { kind: string; signals: unknown[] } }
+    expect(ev.type).toBe('dataforseo_serp')
+    expect(ev.claimLevel).toBe('L3')
+    expect(ev.payload.kind).toBe('competitor_content_form')
+    expect(ev.payload.signals).toHaveLength(1)
+  })
+
+  it('无确认竞品时不落 competitor_content_form 证据', async () => {
+    const deps = makeDeps({ getConfirmedCompetitors: vi.fn(async () => []) })
+    const { args } = makeArgs()
+    await reevaluateCompetitorsHandler(args, asDeps(deps))
+    expect(deps.createEvidenceArtifact).not.toHaveBeenCalled()
   })
 
   it('计算并落 keyword_gaps，evidenceId 指向 seed_serp 证据', async () => {
