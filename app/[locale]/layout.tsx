@@ -37,9 +37,11 @@ const fontVariables = [
   notoSansSC.variable,
 ].join(' ')
 
+// 内部工具，全站不进搜索引擎；唯一公开面 /share 自带独立 noindex（见 app/share/[token]/page.tsx），此处不影响它。
 export const metadata: Metadata = {
   title: 'Veris',
   description: 'Evidence-based SEO + GEO diagnostic workbench',
+  robots: { index: false, follow: false },
 }
 
 export function generateStaticParams() {
