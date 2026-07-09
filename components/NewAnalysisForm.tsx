@@ -38,6 +38,7 @@ export function NewAnalysisForm({
   gscAppConfigured = true,
   aiProbeConfigured = false,
   initialStep = 1,
+  savedEngines = null,
 }: {
   locale: string
   project?: WizardProject | null
@@ -45,6 +46,7 @@ export function NewAnalysisForm({
   gscAppConfigured?: boolean
   aiProbeConfigured?: boolean
   initialStep?: 1 | 2 | 3
+  savedEngines?: string[] | null
 }) {
   const t = useTranslations('screen1')
   const router = useRouter()
@@ -63,7 +65,15 @@ export function NewAnalysisForm({
     return i >= 0 ? i : 0
   })
   const [competitors, setCompetitors] = useState((project?.competitors ?? []).join(', '))
-  const [engines, setEngines] = useState<Record<string, boolean>>(DEFAULT_ENGINES)
+  const [engines, setEngines] = useState<Record<string, boolean>>(() => {
+    // 项目已保存的引擎选择（projectSettings.defaultModels，与 ENGINES 同名 key）非空时回填；
+    // 否则维持产品默认（spec §2.4）。
+    if (savedEngines && savedEngines.length > 0) {
+      const saved = new Set(savedEngines)
+      return Object.fromEntries(ENGINES.map((name) => [name, saved.has(name)])) as Record<string, boolean>
+    }
+    return DEFAULT_ENGINES
+  })
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 

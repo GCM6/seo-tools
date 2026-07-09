@@ -49,6 +49,32 @@ describe('NewAnalysisForm 第 1 步智能预填', () => {
   })
 })
 
+describe('NewAnalysisForm 第 2 步引擎多选预填（savedEngines 回填，spec §2.4）', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ id: 'proj_x' }), { status: 201 })))
+  })
+
+  it('传 savedEngines 仅含一个引擎 key 时，仅该 chip 选中', async () => {
+    renderForm({ savedEngines: ['Perplexity'] })
+    await advanceToConnect()
+    expect(screen.getByRole('checkbox', { name: 'ChatGPT' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Perplexity' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Gemini' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'DeepSeek' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Google AI Overviews' })).not.toBeChecked()
+  })
+
+  it('不传 savedEngines 时维持默认（4 开 1 关）', async () => {
+    renderForm()
+    await advanceToConnect()
+    expect(screen.getByRole('checkbox', { name: 'ChatGPT' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Perplexity' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Gemini' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'DeepSeek' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Google AI Overviews' })).not.toBeChecked()
+  })
+})
+
 describe('NewAnalysisForm 第 2 步数据连接三态', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ id: 'proj_x' }), { status: 201 })))

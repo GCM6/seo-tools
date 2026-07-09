@@ -52,6 +52,7 @@ export default async function NewAnalysisPage({
         gscAppConfigured={gscAppConfigured}
         aiProbeConfigured={aiProbeConfigured}
         initialStep={initialStep}
+        savedEngines={settings?.defaultModels ?? null}
       />
     </Shell>
   )
