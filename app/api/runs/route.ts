@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db/client'
 import { runs } from '@/db/schema'
-import { getProject, markRunStatus } from '@/lib/repositories'
+import { getProject, markRunStatus, findActiveRun } from '@/lib/repositories'
 import { inngest } from '@/lib/inngest/client'
 import { buildCollectRequestedEvent } from '@/lib/inngest/events'
 import { RULES_VERSION } from '@/lib/diagnosis/types'
@@ -24,6 +24,10 @@ export async function POST(req: Request) {
 
   const project = await getProject(projectId)
   if (!project) return NextResponse.json({ error: 'not_found' }, { status: 404 })
+
+  // 同项目并发保护（spec §2.3）：已有进行中 run 时拒绝创建，不插入不派发。
+  const active = await findActiveRun(projectId)
+  if (active) return NextResponse.json({ error: 'run_in_progress', runId: active.id }, { status: 409 })
 
   const [created] = await db
     .insert(runs)

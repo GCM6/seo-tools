@@ -19,10 +19,12 @@ const getProjectMock = vi.fn(async (id: string) =>
   id === 'proj_1' ? { id: 'proj_1', domain: 'https://example.com/' } : null,
 )
 const markRunStatusMock = vi.fn(async () => undefined)
+const findActiveRunMock = vi.fn(async () => undefined as { id: string; status: string } | undefined)
 
 vi.mock('@/lib/repositories', () => ({
   getProject: (id: string) => getProjectMock(id),
   markRunStatus: (...args: unknown[]) => markRunStatusMock(...(args as [])),
+  findActiveRun: (id: string) => findActiveRunMock(id),
 }))
 
 const sendMock = vi.fn(async () => ({ ids: ['evt_1'] }))
@@ -49,6 +51,7 @@ describe('POST /api/runs', () => {
     insertedRuns.length = 0
     sendMock.mockReset().mockResolvedValue({ ids: ['evt_1'] })
     markRunStatusMock.mockClear()
+    findActiveRunMock.mockReset().mockResolvedValue(undefined)
   })
 
   it('returns 422 when projectId is missing', async () => {
@@ -90,5 +93,16 @@ describe('POST /api/runs', () => {
     expect(runId).toBe((insertedRuns[0] as { id: string }).id)
     expect(status).toBe('failed')
     expect(extra?.failureReason).toBeTruthy()
+  })
+
+  // 同项目并发保护（spec §2.3）：已有进行中 run 时拒绝创建，不插入不派发。
+  it('returns 409 run_in_progress when the project already has an active run', async () => {
+    findActiveRunMock.mockResolvedValue({ id: 'run_active', status: 'collecting' })
+    const res = await post({ projectId: 'proj_1', runType: 'baseline' })
+
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ error: 'run_in_progress', runId: 'run_active' })
+    expect(insertedRuns.length).toBe(0)
+    expect(sendMock).not.toHaveBeenCalled()
   })
 })

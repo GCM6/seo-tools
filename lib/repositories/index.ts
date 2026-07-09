@@ -5,7 +5,8 @@ import { hasValidEvidence, computeArtifactUpdate, assertReleasableVersion } from
 import type { EvidenceType, EvidenceLevel, RunStatus, ClaimType } from '@/lib/types'
 import type { LightCheckExtra } from '@/lib/crawl/light-check'
 import { assertFindingClaimEvidence } from './validators'
-import { pickLatestRun } from '@/lib/projects/summary'
+import { pickLatestRun, pickActiveRun, pickRetestAnchor } from '@/lib/projects/summary'
+import { ACTIVE_RUN_STATUSES } from '@/lib/runs/status'
 import { encryptSecret } from '@/lib/crypto/secrets'
 import { encryptGscToken } from '@/lib/gsc/token-crypto'
 import { generateShareToken } from '@/lib/share/token'
@@ -103,6 +104,14 @@ export const markRunStatus = (
   extra?: { finishedAt?: string; failureReason?: string | null },
 ) =>
   db.update(runs).set({ status, ...extra }).where(eq(runs.id, runId))
+
+// 同项目并发保护（spec §2.3）：POST /api/runs 与 POST /api/runs/[id]/retest 插入新 run 前
+// 先查是否已有进行中 run，命中则拒绝创建（409），避免同一项目并发采集/诊断。
+export const findActiveRun = (projectId: string) =>
+  db.query.runs.findFirst({
+    where: and(eq(runs.projectId, projectId), inArray(runs.status, ACTIVE_RUN_STATUSES as string[])),
+    orderBy: [desc(runs.startedAt)],
+  })
 
 // —— 站点页面 / URL 模板（全站路由发现，spec: 2026-07-02-site-route-discovery）——
 export interface SitePageUpsert {
@@ -252,6 +261,8 @@ export const listProjectsWithSummary = async () => {
     projectRows.map(async (p) => {
       const runRows = await db.select().from(runs).where(eq(runs.projectId, p.id))
       const latest = pickLatestRun(runRows)
+      const activeRun = pickActiveRun(runRows)
+      const retestAnchor = pickRetestAnchor(runRows)
       const findingCount = latest
         ? (await db.select({ id: findings.id }).from(findings).where(eq(findings.runId, latest.id))).length
         : 0
@@ -263,6 +274,8 @@ export const listProjectsWithSummary = async () => {
         latestRun: latest
           ? { id: latest.id, runType: latest.runType, status: latest.status, startedAt: latest.startedAt, findingCount }
           : null,
+        activeRun: activeRun ? { id: activeRun.id, status: activeRun.status } : null,
+        retestAnchor: retestAnchor ? { id: retestAnchor.id } : null,
       }
     }),
   )

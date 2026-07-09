@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db/client'
 import { runs } from '@/db/schema'
-import { getRun, getProject, markRunStatus } from '@/lib/repositories'
+import { getRun, getProject, markRunStatus, findActiveRun } from '@/lib/repositories'
 import { inngest } from '@/lib/inngest/client'
 import { buildCollectRequestedEvent } from '@/lib/inngest/events'
 import { RULES_VERSION } from '@/lib/diagnosis/types'
@@ -18,6 +18,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   const project = await getProject(baseline.projectId)
   if (!project) return NextResponse.json({ error: 'not_found' }, { status: 404 })
+
+  // 同项目并发保护（spec §2.3）：已有进行中 run 时拒绝发起回测，不插入不派发。
+  const active = await findActiveRun(baseline.projectId)
+  if (active) return NextResponse.json({ error: 'run_in_progress', runId: active.id }, { status: 409 })
 
   // 与首轮（app/api/runs/route.ts）一致：直接以 project.domain 作为采集入口 url。
   const [retest] = await db
