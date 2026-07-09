@@ -1,6 +1,5 @@
 import { notFound } from 'next/navigation'
 import { setRequestLocale, getTranslations } from 'next-intl/server'
-import { Shell } from '@/components/Shell'
 import { RunHistory, type RunHistoryItem } from '@/components/RunHistory'
 import { GscConnectCard } from '@/components/GscConnectCard'
 import { getProject, getProjectRuns, getProjectSettings, getFindings } from '@/lib/repositories'
@@ -37,47 +36,45 @@ export default async function ProjectDetailPage({
   ).sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''))
 
   return (
-    <Shell active={1} locale={locale} domain={project.domain}>
-      <section className="screen show">
-        <div className="sec-h">
-          <h1 className="text-lg font-semibold mono">{project.domain}</h1>
-          <a className="run-btn" href={`/${locale}/new`}>
-            {t('newRun')}
-          </a>
-        </div>
+    <section className="screen show">
+      <div className="sec-h">
+        <h1 className="text-lg font-semibold mono">{project.domain}</h1>
+        <a className="run-btn" href={`/${locale}/new`}>
+          {t('newRun')}
+        </a>
+      </div>
 
-        {project.nextRetestDueAt ? (
-          <p className="note">{t('retestDue', { date: project.nextRetestDueAt })}</p>
-        ) : null}
+      {project.nextRetestDueAt ? (
+        <p className="note">{t('retestDue', { date: project.nextRetestDueAt })}</p>
+      ) : null}
 
-        <h2 className="mt-6 text-sm font-medium">{t('runHistoryTitle')}</h2>
-        <RunHistory
-          locale={locale}
-          runs={runs}
-          labels={{
-            colTime: t('colTime'),
-            colType: t('colType'),
-            colStatus: t('colStatus'),
-            colFindings: t('colFindings'),
-            colAction: t('colAction'),
-            viewRun: t('viewRun'),
-            viewReport: t('viewReport'),
-            noRuns: t('noRuns'),
-          }}
-          statusLabels={tp.raw('status') as Record<string, string>}
-          runTypeLabels={tp.raw('runType') as Record<string, string>}
-        />
+      <h2 className="mt-6 text-sm font-medium">{t('runHistoryTitle')}</h2>
+      <RunHistory
+        locale={locale}
+        runs={runs}
+        labels={{
+          colTime: t('colTime'),
+          colType: t('colType'),
+          colStatus: t('colStatus'),
+          colFindings: t('colFindings'),
+          colAction: t('colAction'),
+          viewRun: t('viewRun'),
+          viewReport: t('viewReport'),
+          noRuns: t('noRuns'),
+        }}
+        statusLabels={tp.raw('status') as Record<string, string>}
+        runTypeLabels={tp.raw('runType') as Record<string, string>}
+      />
 
-        <h2 className="mt-6 text-sm font-medium">{t('gscTitle')}</h2>
-        <GscConnectCard
-          projectId={project.id}
-          projectDomain={project.domain}
-          locale={locale}
-          gscConnected={settings?.gscConnected ?? false}
-          gscSiteUrl={settings?.gscSiteUrl ?? null}
-          gscAppConfigured={isGscConfigured()}
-        />
-      </section>
-    </Shell>
+      <h2 className="mt-6 text-sm font-medium">{t('gscTitle')}</h2>
+      <GscConnectCard
+        projectId={project.id}
+        projectDomain={project.domain}
+        locale={locale}
+        gscConnected={settings?.gscConnected ?? false}
+        gscSiteUrl={settings?.gscSiteUrl ?? null}
+        gscAppConfigured={isGscConfigured()}
+      />
+    </section>
   )
 }

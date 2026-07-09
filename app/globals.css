@@ -307,40 +307,30 @@ button {
   margin: 0 auto;
   padding: 0 var(--sp-md) var(--sp-section);
 }
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-base);
-  padding: 18px 0 var(--sp-base);
-  flex-wrap: wrap;
-}
 .brand {
   display: flex;
   align-items: baseline;
   gap: 9px;
+  text-decoration: none;
 }
 .brand .logo {
   font-family: var(--font-sans);
   font-weight: 700;
   font-size: 20px;
   letter-spacing: -0.02em;
+  color: var(--ds-ink);
 }
 .brand .logo b {
   color: var(--measured);
 }
-.brand .sub {
-  font-size: 11px;
-  color: var(--ds-muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
+/* Shell 向导条上的「分析目标」域名徽章（不再嵌在 topbar 里，见 components/Shell.tsx） */
 .target {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 10px;
   font-size: 13px;
   color: var(--ds-body);
+  margin-bottom: var(--sp-sm);
 }
 .target .dom {
   font-family: var(--font-mono);
@@ -360,6 +350,109 @@ button {
 }
 .ghost:hover {
   border-color: var(--ds-body);
+}
+
+/* ---- site header (全站导航，layout 统一渲染，design spec 2026-07-08 §1) ---- */
+.site-header {
+  background: var(--ds-canvas);
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+.site-header-inner {
+  max-width: var(--layout-max-content);
+  margin: 0 auto;
+  padding: 18px var(--sp-md);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-lg);
+  flex-wrap: wrap;
+}
+.site-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-base);
+}
+.nav-link {
+  font-size: 13.5px;
+  color: var(--ds-body);
+  text-decoration: none;
+}
+.nav-link:hover {
+  color: var(--ds-ink);
+}
+.site-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* 复用 .run-btn 黑底主按钮样式（spec §4），仅在头部收紧尺寸与外边距。 */
+.site-header-actions .run-btn {
+  margin-top: 0;
+  padding: 9px 18px;
+  font-size: 13px;
+}
+
+/* ---- site footer (全站 footer，layout 统一渲染，design spec 2026-07-08 §3) ---- */
+.site-footer {
+  background: var(--ds-surface-1);
+  border-top: 1px solid var(--ds-border-subtle);
+  margin-top: var(--sp-2xl);
+}
+.site-footer-inner {
+  max-width: var(--layout-max-content);
+  margin: 0 auto;
+  padding: var(--sp-xl) var(--sp-md) var(--sp-lg);
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1.4fr;
+  gap: var(--sp-xl);
+}
+.sf-col-title {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ds-ink);
+  margin-bottom: 10px;
+  letter-spacing: 0.02em;
+}
+.sf-col p {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ds-body);
+  margin: 0 0 8px;
+}
+.sf-tagline {
+  color: var(--ds-ink) !important;
+  font-weight: 500;
+}
+.sf-version-line {
+  color: var(--ds-muted) !important;
+}
+.sf-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.sf-nav a {
+  font-size: 12.5px;
+  color: var(--ds-body);
+  text-decoration: none;
+}
+.sf-nav a:hover {
+  color: var(--ds-ink);
+}
+.site-footer-bottom {
+  max-width: var(--layout-max-content);
+  margin: 0 auto;
+  padding: var(--sp-base) var(--sp-md) var(--sp-lg);
+  border-top: 1px solid var(--ds-border-subtle);
+  font-size: 11.5px;
+  color: var(--ds-muted);
+}
+@media (max-width: 720px) {
+  .site-footer-inner {
+    grid-template-columns: 1fr;
+    gap: var(--sp-lg);
+  }
 }
 
 /* ---- stepper ---- */
@@ -1473,8 +1566,9 @@ button {
 
 /* ---- 综合报告打印 / PDF（Phase E · report 页）---- */
 @media print {
-  /* 导航与操作区不进纸：顶栏、步骤条、目录锚点、导出/打印按钮均隐藏。 */
-  .topbar,
+  /* 导航与操作区不进纸：全站 header/footer、步骤条、目录锚点、导出/打印按钮均隐藏。 */
+  .site-header,
+  .site-footer,
   .stepper,
   .no-print {
     display: none !important;

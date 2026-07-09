@@ -1,4 +1,20 @@
 {
+  "nav": {
+    "projects": "Projects",
+    "rules": "Rule library",
+    "settings": "Settings",
+    "newAnalysis": "New analysis"
+  },
+  "footer": {
+    "productTagline": "Evidence-based SEO + GEO diagnostic workbench",
+    "productMethodology": "Every conclusion carries an evidence grade — the \"Measured\" label is reserved for L3/L4 evidence.",
+    "navTitle": "Navigation",
+    "methodologyTitle": "Methodology",
+    "evidenceLevels": "Evidence grades L0–L4: from unsupported to hard-measured, conclusions are labeled by evidence strength and never overstated.",
+    "sameProtocol": "Same-protocol retest: before/after comparisons reuse the same prompt set, market/language, model family and sampling rule.",
+    "rulesVersion": "Rules version",
+    "protocolVersion": "Protocol version"
+  },
   "common": {
     "appName": "Veris",
     "tagline": "SEO · GEO Diagnostics",

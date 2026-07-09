@@ -5,6 +5,8 @@ import { NextIntlClientProvider, hasLocale } from 'next-intl'
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import { routing } from '@/i18n/routing'
+import { SiteHeader } from '@/components/SiteHeader'
+import { SiteFooter } from '@/components/SiteFooter'
 import '../globals.css'
 
 // 炼图术 Studio 双字体 (docs/d.md)：Geist Sans 用于 UI，Geist Mono 用于 AI/代码/prompt。
@@ -60,7 +62,14 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} className={fontVariables}>
       <body>
-        <NextIntlClientProvider>{children}</NextIntlClientProvider>
+        {/* SiteHeader 内含 client 组件（LocaleSwitch/DataSourceHealth），必须在 Provider 内渲染
+            （design spec §1.3）。全站导航/footer 从"每页自包 Shell"改为 layout 统一渲染，
+            孤岛问题（如曾漏包 Shell 的 /rules）从机制上消除。 */}
+        <NextIntlClientProvider>
+          <SiteHeader locale={locale} />
+          <main className="shell">{children}</main>
+          <SiteFooter locale={locale} />
+        </NextIntlClientProvider>
       </body>
     </html>
   )

@@ -1,4 +1,20 @@
 {
+  "nav": {
+    "projects": "项目",
+    "rules": "规则库",
+    "settings": "设置",
+    "newAnalysis": "新建分析"
+  },
+  "footer": {
+    "productTagline": "SEO + GEO 证据化诊断工作台",
+    "productMethodology": "每个结论都有证据分级，『实测』标签仅授予 L3/L4 证据。",
+    "navTitle": "导航",
+    "methodologyTitle": "方法论",
+    "evidenceLevels": "证据分级 L0–L4：从无证据支撑到硬证据实测，结论按证据强度分层标注，不可越级。",
+    "sameProtocol": "同协议回测：前后对比使用同一 prompt 集、市场语言、模型族与采样规则。",
+    "rulesVersion": "规则版本",
+    "protocolVersion": "协议版本"
+  },
   "common": {
     "appName": "Veris",
     "tagline": "SEO · GEO 诊断台",

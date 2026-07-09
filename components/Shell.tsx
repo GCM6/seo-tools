@@ -1,69 +1,38 @@
 import { getTranslations } from 'next-intl/server'
-import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { LocaleSwitch } from './LocaleSwitch'
 import { Stepper } from './Stepper'
-import { DataSourceHealth } from './DataSourceHealth'
-import type { DataSourceHealth as DataSourceHealthSummary } from '@/lib/settings/data-source-health'
 
-// App chrome: top bar (brand + tagline + target domain + locale switch) above
-// the workflow Stepper, then the screen content. Server Component — the only
-// client leaves are <Stepper>, <LocaleSwitch> and (opt-in) <DataSourceHealth>.
-// dataHealth 由诊断相关页预算好传入（设置页本身即目的地，不挂 pill）；Shell 不碰 DB。
-// （spec §SP-G2b-5）
+// 向导上下文条：仅剩「分析目标」域名徽章 + 4 步 Stepper（design spec §1.1，2026-07-08）。
+// 品牌/项目/规则库/设置/CTA/DataSourceHealth/LocaleSwitch 已上移到 SiteHeader（全站 layout
+// 统一渲染）；本组件不再输出外层 .shell div —— 限宽容器由 app/[locale]/layout.tsx 的
+// <main className="shell"> 提供。仅向导流页面使用：/new、/runs/[id] 及其子页。
 export async function Shell({
   active,
   locale,
   runId,
   domain,
-  dataHealth,
-  projectId,
   children,
 }: {
   active: 1 | 2 | 3 | 4
   locale: string
   runId?: string
   domain?: string
-  dataHealth?: DataSourceHealthSummary | null
-  projectId?: string
   children: ReactNode
 }) {
   const t = await getTranslations('common')
 
   return (
-    <div className="shell">
-      <div className="topbar">
-        <div className="brand">
-          <span className="logo">
-            Ver<b>i</b>s
-          </span>
-          <span className="sub">{t('tagline')}</span>
-        </div>
+    <>
+      {domain ? (
         <div className="target">
-          {domain ? (
-            <>
-              <span>{t('targetLabel')}</span>
-              <span className="dom mono">{domain}</span>
-            </>
-          ) : null}
-          {dataHealth ? (
-            <DataSourceHealth
-              items={dataHealth.items}
-              up={dataHealth.up}
-              total={dataHealth.total}
-              locale={locale}
-              projectId={projectId}
-            />
-          ) : null}
-          <Link href={`/${locale}/projects`} className="settings-link">{t('projectsLink')}</Link>
-          <Link href={`/${locale}/settings`} className="settings-link">{t('settingsLink')}</Link>
-          <LocaleSwitch />
+          <span>{t('targetLabel')}</span>
+          <span className="dom mono">{domain}</span>
         </div>
-      </div>
+      ) : null}
 
       <Stepper active={active} runId={runId} locale={locale} />
 
       {children}
-    </div>
+    </>
   )
 }
