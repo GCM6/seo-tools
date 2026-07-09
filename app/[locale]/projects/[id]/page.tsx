@@ -4,6 +4,7 @@ import { Shell } from '@/components/Shell'
 import { RunHistory, type RunHistoryItem } from '@/components/RunHistory'
 import { GscConnectCard } from '@/components/GscConnectCard'
 import { getProject, getProjectRuns, getProjectSettings, getFindings } from '@/lib/repositories'
+import { isGscConfigured } from '@/lib/gsc/oauth'
 
 // 项目详情页（SP-G1b）：诊断历史 + 该项目 GSC 连接。项目不存在 → 路由级 404。
 export default async function ProjectDetailPage({
@@ -74,6 +75,7 @@ export default async function ProjectDetailPage({
           locale={locale}
           gscConnected={settings?.gscConnected ?? false}
           gscSiteUrl={settings?.gscSiteUrl ?? null}
+          gscAppConfigured={isGscConfigured()}
         />
       </section>
     </Shell>

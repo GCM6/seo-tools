@@ -35,12 +35,14 @@ export function NewAnalysisForm({
   locale,
   project = null,
   gscConnected = false,
+  gscAppConfigured = true,
   aiProbeConfigured = false,
   initialStep = 1,
 }: {
   locale: string
   project?: WizardProject | null
   gscConnected?: boolean
+  gscAppConfigured?: boolean
   aiProbeConfigured?: boolean
   initialStep?: 1 | 2 | 3
 }) {
@@ -139,6 +141,7 @@ export function NewAnalysisForm({
 
   function connectGsc() {
     if (!projectId) return
+    if (!gscAppConfigured) return
     // 授权后跳回 /new 向导第 2 步闭环（多项目：带 projectId 以显式续起在建项目；
     // callback 会附 gsc=connected）。
     const returnTo = `/${locale}/new?step=connect&projectId=${encodeURIComponent(projectId)}`
@@ -275,11 +278,12 @@ export function NewAnalysisForm({
               {gscConnected ? (
                 <span className="cc-state ok">{t('stateConnected')}</span>
               ) : (
-                <button type="button" className="cc-action" onClick={connectGsc}>
+                <button type="button" className="cc-action" onClick={connectGsc} disabled={!gscAppConfigured}>
                   {t('gscConnectCta')}
                 </button>
               )}
             </div>
+            {!gscConnected && !gscAppConfigured && <p className="wizard-hint">{t('gscNotConfiguredHint')}</p>}
 
             <div className={`connect-card${aiProbeConfigured ? ' connected' : ''}`}>
               <div className="cc-body">

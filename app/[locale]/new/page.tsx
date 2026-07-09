@@ -28,6 +28,7 @@ export default async function NewAnalysisPage({
     loadDataSourceStatuses(project?.id),
   ])
   const aiProbeConfigured = statuses.find((s) => s.key === 'aiProbe')?.configured ?? false
+  const gscAppConfigured = statuses.find((s) => s.key === 'gsc')?.configured ?? false
   const gscConnected = settings?.gscConnected ?? false
   const initialStep = step === 'connect' || gsc === 'connected' ? 2 : 1
 
@@ -48,6 +49,7 @@ export default async function NewAnalysisPage({
             : null
         }
         gscConnected={gscConnected}
+        gscAppConfigured={gscAppConfigured}
         aiProbeConfigured={aiProbeConfigured}
         initialStep={initialStep}
       />

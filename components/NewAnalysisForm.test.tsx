@@ -75,6 +75,36 @@ describe('NewAnalysisForm 第 2 步数据连接三态', () => {
     await screen.findByText('已连接 ✓')
     expect(screen.queryByRole('button', { name: '连接 GSC' })).not.toBeInTheDocument()
   })
+
+  it('gscAppConfigured=false：连接按钮禁用、显示环境变量提示、点击不跳转', async () => {
+    const original = window.location
+    Object.defineProperty(window, 'location', { value: { ...original, href: 'about:blank' }, writable: true })
+    renderForm({ gscAppConfigured: false })
+    await advanceToConnect()
+
+    const button = screen.getByRole('button', { name: '连接 GSC' })
+    expect(button).toBeDisabled()
+    expect(
+      screen.getByText(/未配置 Google OAuth.*GOOGLE_OAUTH_CLIENT_ID.*GOOGLE_OAUTH_CLIENT_SECRET.*GOOGLE_OAUTH_REDIRECT_URI/),
+    ).toBeInTheDocument()
+
+    fireEvent.click(button)
+    expect(window.location.href).toBe('about:blank')
+    Object.defineProperty(window, 'location', { value: original, writable: true })
+  })
+
+  it('gscAppConfigured=true（默认）：行为不变，点击连接仍跳转到 /api/gsc/auth', async () => {
+    const original = window.location
+    Object.defineProperty(window, 'location', { value: { ...original, href: 'about:blank' }, writable: true })
+    renderForm()
+    await advanceToConnect()
+
+    const button = screen.getByRole('button', { name: '连接 GSC' })
+    expect(button).not.toBeDisabled()
+    fireEvent.click(button)
+    expect(window.location.href).toContain('/api/gsc/auth?projectId=proj_x')
+    Object.defineProperty(window, 'location', { value: original, writable: true })
+  })
 })
 
 describe('NewAnalysisForm 第 3 步预估与提交', () => {

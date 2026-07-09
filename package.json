@@ -4,11 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:all": "concurrently \"pnpm dev\" \"npx inngest-cli@latest dev\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "db:init": "pnpm db:push && pnpm db:seed",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx db/seed.ts",
     "db:migrate-gsc": "tsx db/migrate-gsc-tokens.ts"
@@ -32,6 +34,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.0.3",
+    "concurrently": "^8.2.2",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",

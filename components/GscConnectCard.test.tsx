@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextIntlClientProvider } from 'next-intl'
 import { GscConnectCard } from './GscConnectCard'
@@ -63,5 +63,33 @@ describe('GscConnectCard', () => {
     vi.stubGlobal('fetch', spy)
     renderCard({ gscConnected: false })
     expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('gscAppConfigured=false：连接按钮禁用、显示环境变量提示、点击不跳转', () => {
+    const original = window.location
+    Object.defineProperty(window, 'location', { value: { ...original, href: 'about:blank' }, writable: true })
+    renderCard({ gscConnected: false, gscAppConfigured: false })
+
+    const button = screen.getByRole('button', { name: '连接 GSC' })
+    expect(button).toBeDisabled()
+    expect(
+      screen.getByText(/未配置 Google OAuth.*GOOGLE_OAUTH_CLIENT_ID.*GOOGLE_OAUTH_CLIENT_SECRET.*GOOGLE_OAUTH_REDIRECT_URI/),
+    ).toBeInTheDocument()
+
+    fireEvent.click(button)
+    expect(window.location.href).toBe('about:blank')
+    Object.defineProperty(window, 'location', { value: original, writable: true })
+  })
+
+  it('gscAppConfigured=true（默认）：行为不变，点击连接跳转到 /api/gsc/auth', () => {
+    const original = window.location
+    Object.defineProperty(window, 'location', { value: { ...original, href: 'about:blank' }, writable: true })
+    renderCard({ gscConnected: false })
+
+    const button = screen.getByRole('button', { name: '连接 GSC' })
+    expect(button).not.toBeDisabled()
+    fireEvent.click(button)
+    expect(window.location.href).toContain('/api/gsc/auth?projectId=proj_a')
+    Object.defineProperty(window, 'location', { value: original, writable: true })
   })
 })

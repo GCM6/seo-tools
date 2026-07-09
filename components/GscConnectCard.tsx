@@ -12,12 +12,14 @@ export function GscConnectCard({
   locale,
   gscConnected,
   gscSiteUrl,
+  gscAppConfigured = true,
 }: {
   projectId: string
   projectDomain: string
   locale: string
   gscConnected: boolean
   gscSiteUrl: string | null
+  gscAppConfigured?: boolean
 }) {
   const t = useTranslations('projectDetail')
   const router = useRouter()
@@ -43,6 +45,7 @@ export function GscConnectCard({
   }, [gscConnected, projectId])
 
   function connectGsc() {
+    if (!gscAppConfigured) return
     const returnTo = `/${locale}/projects/${projectId}`
     window.location.href = `/api/gsc/auth?projectId=${encodeURIComponent(projectId)}&returnTo=${encodeURIComponent(returnTo)}`
   }
@@ -68,9 +71,10 @@ export function GscConnectCard({
         </span>
       </div>
 
-      <button type="button" className="ghost" onClick={connectGsc} disabled={busy}>
+      <button type="button" className="ghost" onClick={connectGsc} disabled={busy || !gscAppConfigured}>
         {gscConnected ? t('reconnectGsc') : t('connectGsc')}
       </button>
+      {!gscAppConfigured && <p className="wizard-hint">{t('gscNotConfiguredHint')}</p>}
 
       {gscConnected && (
         <div className="gsc-site">
