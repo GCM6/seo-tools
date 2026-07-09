@@ -1,0 +1,303 @@
+/* =========================================================================
+   Veris marketing site — 轻量自写 CSS
+   色板变量取自根应用 app/globals.css 的 --ds-* 子集，保持品牌一致（不引入 Tailwind）。
+   ========================================================================= */
+
+:root {
+  --ds-primary: #0071e3;
+  --ds-primary-hover: #0077ed;
+  --ds-on-primary: #ffffff;
+
+  --ds-canvas: #ffffff;
+  --ds-surface-1: #f5f5f7;
+  --ds-surface-2: #e8e8ed;
+
+  --ds-ink: #1d1d1f;
+  --ds-body: #424245;
+  --ds-muted: #86868b;
+
+  --ds-border: #d2d2d7;
+  --ds-border-subtle: #e8e8ed;
+
+  --measured: #0b6e74;
+  --measured-bg: #e2f1f1;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ds-primary: #2997ff;
+    --ds-primary-hover: #2c8eeb;
+    --ds-on-primary: #ffffff;
+
+    --ds-canvas: #0f0e14;
+    --ds-surface-1: #18171f;
+    --ds-surface-2: #1e1d27;
+
+    --ds-ink: #f5f5f7;
+    --ds-body: #a1a1a6;
+    --ds-muted: #6e6e73;
+
+    --ds-border: rgba(255, 255, 255, 0.08);
+    --ds-border-subtle: rgba(255, 255, 255, 0.05);
+
+    --measured: #3fb6bc;
+    --measured-bg: rgba(63, 182, 188, 0.12);
+
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background: var(--ds-canvas);
+  color: var(--ds-body);
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--ds-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--ds-ink);
+  line-height: 1.2;
+  margin: 0 0 0.5em;
+}
+
+.shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ── nav ── */
+.site-nav {
+  border-bottom: 1px solid var(--ds-border-subtle);
+}
+
+.site-nav__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 0;
+}
+
+.site-nav__logo {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--ds-ink);
+}
+
+.site-nav__links {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.site-nav__links a {
+  color: var(--ds-body);
+  font-size: 0.95rem;
+}
+
+/* ── hero ── */
+.hero {
+  padding: 72px 0 56px;
+  text-align: center;
+}
+
+.hero h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero p {
+  font-size: 1.15rem;
+  max-width: 620px;
+  margin: 0 auto 32px;
+}
+
+/* ── buttons ── */
+.btn {
+  display: inline-block;
+  padding: 12px 24px;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.btn--primary {
+  background: var(--ds-primary);
+  color: var(--ds-on-primary);
+}
+
+.btn--primary:hover {
+  background: var(--ds-primary-hover);
+  text-decoration: none;
+}
+
+/* ── sections ── */
+.section {
+  padding: 48px 0;
+}
+
+.section--muted {
+  background: var(--ds-surface-1);
+}
+
+.section__heading {
+  text-align: center;
+  max-width: 640px;
+  margin: 0 auto 40px;
+}
+
+.section__heading h2 {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+}
+
+/* ── value prop cards ── */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 640px) {
+  .card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  border: 1px solid var(--ds-border);
+  border-radius: 12px;
+  padding: 24px;
+  background: var(--ds-canvas);
+}
+
+.card h3 {
+  font-size: 1.05rem;
+  margin-bottom: 8px;
+}
+
+.card p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* ── evidence ladder ── */
+.ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ladder__row {
+  display: grid;
+  grid-template-columns: 90px 140px 1fr;
+  gap: 16px;
+  align-items: baseline;
+  border: 1px solid var(--ds-border-subtle);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+@media (max-width: 640px) {
+  .ladder__row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
+.ladder__level {
+  font-weight: 700;
+  color: var(--ds-ink);
+}
+
+.ladder__label {
+  font-size: 0.9rem;
+  color: var(--ds-muted);
+}
+
+.ladder__row--measured .ladder__level {
+  color: var(--measured);
+}
+
+.tag {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  background: var(--measured-bg);
+  color: var(--measured);
+  margin-left: 8px;
+}
+
+/* ── prose ── */
+.prose {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.prose h2 {
+  margin-top: 2em;
+  font-size: 1.3rem;
+}
+
+.prose p {
+  margin: 0.75em 0;
+}
+
+.prose ul {
+  padding-left: 1.2em;
+}
+
+/* ── footer ── */
+.site-footer {
+  border-top: 1px solid var(--ds-border-subtle);
+  padding: 32px 0;
+  color: var(--ds-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+/* ── blog empty state ── */
+.empty-state {
+  text-align: center;
+  padding: 64px 24px;
+  border: 1px dashed var(--ds-border);
+  border-radius: 16px;
+  color: var(--ds-muted);
+}
