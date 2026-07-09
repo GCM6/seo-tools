@@ -11,6 +11,8 @@ export default async function ProjectsPage({ params }: { params: Promise<{ local
   const { locale } = await params
   setRequestLocale(locale)
   const t = await getTranslations('projects')
+  // retest 三态（starting/error/inProgress）复用 retest 命名空间，避免文案重复（spec §4/i18n）。
+  const tr = await getTranslations('retest')
 
   const projects = await listProjectsWithSummary()
 
@@ -27,10 +29,18 @@ export default async function ProjectsPage({ params }: { params: Promise<{ local
           colLatest: t('colLatest'),
           colFindings: t('colFindings'),
           colRetest: t('colRetest'),
+          colAction: t('colAction'),
           empty: t('empty'),
           noRun: t('noRun'),
           retestNone: t('retestNone'),
           findingsUnit: (count: number) => t('findingsUnit', { count }),
+          actionRunning: t('actionRunning'),
+          actionRetest: t('actionRetest'),
+          actionReconfigure: t('actionReconfigure'),
+          actionConfigure: t('actionConfigure'),
+          retestStarting: tr('starting'),
+          retestError: tr('error'),
+          retestInProgress: tr('inProgress'),
         }}
         statusLabels={t.raw('status') as Record<string, string>}
         runTypeLabels={t.raw('runType') as Record<string, string>}

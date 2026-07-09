@@ -99,9 +99,14 @@
     "colLatest": "最近诊断",
     "colFindings": "发现数",
     "colRetest": "下次回测",
+    "colAction": "操作",
     "noRun": "尚未诊断",
     "retestNone": "—",
     "findingsUnit": "{count} 条",
+    "actionRunning": "诊断中…",
+    "actionRetest": "发起回测",
+    "actionReconfigure": "重新配置",
+    "actionConfigure": "配置并分析",
     "runType": {
       "baseline": "基线",
       "retest": "回测"
@@ -127,6 +132,7 @@
     "viewReport": "报告",
     "noRuns": "该项目还没有诊断记录。",
     "newRun": "新建分析",
+    "retestThis": "以此回测",
     "retestDue": "下次回测到期：{date}",
     "gscTitle": "Google Search Console",
     "gscConnected": "已连接 ✓",
@@ -720,6 +726,7 @@
     "dueCta": "发起回测",
     "starting": "发起中…",
     "error": "发起回测失败，请重试",
+    "inProgress": "已有诊断进行中，查看",
     "nextDue": "下次回测：{date}"
   },
   "rulesAdmin": {

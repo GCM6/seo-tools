@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { RetestButton } from './RetestButton'
+import { isCompletedRunStatus } from '@/lib/runs/status'
 
 export interface RunHistoryItem {
   id: string
@@ -9,13 +11,15 @@ export interface RunHistoryItem {
 }
 
 // 项目详情的诊断历史表（i18n-free 纯展示，SP-G1b）。
-// 每行 → 该 run 总览页；status=output 时另给报告直达。
+// 每行 → 该 run 总览页；status=output 时另给报告直达；baseline 且完成态另给「以此回测」
+// （spec §2.2），项目处于进行中状态时（hasActiveRun）这些按钮统一禁用（并发保护）。
 export function RunHistory({
   locale,
   runs,
   labels,
   statusLabels,
   runTypeLabels,
+  hasActiveRun = false,
 }: {
   locale: string
   runs: RunHistoryItem[]
@@ -28,9 +32,14 @@ export function RunHistory({
     viewRun: string
     viewReport: string
     noRuns: string
+    retestThis: string
+    retestStarting: string
+    retestError: string
+    retestInProgress: string
   }
   statusLabels: Record<string, string>
   runTypeLabels: Record<string, string>
+  hasActiveRun?: boolean
 }) {
   if (runs.length === 0) return <p className="note">{labels.noRuns}</p>
 
@@ -59,6 +68,23 @@ export function RunHistory({
                   <>
                     {' · '}
                     <Link href={`/${locale}/runs/${r.id}/report`}>{labels.viewReport}</Link>
+                  </>
+                ) : null}
+                {r.runType === 'baseline' && isCompletedRunStatus(r.status) ? (
+                  <>
+                    {' · '}
+                    <RetestButton
+                      locale={locale}
+                      baselineRunId={r.id}
+                      labels={{
+                        cta: labels.retestThis,
+                        starting: labels.retestStarting,
+                        error: labels.retestError,
+                        inProgress: labels.retestInProgress,
+                      }}
+                      className="ghost-btn run-btn-sm"
+                      disabled={hasActiveRun}
+                    />
                   </>
                 ) : null}
               </td>

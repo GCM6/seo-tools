@@ -2394,9 +2394,41 @@ button {
 .projects-domain:hover {
   text-decoration: underline;
 }
-/* 项目详情页头：域名 + 「新建分析」右对齐。 */
-.sec-h > a.run-btn {
+/* 项目详情页头：域名 + 重新分析三态操作组右对齐（spec §2.2）。 */
+.sec-h > a.run-btn,
+.sec-h > .sec-h-actions {
   margin-left: auto;
+}
+.sec-h-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 重新分析三态操作列（ProjectList / RunHistory）：表格内不需要 .run-btn 的
+   向导 CTA 顶部留白，统一清零；小尺寸变体用于历史行内联按钮。 */
+.list-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.report-table .run-btn,
+.report-table .ghost-btn,
+.list-actions .run-btn,
+.list-actions .ghost-btn {
+  margin-top: 0;
+}
+.run-btn-sm {
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: var(--rd-sm);
+}
+.retest-btn-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .gsc-card {
   margin-top: var(--sp-sm);

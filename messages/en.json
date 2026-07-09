@@ -99,9 +99,14 @@
     "colLatest": "Latest run",
     "colFindings": "Findings",
     "colRetest": "Next retest",
+    "colAction": "Action",
     "noRun": "Not yet diagnosed",
     "retestNone": "—",
     "findingsUnit": "{count}",
+    "actionRunning": "Diagnosing…",
+    "actionRetest": "Start retest",
+    "actionReconfigure": "Reconfigure",
+    "actionConfigure": "Configure & analyze",
     "runType": {
       "baseline": "Baseline",
       "retest": "Retest"
@@ -127,6 +132,7 @@
     "viewReport": "Report",
     "noRuns": "This project has no runs yet.",
     "newRun": "New analysis",
+    "retestThis": "Retest from here",
     "retestDue": "Next retest due: {date}",
     "gscTitle": "Google Search Console",
     "gscConnected": "Connected ✓",
@@ -720,6 +726,7 @@
     "dueCta": "Start retest",
     "starting": "Starting…",
     "error": "Failed to start retest — please try again",
+    "inProgress": "Diagnosis in progress — view",
     "nextDue": "Next retest: {date}"
   },
   "rulesAdmin": {
