@@ -44,12 +44,17 @@
 
 ### 2.1 状态判定(project 维度)
 
+> **修订(2026-07-09,实现前核查发现)**:`runs.status='output'` 在现有代码中从未被赋值——正常收尾停在 `'reviewing'`(`lib/inngest/generate-findings.ts:195`)。故"完成态"不能用 `status='output'` 判定,否则回测按钮永远不出现。修正如下:
+> - **进行中(active)**:`status ∈ {draft, collecting, collected, diagnosing}`
+> - **完成(completed)**:`status ∈ {reviewing, output}`
+> - **失败终态**:`failed`
+
 对每个项目,依其 runs 计算一个 `reanalyzeState`:
 
 | 状态 | 判定条件 | 主操作 | 行为 |
 |---|---|---|---|
-| `running` | 存在 `status ∉ {output, failed}` 的 run | 「诊断中…」(链接) | 链到该 run 详情看进度;不提供任何重跑按钮(防并发) |
-| `retestable` | 无进行中 run,且存在 `status = 'output'` 且 `runType = 'baseline'` 的 run | 「发起回测」(主)+「重新配置」(次级链接) | 主:`POST /api/runs/{最近完成的 baseline}/retest`,成功跳新 retest run;次:跳 `/new?projectId={id}` 预填 |
+| `running` | 存在进行中(active)的 run | 「诊断中…」(链接) | 链到该 run 详情看进度;不提供任何重跑按钮(防并发) |
+| `retestable` | 无进行中 run,且存在完成态(`reviewing`/`output`)且 `runType = 'baseline'` 的 run | 「发起回测」(主)+「重新配置」(次级链接) | 主:`POST /api/runs/{最近完成的 baseline}/retest`,成功跳新 retest run;次:跳 `/new?projectId={id}` 预填 |
 | `unconfigured` | 其余(无 run、只有失败 run、或完成的全是无锚 retest——理论上不出现) | 「配置并分析」 | 跳 `/new?projectId={id}`,预填后可编辑,运行产出新 baseline |
 
 ### 2.2 入口位置
@@ -57,11 +62,11 @@
 1. **项目列表页 `/projects`**(`components/ProjectList.tsx`):表格加"操作"列,按 §2.1 渲染。
 2. **项目详情页 `/projects/[id]`**:
    - 页头按钮组:同 §2.1 的项目级操作。
-   - `RunHistory` 表格:每条 `runType='baseline'` 且 `status='output'` 的行,操作列增加「以此回测」——允许锚定任意历史 baseline,不只最近一次。项目处于 `running` 状态时这些按钮禁用。
+   - `RunHistory` 表格:每条 `runType='baseline'` 且状态为完成态(`reviewing`/`output`)的行,操作列增加「以此回测」——允许锚定任意历史 baseline,不只最近一次。项目处于 `running` 状态时这些按钮禁用。
 
 ### 2.3 后端不变量:同项目并发 run 保护(新增)
 
-`POST /api/runs`(`app/api/runs/route.ts`)与 `POST /api/runs/[id]/retest` 都增加检查:**同项目存在 `status ∉ {output, failed}` 的 run 时返回 409**(body 带 `error: 'run_in_progress'` 与进行中 run 的 id)。
+`POST /api/runs`(`app/api/runs/route.ts`)与 `POST /api/runs/[id]/retest` 都增加检查:**同项目存在进行中 run(`status ∈ {draft, collecting, collected, diagnosing}`)时返回 409**(body 带 `error: 'run_in_progress'` 与进行中 run 的 id)。
 
 理由:入口从 RetestBanner 一处扩大到列表每行,误触/双击产生并发采集的风险变实;两个 API 目前均无保护。前端收到 409 时提示并链到进行中的 run。
 
