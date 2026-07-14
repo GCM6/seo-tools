@@ -73,23 +73,60 @@ describe('deriveStatCards', () => {
     expect(card(cards, 'schemaCoverage')).toMatchObject({ state: 'pending', reason: 'uncollected' })
   })
 
-  it('derives a measured aiVisibility card from the probe summary (L3, opens a representative answer)', () => {
+  // 缺陷修复（2026-07-13 GEO branded/unbranded 重设计后审查）：aiVisibility 头条卡此前消费全集
+  // promptsPresent/promptsTotal，把品牌提问里模型复述问题文本自带品牌名的命中也计入「AI 可见度」，
+  // 与同屏 PresenceMap／报告 GEO 段的 unbranded 口径矛盾（例如「AI 可见度 7」vs「无品牌召回 0/23」）。
+  // 现在必须只消费 probe.unbranded.present/total。
+  it('derives a measured aiVisibility card from probe.unbranded (L3), not the full-set promptsPresent/promptsTotal', () => {
     const cards = deriveStatCards([], {
       probe: {
-        promptsTotal: 20,
-        promptsPresent: 6,
+        promptsTotal: 30,
+        // promptsPresent 故意远高于 unbranded.present：7 条命中来自品牌提问的复述，
+        // 若卡片仍读这个全集字段就会显示误导性的「13」而不是「6」。
+        promptsPresent: 13,
         totalSamples: 100,
         perPrompt: [],
         sov: [],
         perEngine: [],
         sentiment: { positive: 0, neutral: 0, negative: 0, comparison: 0, total: 0 },
         sampleEvidenceId: 'ev_probe_hit',
+        // 头条指标应严格等于这里的 unbranded 子集，而非上面的全集 promptsPresent/promptsTotal。
+        unbranded: { present: 6, total: 23, wilsonLow: 0.18 },
+        branded: { perEngine: [] },
+        citationRate: 0,
       },
     })
     expect(card(cards, 'aiVisibility')).toEqual({
       key: 'aiVisibility',
       state: 'measured',
-      value: '6',
+      value: '6/23',
+      level: 'L3',
+      evidenceId: 'ev_probe_hit',
+    })
+  })
+
+  // unbranded.total === 0：探针跑过（有代表性证据）但无可评估的无品牌提问子集——不能显示 0/0，
+  // 那会被误读成「0 命中」而不是「这个指标本轮不可评估」。
+  it('falls back to a dash when the unbranded subset is empty, instead of showing 0/0', () => {
+    const cards = deriveStatCards([], {
+      probe: {
+        promptsTotal: 20,
+        promptsPresent: 4,
+        totalSamples: 20,
+        perPrompt: [],
+        sov: [],
+        perEngine: [],
+        sentiment: { positive: 0, neutral: 0, negative: 0, comparison: 0, total: 0 },
+        sampleEvidenceId: 'ev_probe_hit',
+        unbranded: { present: 0, total: 0, wilsonLow: 0 },
+        branded: { perEngine: [] },
+        citationRate: 0,
+      },
+    })
+    expect(card(cards, 'aiVisibility')).toEqual({
+      key: 'aiVisibility',
+      state: 'measured',
+      value: '—',
       level: 'L3',
       evidenceId: 'ev_probe_hit',
     })
@@ -100,11 +137,11 @@ describe('deriveStatCards', () => {
     expect(card(cards, 'aiVisibility')).toMatchObject({ state: 'pending', reason: 'ai_probe' })
   })
 
-  // Cloudflare 未配置时缺 render_check 不是「本轮未采集」而是「渲染数据源未接入」——
-  // 空态必须能区分，否则用户以为重跑一次就有数。
-  it('reports render_provider (not uncollected) when Cloudflare is unconfigured and render evidence is missing', () => {
-    const cards = deriveStatCards([], { sources: { renderProvider: false } })
-    expect(card(cards, 'crawlableText')).toMatchObject({ state: 'pending', reason: 'render_provider' })
+  // 浏览器渲染未配置时，基础 HTML 抓取仍会跑；空态必须标为「降级采集」，
+  // 否则用户会以为重跑一次即可得到 JS 渲染差异。
+  it('reports render_fallback (not uncollected) when browser rendering is unavailable', () => {
+    const cards = deriveStatCards([], { sources: { renderProvider: false, renderStaticFallback: true } })
+    expect(card(cards, 'crawlableText')).toMatchObject({ state: 'pending', reason: 'render_fallback' })
   })
 
   it('keeps uncollected when the render provider is configured but evidence is missing this run', () => {

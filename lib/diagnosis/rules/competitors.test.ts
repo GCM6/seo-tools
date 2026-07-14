@@ -32,6 +32,8 @@ const probe = (sov: ProbeSummary['sov']): ProbeSummary => ({
   promptsTotal: 5, promptsPresent: 2, totalSamples: 5, perPrompt: [], sov,
   perEngine: [], sentiment: { positive: 0, neutral: 0, negative: 0, comparison: 0, total: 0 },
   sampleEvidenceId: 'p1',
+  // D4（GEO branded/unbranded 重设计）：新增必填字段，本文件测的是竞品 SoV 规则，与这三项无关，给中性默认值。
+  unbranded: { present: 0, total: 0, wilsonLow: 0 }, branded: { perEngine: [] }, citationRate: 0,
 })
 
 describe('Q01 share of SERP', () => {

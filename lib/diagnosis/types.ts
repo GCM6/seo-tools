@@ -5,7 +5,9 @@ import type { PsiResult } from '@/lib/collection/psi'
 import type { GscDimension } from '@/lib/gsc/search-analytics'
 
 // 规则库版本：随规则/阈值变更单调递增，钉进 run 协议保证同协议回测可比（spec §11.3）。
-export const RULES_VERSION = 'rules_v1'
+// v1 → v2：G05/G06 改为 unbranded 层口径 + 新增全 branded 降级 finding，新增 G10（GEO branded/
+// unbranded 重设计，见 docs/superpowers/specs/2026-07-13-geo-branded-unbranded-redesign.md）。
+export const RULES_VERSION = 'rules_v2'
 
 export type Pillar = 'P1' | 'P2' | 'P3' | 'P4' | 'P5'
 // 规则域用 error|warning|notice（Ahrefs/Semrush 通用三级），落库时映射为 finding 的 high|mid|ok。

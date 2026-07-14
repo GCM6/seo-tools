@@ -1,17 +1,11 @@
 // Phase F F3 内部效果统计：按 rule_id 聚合 dismiss / ineffective，用 Wilson 下限做小样本纪律，
 // 越阈值则产 modify_threshold 提案草稿（作为开发工单）。全部纯函数。
 // 注：Phase C 无现成 Wilson 工具，此处自实现（spec §4 的「复用」假设有误）。
-
-/** Wilson score 区间下限（默认 z=1.96 即 95%）。小样本时显著低于点估计，抑制噪声信号。 */
-export function wilsonLowerBound(successes: number, total: number, z = 1.96): number {
-  if (total <= 0) return 0
-  const phat = successes / total
-  const z2 = z * z
-  const denom = 1 + z2 / total
-  const centre = phat + z2 / (2 * total)
-  const margin = z * Math.sqrt((phat * (1 - phat) + z2 / (4 * total)) / total)
-  return Math.max(0, (centre - margin) / denom)
-}
+// GEO branded/unbranded 重设计（D4）之后，lib/probes/summary.ts 也需要同一 Wilson 实现；
+// 为避免 probes → diagnosis 的反向依赖，函数本体已迁到 lib/stats/wilson.ts，这里 re-export
+// 保持既有 import 路径（./rule-stats）不破坏。
+export { wilsonLowerBound } from '@/lib/stats/wilson'
+import { wilsonLowerBound } from '@/lib/stats/wilson'
 
 export interface FindingStatRecord {
   id: string

@@ -315,6 +315,14 @@ export const templates: Record<string, RecommendationTemplate> = {
     promptType: 'technical',
     fixSnippet: '// 关键正文服务端渲染，勿仅客户端注入（Next.js 16 Server Component 默认服务端产出 HTML）',
   },
+  G10: {
+    what: '建立权威第三方语料与结构化品牌事实页：补充可核验的官方 About/Facts 页（创立时间、产品线、关键数据来源），并争取第三方权威源（Wikipedia/行业媒体/评测站）准确收录品牌信息，压缩 AI 在缺乏语料时对品牌名做字面联想式编造的空间（参考 G07 的第三方语料建设方向）。',
+    whyHint: 'AI 疑似在无权威语料可查时基于品牌名臆测编造事实；补充可检索的权威信息源是主要缓解手段，而非要求模型「不要编造」。',
+    effort: 'high',
+    validationMethod: '复测 branded 层 speculative 占比是否回落；人工抽查原始回答核实是否仍存在编造措辞。',
+    promptType: 'content',
+    risk: '本判定为确定性词表启发式（inferred），只能标「疑似」：无法识别模型自信编造却不带猜测措辞的情况，也不能反向证明「不存在编造」。',
+  },
   // ——— P3 关键词（seo，证据源 GSC）———
   K01: {
     what: '锁定这批「排名 4-20、有展示量」的机会词，逐个优化落地页：补足内容深度与信息增益、加内链指向、对齐搜索意图，把它们推上首页前列。',

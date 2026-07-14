@@ -1,14 +1,22 @@
 import type { Rule, RuleHitDraft } from '../types'
 import { isRenderDependent } from './technical'
 import { parseRobotsAllowed } from '@/lib/collection/robots'
+import { isWebSearchEnabledEngine } from '@/lib/probes/engine-capability'
 
 // P5 GEO 规则组：AI 抓取可见性与探针可见度。
 // —— 阈值为启发式经验值，随 RULES_VERSION 版本化 ——
-const AI_VISIBILITY_MIN_RATIO = 0.3 // 品牌在 AI 答案中出现的 prompt 占比低于此判为低可见（n=5 仅方向性）
+const AI_VISIBILITY_MIN_RATIO = 0.3 // 无品牌提问中主动召回品牌的占比低于此判为低可见（n=5 仅方向性，D5）
 // G07：Reddit 近 N 月自然讨论 mentions 低于此阈值视为「第三方语料不足」（启发式，随 RULES_VERSION 固化）。
 const THIRD_PARTY_REDDIT_MIN_MENTIONS = 3
 // G09：含品牌样本中负面占比达到此比例即判「负面方向偏高」（启发式，随 RULES_VERSION 固化；n=5 恒方向性）。
 const SENTIMENT_NEGATIVE_MIN_RATIO = 0.3
+// G10：branded 层 speculative 占比达到此比例即判「疑似编造」（词表启发式，随 RULES_VERSION 固化）。
+const AI_FABRICATION_MIN_RATIO = 0.3
+// G10：branded 回答总数（跨引擎合计）低于此值视为样本太薄，不出结论。
+const AI_FABRICATION_MIN_SAMPLES = 3
+
+// GEO 规则组内的引擎联网能力判定（D6）：真源已收口到 lib/probes/engine-capability.ts 的
+// isWebSearchEnabledEngine（Wave 3 消除 summary.ts / geo.ts / components 三份复制）。
 
 // —— AI 爬虫 UA 注册表（ai_crawler_ua_registry，随 spec §11.1 版本化维护）——
 // 检索型：为 ChatGPT/Perplexity/Claude/Gemini 的即时检索取答供数，被屏蔽 = 放弃 AI 引用资格（error）。
@@ -64,7 +72,12 @@ const G03: Rule = {
   },
 }
 
-// G05：AI 答案可见度偏低（品牌出现的 prompt 占比 < 30%）。
+// G05：AI 答案可见度偏低——D5 改用 unbranded 层口径：无品牌提问中，AI 是否「主动召回」品牌，
+// 而非 branded 问题里模型复述问题文本自带的品牌名（那类命中不算真实可见度信号，见 spec §1）。
+// 缺陷3修复：品牌名与行业词同形时（如 brand='crm' 且行业含 CRM），生成的探针问题字面必然全部
+// 命中品牌名，导致 unbranded.total 恒为 0——旧实现直接 return null，让整组 GEO 可见度诊断静默
+// 消失。只要探针确实跑过（promptsTotal>0），改为降级产出一条 inferred 说明（不伪造召回数字，
+// 只说明"当前无法评估"），而不是无声消失。
 const G05: Rule = {
   id: 'G05',
   pillar: 'P5',
@@ -74,25 +87,45 @@ const G05: Rule = {
   evaluate(ctx): RuleHitDraft | null {
     const { probe, probeEvidenceId } = ctx
     if (!probe || !probeEvidenceId) return null
-    if (probe.promptsTotal <= 0) return null
-    const ratio = probe.promptsPresent / probe.promptsTotal
+    const { unbranded } = probe
+    if (unbranded.total <= 0) {
+      if (probe.promptsTotal <= 0) return null
+      return {
+        title: '无法评估无品牌主动召回（探针问题疑似全部含品牌词）',
+        description: `全部 ${probe.promptsTotal} 个探针问题均被判定为含品牌词，无 unbranded 分母可用于评估「无品牌提问中 AI 是否主动召回品牌」。品牌名疑似与行业/品类词同形，建议配置品牌别名或检查品牌词后重新生成探针问题集。`,
+        evidenceRefs: [probeEvidenceId],
+        scope: 'site',
+        claimType: 'inferred',
+        detail: { promptsTotal: probe.promptsTotal, unbrandedTotal: 0, directional: true },
+      }
+    }
+    const ratio = unbranded.present / unbranded.total
     if (ratio >= AI_VISIBILITY_MIN_RATIO) return null
     return {
       title: 'AI 答案可见度偏低',
-      description: `品牌仅在 ${probe.promptsPresent}/${probe.promptsTotal} 个探针问题的 AI 答案中出现（占比 ${(ratio * 100).toFixed(0)}%，低于 30%）。当前 n=5 为方向性样本，非硬指标。`,
+      description: `无品牌提问中，AI 主动召回品牌仅 ${unbranded.present}/${unbranded.total} 次（占比 ${(ratio * 100).toFixed(0)}%，低于 30%；Wilson 95% 下限 ${(unbranded.wilsonLow * 100).toFixed(0)}%）。当前 n=5 为方向性样本，非硬指标。`,
       evidenceRefs: [probeEvidenceId],
       scope: 'site',
       detail: {
-        promptsPresent: probe.promptsPresent,
-        promptsTotal: probe.promptsTotal,
+        present: unbranded.present,
+        total: unbranded.total,
         ratio,
+        wilsonLow: unbranded.wilsonLow,
         directional: true,
       },
     }
   },
 }
 
-// G06：目标域在 AI 答案中零引用（品牌一次都没出现）。
+// G06：目标域在 AI 答案中零引用——D5 改为只对 webSearchEnabled=true 的检索型引擎评估。
+// DeepSeek 等记忆型引擎结构上恒无引用能力（deepseek.ts:3-5），把它算进「零引用」会不公平地
+// 触发/加重本规则；只统计检索型引擎自己的样本，无检索型引擎数据时规则整体 no-op。
+// 缺陷1修复：门控改用 unbranded 口径的召回计数（perEngine[].unbrandedPresent）而非全集
+// promptsPresent——品牌题必然复述品牌名使全集 promptsPresent 恒非零，旧口径下「if (promptsPresent
+// !== 0) return null」令本规则结构性死亡（永远判定为已达标）。
+// 缺陷2修复：分母改用去重后的问题数（probe.unbranded.total，问题级去重），不是把各联网引擎的
+// promptsTotal 相加（引擎×问题配对数会把分母膨胀成 N倍，如 3 引擎×30 题=90，但描述却写"全部 90 个
+// 探针问题"）；引擎×问题配对数如需追溯放 detail.enginePromptPairs，不进描述文案。
 const G06: Rule = {
   id: 'G06',
   pillar: 'P5',
@@ -102,13 +135,19 @@ const G06: Rule = {
   evaluate(ctx): RuleHitDraft | null {
     const { probe, probeEvidenceId } = ctx
     if (!probe || !probeEvidenceId) return null
-    if (probe.promptsPresent !== 0) return null
+    const onlineEngines = probe.perEngine.filter((e) => isWebSearchEnabledEngine(probe, e.engine))
+    if (onlineEngines.length === 0) return null
+    const promptsTotal = probe.unbranded.total
+    if (promptsTotal <= 0) return null
+    const unbrandedPresent = onlineEngines.reduce((sum, e) => sum + e.unbrandedPresent, 0)
+    if (unbrandedPresent !== 0) return null
+    const enginePromptPairs = onlineEngines.reduce((sum, e) => sum + e.promptsTotal, 0)
     return {
       title: '目标域在 AI 答案中零引用',
-      description: `全部 ${probe.promptsTotal} 个探针问题的 AI 答案中，品牌/目标域均未被提及或引用。当前 n=5 为方向性样本。`,
+      description: `检索型 AI 引擎（${onlineEngines.map((e) => e.engine).join('、')}）针对全部 ${promptsTotal} 个无品牌探针问题的答案中，品牌/目标域均未被主动召回或引用（记忆型引擎如 DeepSeek 不计入本判定；含品牌探针问题里模型复述问题文本自带品牌名，不计入本判定）。当前 n=5 为方向性样本。`,
       evidenceRefs: [probeEvidenceId],
       scope: 'site',
-      detail: { promptsTotal: probe.promptsTotal, directional: true },
+      detail: { promptsTotal, enginePromptPairs, engines: onlineEngines.map((e) => e.engine), directional: true },
     }
   },
 }
@@ -290,4 +329,51 @@ const G09: Rule = {
   },
 }
 
-export const geoRules: Rule[] = [G03, G05, G06, G01, E01, G02, G07, G08, G09]
+// G10：AI 疑似在编造品牌事实——branded 层回答里，无引用依据且带猜测措辞（speculative）占比过高，
+// 说明模型很可能在缺乏权威语料时基于品牌名字面联想式编造（spec §1 DeepSeek "likely a portmanteau..."
+// 实例）。跨引擎合计口径（含记忆型引擎 undetermined 计入分母但不计入分子，天然不会被它拉高比例）。
+// claim=inferred：判定基于确定性词表（hedged 词表），非 LLM 结论，但词表查全率未知（无先例可校准），
+// 模型「自信编造却不带猜测措辞」时无法识别——本规则只能标「疑似」，不能反向证明「无编造」。
+const G10: Rule = {
+  id: 'G10',
+  pillar: 'P5',
+  side: 'geo',
+  severity: 'warning',
+  claimType: 'inferred',
+  evaluate(ctx): RuleHitDraft | null {
+    const { probe, probeEvidenceId } = ctx
+    if (!probe || !probeEvidenceId) return null
+    const totals = probe.branded.perEngine.reduce(
+      (acc, e) => ({
+        grounded: acc.grounded + e.grounded,
+        speculative: acc.speculative + e.speculative,
+        unknown: acc.unknown + e.unknown,
+        unverified: acc.unverified + e.unverified,
+        undetermined: acc.undetermined + e.undetermined,
+      }),
+      { grounded: 0, speculative: 0, unknown: 0, unverified: 0, undetermined: 0 },
+    )
+    const total = totals.grounded + totals.speculative + totals.unknown + totals.unverified + totals.undetermined
+    if (total < AI_FABRICATION_MIN_SAMPLES) return null
+    const ratio = totals.speculative / total
+    if (ratio < AI_FABRICATION_MIN_RATIO) return null
+    return {
+      title: 'AI 疑似在编造品牌事实',
+      description: `品牌类探针回答中，疑似臆测（无引用依据且带猜测措辞，如 likely/probably/推测/顾名思义）占比 ${(ratio * 100).toFixed(0)}%（${totals.speculative}/${total}），高于 30%。此判定为确定性词表启发式，存在漏检：若模型自信编造却未使用任何猜测措辞，本规则无法识别，仅供方向性参考。`,
+      evidenceRefs: [probeEvidenceId],
+      scope: 'geo:brand-fabrication',
+      detail: {
+        grounded: totals.grounded,
+        speculative: totals.speculative,
+        unknown: totals.unknown,
+        unverified: totals.unverified,
+        undetermined: totals.undetermined,
+        total,
+        ratio,
+        directional: true,
+      },
+    }
+  },
+}
+
+export const geoRules: Rule[] = [G03, G05, G06, G01, E01, G02, G07, G08, G09, G10]
