@@ -3,7 +3,7 @@ import { inngest } from './client'
 import { DIAGNOSE_REQUESTED_EVENT, type DiagnoseRequestedEventData } from './events'
 import { runProgressChannel, type RunProgressMessage } from './channels'
 import { buildRuleContext, parseGscKeywordMetrics } from '@/lib/diagnosis/context'
-import { buildMetricPair, buildProbeMetricRows, type RunMetrics, type MetricTarget } from '@/lib/diagnosis/retest-metrics'
+import { buildMetricPair, buildProbeMetricRows, checkUnbrandedComparability, type RunMetrics, type MetricTarget } from '@/lib/diagnosis/retest-metrics'
 import { evaluateRules } from '@/lib/diagnosis/engine'
 import type { DiagnosisEvidenceRow, Rule, RuleHit } from '@/lib/diagnosis/types'
 import { buildFindingRows, buildRecommendationRows, type RecommendationDraft } from '@/lib/diagnosis/finding-rows'
@@ -142,7 +142,9 @@ export async function generateFindingsHandler(
       evidence.map((e) => [e.id, (e.payload as { answerText?: string } | null)?.answerText]),
     )
     const probe = deps.aggregateProbeSummary({
-      prompts: prompts.map((p) => ({ id: p.id, text: p.text, priority: p.priority })),
+      // D1（GEO branded/unbranded 重设计）：透传 prompts.branded，供聚合层拆 unbranded 头条指标
+      // /branded 三态判定；不传会被聚合层兜底成「全部 unbranded」，规则层 G05/G10 会失真。
+      prompts: prompts.map((p) => ({ id: p.id, text: p.text, priority: p.priority, branded: p.branded })),
       results: probeResults.map((r) => ({
         promptId: r.promptId,
         brandPresent: r.brandPresent,
@@ -151,6 +153,12 @@ export async function generateFindingsHandler(
         provider: r.provider,
         sentiment: r.sentiment,
         answerText: answerByEvidence.get(r.evidenceId),
+        // D2/D3：已落库的确定性词表信号——供 branded 层三态判定（grounded/speculative/unknown/
+        // unverified/undetermined）。webSearchEnabled 未落库到 ai_probe_results（只在
+        // evidence_artifacts.request 里），不传即按聚合层的 provider 静态能力表兜底（D6）。
+        citedUrls: r.citedUrls,
+        hedged: r.hedged,
+        unknownAdmission: r.unknownAdmission,
       })),
       brand: brandFromDomain(project.domain),
       competitors,
@@ -247,10 +255,13 @@ async function computeRetestDelta(
       deps.getRunProbeResults(rid),
     ])
     const probe = deps.aggregateProbeSummary({
-      prompts: prompts.map((p) => ({ id: p.id, text: p.text, priority: p.priority })),
+      // D5：回测标量（retest-metrics.ts 的 brand_presence）已切到 probe.unbranded.present/total，
+      // 该字段依赖 prompts.branded 正确透传，否则会把所有 prompt 当 unbranded 处理，回测口径失真。
+      prompts: prompts.map((p) => ({ id: p.id, text: p.text, priority: p.priority, branded: p.branded })),
       results: probeResults.map((r) => ({
         promptId: r.promptId, brandPresent: r.brandPresent, competitorsMentioned: r.competitorsMentioned,
         evidenceId: r.evidenceId, provider: r.provider, sentiment: r.sentiment,
+        citedUrls: r.citedUrls, hedged: r.hedged, unknownAdmission: r.unknownAdmission,
       })),
       brand: brandFromDomain((await deps.getProject(projectId))?.domain ?? ''),
       competitors: [],
@@ -258,7 +269,11 @@ async function computeRetestDelta(
     const gscKeywords = parseGscKeywordMetrics(
       evidence.map((e) => ({ id: e.id, type: e.type as EvidenceType, claimLevel: e.claimLevel as EvidenceLevel, source: e.source, payload: e.payload, rawText: e.rawText, sitePageId: e.sitePageId })),
     ).map((k) => ({ keyText: k.keyText, impressions: k.impressions, position: k.position }))
-    return { probe, gscKeywords }
+    // 缺陷1 守卫所需信号（retest-metrics.ts checkUnbrandedComparability）：该轮 branded 题数 +
+    // 探针解析器版本集合，供判定两轮 unbranded 口径是否可比（migration 0008 背景见 RunMetrics 注释）。
+    const brandedPromptCount = prompts.filter((p) => p.branded).length
+    const parserVersions = [...new Set(probeResults.map((r) => r.parserVersion))]
+    return { probe, gscKeywords, brandedPromptCount, parserVersions }
   }
 
   const [baselineMetrics, retestMetrics] = await Promise.all([buildRunMetrics(baselineRunId), buildRunMetrics(retestRunId)])
@@ -270,6 +285,11 @@ async function computeRetestDelta(
 
   // ② baseline 建议 outcome：per-rec 取 finding.metricTarget → buildMetricPair；
   //    有真标量则压过四态，无则回退按 fingerprint→四态兜底（恒 inferred）。
+  // 缺陷1 守卫延伸：probe 口径（brand_presence/brand_sov）指标若两轮 unbranded 口径不可比，
+  // computeOutcome 会短路为 'unknown'，不产出会误导用户、污染 F3 rule-stats 的 effective/
+  // ineffective/regressed（判定复用 retest-metrics.ts 的 checkUnbrandedComparability，两轮
+  // 只需算一次，不逐条重复）。
+  const unbrandedComparable = checkUnbrandedComparability(baselineMetrics, retestMetrics).comparable
   const idToFinding = new Map(baselineRows.map((r) => [r.id, r]))
   await Promise.all(
     baseRecs.map((rec) => {
@@ -279,7 +299,7 @@ async function computeRetestDelta(
       const spec = (rec.validationSpec as ValidationSpec | null) ?? null
       const target = (f?.metricTarget as MetricTarget | null) ?? null
       const pair = spec ? buildMetricPair(spec, target, baselineMetrics, retestMetrics) : null
-      const outcome = computeOutcome(spec, pair, state)
+      const outcome = computeOutcome(spec, pair, state, unbrandedComparable)
       return deps.setRecommendationOutcome(rec.id, outcome)
     }),
   )
@@ -294,7 +314,7 @@ async function computeRetestDelta(
   // ④ 落 retest_snapshots：四态/健康分行 + probe 品牌指标行。
   const snapshotRows = [
     ...buildRetestSnapshotRows(summary, { baseline: baseOverall, retest: retestOverall }),
-    ...buildProbeMetricRows(baselineMetrics.probe, retestMetrics.probe),
+    ...buildProbeMetricRows(baselineMetrics, retestMetrics),
   ]
   const rows = snapshotRows.map((row) => ({
     id: `rts_${crypto.randomUUID()}`,

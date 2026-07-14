@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { NonRetriableError } from 'inngest'
 import { generateFindingsHandler } from './generate-findings'
 import type { RuleHit } from '@/lib/diagnosis/types'
+import { aggregateRuleStats } from '@/lib/diagnosis/rule-stats'
 
 function makeHit(overrides: Partial<RuleHit> = {}): RuleHit {
   return {
@@ -198,7 +199,9 @@ describe('generateFindingsHandler', () => {
     payload: { dimension: 'query', rows: [{ keys: ['widget'], clicks: 1, impressions, ctr: 0.01, position: 6 }] },
   })
 
-  function makeRetestDeps() {
+  // overrides：按需覆盖（如缺陷1 守卫用例要改 getRunPrompts 的 branded 标注），
+  // 放在展开末尾，调用方传入的覆盖既有 retest 默认 fixture。
+  function makeRetestDeps(overrides: Record<string, unknown> = {}) {
     return makeDeps({
       getFindings: vi.fn(async (rid: string) => (rid === 'run_base' ? baselineFindings : retestFindings)),
       getRecommendations: vi.fn(async (rid: string) => (rid === 'run_base' ? baseRecs : [])),
@@ -211,11 +214,16 @@ describe('generateFindingsHandler', () => {
           promptId: `p${n}`, brandPresent: true, competitorsMentioned: [], evidenceId: `pe${n}`, provider: 'openai', sentiment: 'neutral',
         })),
       ),
-      // presence = brandPresent 数 / 10（promptsTotal 固定 10）
+      // presence = brandPresent 数 / 10（promptsTotal 固定 10）。D5：retest-metrics 的 brand_presence
+      // 已切到 unbranded.present/total，这里的 fixture 全部当作 unbranded 提问处理（与旧全集口径
+      // 在本用例里数值一致，只是字段搬了个家），故 unbranded 直接沿用同一组 present/total。
       aggregateProbeSummary: vi.fn((input: { results: unknown[] }) => ({
         promptsTotal: 10, promptsPresent: input.results.length, totalSamples: input.results.length,
         perPrompt: [], sov: [], perEngine: [], sentiment: { positive: 0, neutral: 0, negative: 0, comparison: 0, total: 0 }, sampleEvidenceId: null,
+        unbranded: { present: input.results.length, total: 10, wilsonLow: 0 },
+        branded: { perEngine: [] }, citationRate: 0,
       })),
+      ...overrides,
     })
   }
 
@@ -319,6 +327,46 @@ describe('generateFindingsHandler', () => {
   })
 
   it('P5 建议 probe brand_presence 上升 → effective（翻盘 fp_2 persistent 的四态 ineffective）', async () => {
+    const deps = makeRetestDeps()
+    const { args } = makeArgs({ baselineRunId: 'run_base' })
+    await generateFindingsHandler(args, asDeps(deps))
+    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b2', 'effective')
+  })
+
+  it('基线全 branded=false + 回测有 branded=true → probe 口径不可比，rec_b2 outcome=unknown（不再被真标量翻盘为 effective）', async () => {
+    // 缺陷1 守卫延伸（retest-delta.ts computeOutcome 的 comparable 参数）：migration 0008 场景——
+    // 基线 run 的 prompts 全部 branded=false（未回填），回测 run 已正确标注 branded=true。
+    // checkUnbrandedComparability 命中信号 A → computeOutcome 对 probe 口径短路为 'unknown'，
+    // 不再让 presence 2/10→5/10 的表面「上升」翻盘成 effective（对照上面 P5 用例的可比场景）。
+    const deps = makeRetestDeps({
+      getRunPrompts: vi.fn(async (rid: string) =>
+        rid === 'run_base'
+          ? [{ id: 'p_1', text: 'best tool?', priority: 0, branded: false }]
+          : [{ id: 'p_1', text: 'best brand tool?', priority: 0, branded: true }],
+      ),
+    })
+    const { args } = makeArgs({ baselineRunId: 'run_base' })
+
+    await generateFindingsHandler(args, asDeps(deps))
+
+    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b2', 'unknown')
+    // rec_b1（GSC 口径，不受 probe 口径守卫影响）行为不回归，仍是 effective。
+    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b1', 'effective')
+
+    // 验证依据（非臆断）：F3 rule-stats 的 aggregateRuleStats 按 outcome !== 'unknown' 过滤
+    // （lib/diagnosis/rule-stats.ts:76），用真实实现复核——'unknown' 样本不进 ineffective 率统计，
+    // 不会被误判成 modify_threshold 信号。
+    const drafts = aggregateRuleStats(
+      [],
+      [{ id: 'rec_b2', ruleId: 'G_probe_rule', outcome: 'unknown' }],
+      { nMin: 1 },
+    )
+    expect(drafts).toEqual([])
+  })
+
+  it('探针口径可比时（两轮 branded 计数、parserVersion 均一致）行为不回归：presence 上升仍给 effective', async () => {
+    // 对照用例：显式验证「可比」分支未被新守卫误伤——makeRetestDeps 默认两轮 getRunPrompts
+    // 都不带 branded 标注（均按 0 处理），comparable 恒为 true，与上面的 P5 既有用例同源但独立重申。
     const deps = makeRetestDeps()
     const { args } = makeArgs({ baselineRunId: 'run_base' })
     await generateFindingsHandler(args, asDeps(deps))

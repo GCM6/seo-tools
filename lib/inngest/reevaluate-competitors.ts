@@ -195,7 +195,10 @@ export async function reevaluateCompetitorsHandler(
       evidence.map((e) => [e.id, (e.payload as { answerText?: string } | null)?.answerText]),
     )
     const probe = deps.aggregateProbeSummary({
-      prompts: prompts.map((p) => ({ id: p.id, text: p.text, priority: p.priority })),
+      // D1/D2/D3（GEO branded/unbranded 重设计）：与 generate-findings.ts 同款接线——透传
+      // prompts.branded + 已落库的 citedUrls/hedged/unknownAdmission，供 G05/G06/G10 用 unbranded/
+      // branded 三态口径。webSearchEnabled 未落库，按聚合层 provider 静态能力表兜底（D6）。
+      prompts: prompts.map((p) => ({ id: p.id, text: p.text, priority: p.priority, branded: p.branded })),
       results: probeResults.map((r) => ({
         promptId: r.promptId,
         brandPresent: r.brandPresent,
@@ -204,6 +207,9 @@ export async function reevaluateCompetitorsHandler(
         provider: r.provider,
         sentiment: r.sentiment,
         answerText: answerByEvidence.get(r.evidenceId),
+        citedUrls: r.citedUrls,
+        hedged: r.hedged,
+        unknownAdmission: r.unknownAdmission,
       })),
       brand: brandFromDomain(project.domain),
       competitors,

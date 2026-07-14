@@ -82,11 +82,21 @@ export interface MetricPair {
 //   ② 无指标 → 退化用其对应 finding 的四态信号（resolved=effective / regressed=regressed /
 //      persistent=ineffective / new|null=unknown）。指标优先，finding 四态兜底。
 // 恒标 inferred（本函数只算枚举，claim 等级在展示层固定为「推断」；同期多建议时报告明示复合变更不归因单项）。
+//
+// 缺陷1 守卫延伸（retest-metrics.ts checkUnbrandedComparability）：probe 口径指标
+// （brand_presence/brand_sov）若两轮 unbranded 口径不可比，不得产出 effective/ineffective/
+// regressed——那会把「基线数据没按当前口径分类」误判成「真实变化」，进而污染 F3 rule-stats 的
+// modify_threshold 统计。命中即短路为 'unknown'（既有中性态，rule-stats.ts:76 已按
+// outcome !== 'unknown' 过滤，天然不计入 ineffective 率统计，无需改 rule-stats）。
+// GSC/crawl/psi 口径不受影响：comparable 默认 true，仅当调用方显式传 false 且
+// metricSource === 'probe' 时才短路。
 export function computeOutcome(
   spec: ValidationSpec | null,
   metric: MetricPair | null,
   findingState: FindingDeltaState | null,
+  comparable = true,
 ): RecommendationOutcome {
+  if (spec?.metricSource === 'probe' && !comparable) return 'unknown'
   if (spec && metric && Number.isFinite(metric.baseline) && Number.isFinite(metric.retest)) {
     const improved = spec.direction === 'increase' ? metric.retest > metric.baseline : metric.retest < metric.baseline
     const worsened = spec.direction === 'increase' ? metric.retest < metric.baseline : metric.retest > metric.baseline

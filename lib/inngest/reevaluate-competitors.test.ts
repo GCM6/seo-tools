@@ -33,13 +33,22 @@ function makeDeps(over: Record<string, unknown> = {}) {
     createKeywordGaps: vi.fn(async (rows: unknown[]) => rows),
     createFindings: vi.fn(async (rows: unknown[]) => rows),
     createRecommendations: vi.fn(async (rows: unknown[]) => rows),
-    computeKeywordGaps: vi.fn((_input: unknown) => [
+    computeKeywordGaps: vi.fn((input: unknown) => {
+      void input
+      return [
       { keyword: 'best crm', gapType: 'missing' as const, ourPosition: null, competitorPositions: [{ domain: 'rival.com', position: 1 }], opportunityScore: 80, searchVolume: 500 },
-    ]),
+      ]
+    }),
     // 两条命中：一条 fingerprint 已存在（应被过滤），一条新的。
     evaluateRules: vi.fn(() => [makeHit({ fingerprint: 'fp_new' }), makeHit({ ruleId: 'T01', fingerprint: 'fp_existing' })]),
-    buildRuleContext: vi.fn((_input: unknown) => ({}) as never),
-    aggregateProbeSummary: vi.fn((_input: unknown) => null),
+    buildRuleContext: vi.fn((input: unknown) => {
+      void input
+      return {} as never
+    }),
+    aggregateProbeSummary: vi.fn((input: unknown) => {
+      void input
+      return null
+    }),
     createEvidenceArtifact: vi.fn(async (row: unknown) => row),
     fetchLightCheck: vi.fn(async (url: string) => ({
       url, finalUrl: url, httpStatus: 200, title: 'Rival CRM', canonicalUrl: null, metaRobots: null,

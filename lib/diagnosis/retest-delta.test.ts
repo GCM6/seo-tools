@@ -61,6 +61,26 @@ describe('computeOutcome', () => {
     expect(computeOutcome(spec('increase'), null, 'new')).toBe('unknown')
     expect(computeOutcome(null, null, null)).toBe('unknown')
   })
+
+  // —— 缺陷1 守卫延伸（retest-metrics.ts checkUnbrandedComparability 接线）——
+  const probeSpec = (direction: ValidationSpec['direction']): ValidationSpec => ({
+    metricSource: 'probe', metric: 'brand_presence', scope: 'site', direction, windowDays: 28,
+  })
+
+  it('probe 口径 + comparable=false → 短路为 unknown，即使标量看起来明显改善', () => {
+    expect(computeOutcome(probeSpec('increase'), { baseline: 2, retest: 5 }, null, false)).toBe('unknown')
+    // 无标量、只有 finding 四态 resolved 时同样短路（不让 resolved 悄悄冒充 effective）
+    expect(computeOutcome(probeSpec('increase'), null, 'resolved', false)).toBe('unknown')
+  })
+
+  it('probe 口径 + comparable=true（默认）→ 行为不回归，按标量正常判定', () => {
+    expect(computeOutcome(probeSpec('increase'), { baseline: 2, retest: 5 }, null)).toBe('effective')
+    expect(computeOutcome(probeSpec('increase'), { baseline: 2, retest: 5 }, null, true)).toBe('effective')
+  })
+
+  it('非 probe 口径（gsc）即使 comparable=false 也不受影响——守卫只管 probe 口径', () => {
+    expect(computeOutcome(spec('increase'), { baseline: 100, retest: 150 }, null, false)).toBe('effective')
+  })
 })
 
 describe('buildRetestSnapshotRows', () => {
