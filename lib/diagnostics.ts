@@ -7,9 +7,9 @@ export type StatCardKey = 'indexVisibility' | 'aiVisibility' | 'avgRank' | 'craw
 // pending 的原因用「数据源 / 状态」而非 sprint 号（sprint 是内部排期概念，不该进用户文案，
 // 也不该把「已建成但本轮未采到」误标成「待接入」）：
 //   search_provider / ai_probe / gsc  —— 该数据源尚未接入（搜索可见性 / 真实探针 / GSC OAuth 未实现）
-//   render_fallback —— 浏览器级渲染未配置，已降级为基础 HTML 抓取；不能据此虚构 JS 渲染差异
+//   render_provider —— 渲染对比依赖托管浏览器 API（Cloudflare），key 未配置
 //   uncollected     —— 数据源已就绪，只是本轮尚未采集到该证据
-export type PendingReason = 'search_provider' | 'ai_probe' | 'gsc' | 'render_fallback' | 'uncollected'
+export type PendingReason = 'search_provider' | 'ai_probe' | 'gsc' | 'render_provider' | 'uncollected'
 
 // 每张卡要么由当前 run 的证据严格派生（measured，带证据分级 + 可溯源的 evidenceId），
 // 要么 pending（标注原因）。绝不显示无证据的数字。
@@ -80,7 +80,7 @@ function deriveAvgRank(evidence: EvidenceLike[]): StatCard {
 
 // 正文可抓取占比 = 初始 HTML 正文 / 渲染后正文（render_check 实测）。
 // AI/搜索爬虫多不执行 JS，初始 HTML 里的正文才是可抓取的，占比越低越危险。
-// 缺证据时要区分：浏览器渲染未配置 → render_fallback（基础 HTML 已采，不能测 JS 差异）；
+// 缺证据时要区分：Cloudflare 未配置 → render_provider（配 key 才有数）；
 // 已配置 → uncollected（重新诊断即可采到）。
 function deriveCrawlableText(evidence: EvidenceLike[], sources?: DataSourceFlags): StatCard {
   const rc = pick(evidence, 'render_check')
@@ -90,8 +90,8 @@ function deriveCrawlableText(evidence: EvidenceLike[], sources?: DataSourceFlags
     const pct = rendered > 0 ? Math.min(100, Math.round((initial / rendered) * 100)) : initial > 0 ? 100 : 0
     return { key: 'crawlableText', state: 'measured', value: String(pct), level: rc.claimLevel as EvidenceLevel, evidenceId: rc.id }
   }
-  if (sources?.renderProvider === false && sources.renderStaticFallback !== false)
-    return { key: 'crawlableText', state: 'pending', reason: 'render_fallback' }
+  if (sources && sources.renderProvider === false)
+    return { key: 'crawlableText', state: 'pending', reason: 'render_provider' }
   return { key: 'crawlableText', state: 'pending', reason: 'uncollected' }
 }
 
@@ -106,7 +106,6 @@ function deriveSchemaCoverage(evidence: EvidenceLike[]): StatCard {
 
 export interface DataSourceFlags {
   renderProvider?: boolean
-  renderStaticFallback?: boolean
 }
 
 export interface DeriveOptions {

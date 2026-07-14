@@ -296,6 +296,11 @@ export const setGscConnection = (
 export const setGscSiteUrl = (projectId: string, siteUrl: string) =>
   db.update(projectSettings).set({ gscSiteUrl: siteUrl }).where(eq(projectSettings.projectId, projectId))
 
+// 品牌别名单独写（D7：spec 2026-07-13-geo-branded-unbranded-redesign.md）。
+// 不走 verified 闸门——这是匹配配置（parse.ts 的 mentions 判定用），不是发布事实。
+export const setBrandAliases = (projectId: string, aliases: string[]) =>
+  db.update(projectSettings).set({ brandAliases: aliases }).where(eq(projectSettings.projectId, projectId))
+
 // 存量明文 refresh_token 迁移到密文（幂等：仅转非 v1. 前缀行）。部署后一次性跑（db:migrate-gsc）。
 export const migrateGscRefreshTokensToEncrypted = async (): Promise<{ migrated: number }> => {
   const rows = await db
