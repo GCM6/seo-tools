@@ -6,9 +6,10 @@ import { FindingList, type FindingItem } from '@/components/FindingList'
 import { EvidenceDrawer, type EvidenceView } from '@/components/EvidenceDrawer'
 import { RunProgress } from '@/components/RunProgress'
 import { RetestBanner } from '@/components/RetestBanner'
-import { PresenceMap } from '@/components/PresenceMap'
+import { PresenceMap, type PresencePrompt } from '@/components/PresenceMap'
 import { SovBar } from '@/components/SovBar'
 import { EmptyStateCTA } from '@/components/EmptyStateCTA'
+import { resolveWebSearchEnabled } from '@/components/probeEngineCapability'
 import { loadDataSourceStatuses } from '@/lib/settings/load-statuses'
 import { summarizeDataSourceHealth } from '@/lib/settings/data-source-health'
 import {
@@ -62,6 +63,11 @@ export default async function RunDiagnosisPage({
   const answerByEvidence = new Map(
     evidenceRows.map((e) => [e.id, (e.payload as { answerText?: string } | null)?.answerText]),
   )
+  // D3/D6：web_search_enabled 只落在 evidence_artifacts.request（写入侧见 lib/probes/run-probes.ts），
+  // ai_probe_results 表没有这一列——按 evidenceId 反查同一批证据的 request JSON 补齐（Wave 1 契约缺口）。
+  const webSearchByEvidence = new Map(
+    evidenceRows.map((e) => [e.id, (e.request as { web_search_enabled?: boolean } | null)?.web_search_enabled]),
+  )
   const probeSummary = project
     ? aggregateProbeSummary({
         prompts: promptRows,
@@ -73,11 +79,42 @@ export default async function RunDiagnosisPage({
           provider: r.provider,
           sentiment: r.sentiment,
           answerText: answerByEvidence.get(r.evidenceId),
+          // Wave 1 契约已落库但此调用点此前未接线：不传则 summary.ts 全兜底成 unbranded/无引用，
+          // 头条数字与三态判定都会失真（spec D3/D4）。
+          citedUrls: r.citedUrls,
+          hedged: r.hedged,
+          unknownAdmission: r.unknownAdmission,
+          webSearchEnabled: webSearchByEvidence.get(r.evidenceId),
         })),
         brand: brandFromDomain(project.domain),
         competitors: project.competitors ?? [],
       })
     : null
+
+  // PresenceMap 下区（品牌提问 · AI 认知质量）按回答粒度五态分色，但 probeSummary.perPrompt.answers
+  // 只透传 {provider, answerText, evidenceId, present}（summary.ts 不可修改，见任务边界）。
+  // 展示层在此按 evidenceId 补齐 citedUrls/hedged/unknownAdmission/webSearchEnabled，供组件内
+  // classifyBrandedAnswer 复算五态——权威头条数字仍然只来自 probeSummary.unbranded/branded。
+  const probeRowByEvidence = new Map(probeRows.map((r) => [r.evidenceId, r]))
+  const presencePrompts: PresencePrompt[] =
+    probeSummary?.perPrompt.map((p) => ({
+      ...p,
+      answers: p.answers.map((a) => {
+        const raw = probeRowByEvidence.get(a.evidenceId)
+        return {
+          ...a,
+          citedUrls: raw?.citedUrls,
+          hedged: raw?.hedged,
+          unknownAdmission: raw?.unknownAdmission,
+          webSearchEnabled: webSearchByEvidence.get(a.evidenceId),
+        }
+      }),
+    })) ?? []
+
+  // 分引擎卡「检索型/记忆型」徽标（D6）：优先用 summary.ts 已算好的 branded.perEngine.webSearchEnabled
+  // （逐引擎权威判定），该引擎没有品牌样本时才落到静态兜底表。
+  const engineCapability = new Map(probeSummary?.branded.perEngine.map((e) => [e.provider, e.webSearchEnabled]) ?? [])
+  const totalSpeculative = probeSummary?.branded.perEngine.reduce((sum, e) => sum + e.speculative, 0) ?? 0
   const sources = dataSourceStatus()
 
   // 数据源健康度：顶栏 pill 常驻 + 采集完成后的覆盖率横幅共用同一次汇总。（spec §SP-G2b-5/6）
@@ -192,10 +229,18 @@ export default async function RunDiagnosisPage({
 
         <div className="sec-h">
           <h2>{t('screen2.mapTitle')}</h2>
-          <span className="meta">{t('screen2.mapMeta')}</span>
+          <span className="meta">
+            {probeSummary
+              ? t('screen2.geoHeadline', {
+                  present: probeSummary.unbranded.present,
+                  total: probeSummary.unbranded.total,
+                  speculative: totalSpeculative,
+                })
+              : t('screen2.mapMeta')}
+          </span>
         </div>
         {probeSummary ? (
-          <PresenceMap prompts={probeSummary.perPrompt} />
+          <PresenceMap prompts={presencePrompts} unbranded={probeSummary.unbranded} />
         ) : sources.aiProviders.length ? (
           <div className="card pending-block">
             {t('screen2.probePendingRerun', { providers: sources.aiProviders.join(' / ') })}
@@ -253,17 +298,28 @@ export default async function RunDiagnosisPage({
           <>
             <div className="sec-h">
               <h2>{t('screen2.perEngineTitle')}</h2>
-              <span className="meta">{t('screen2.perEngineMeta')}</span>
+              <span className="meta">
+                {t('screen2.perEngineMeta')} · {t('screen2.citationRateLabel')} {Math.round(probeSummary.citationRate * 100)}%
+              </span>
             </div>
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              {probeSummary.perEngine.map((e) => (
-                <div key={e.engine} className="rounded border p-3">
-                  <div className="text-xs text-neutral-500">{e.engine}</div>
-                  <div className="text-xl font-semibold">
-                    {e.promptsPresent}/{e.promptsTotal}
+              {probeSummary.perEngine.map((e) => {
+                // D6：分引擎语义标注——优先用 summary.ts 已算好的 branded 分引擎能力判定，
+                // 该引擎无品牌样本时才落到本文件的静态兜底表（见 probeEngineCapability.ts 注释）。
+                const online = engineCapability.get(e.engine) ?? resolveWebSearchEnabled(e.engine, undefined)
+                return (
+                  <div key={e.engine} className="rounded border p-3">
+                    <div className="text-xs text-neutral-500">{e.engine}</div>
+                    <div className="text-xl font-semibold">
+                      {e.promptsPresent}/{e.promptsTotal}
+                    </div>
+                    <span className={`engine-badge ${online ? 'online' : 'memory'}`}>
+                      {online ? t('screen2.engineOnline') : t('screen2.engineMemory')}
+                    </span>
+                    {!online && <p className="engine-memory-hint">{t('screen2.engineMemoryHint')}</p>}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </>
         )}

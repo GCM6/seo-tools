@@ -11,6 +11,9 @@ import {
   getRecommendations,
   getRunEvidence,
   getReferenceArtifacts,
+  getProject,
+  getRunProbeResults,
+  getRunPrompts,
   getRunKeywordMetrics,
   getRunKeywordGaps,
   getConfirmedCompetitors,
@@ -22,6 +25,10 @@ import { rulesVersionDelta } from '@/lib/diagnosis/rule-proposals'
 import { RULES_VERSION, type Pillar, type FindingSeverity } from '@/lib/diagnosis/types'
 import type { ReferenceArtifactRow } from '@/lib/diagnosis/reference-artifacts'
 import type { EvidenceType } from '@/lib/types'
+// GEO 补充段（spec 2026-07-13-geo-branded-unbranded-redesign.md）：报告页只消费聚合结果渲染，
+// 聚合逻辑仍是 lib/probes/summary.ts 这唯一数据来源（不改该文件，只读用它导出的纯函数）。
+import { aggregateProbeSummary } from '@/lib/probes/summary'
+import { brandFromDomain } from '@/lib/probes/prompt-set'
 
 const PILLARS: Pillar[] = ['P1', 'P2', 'P3', 'P4', 'P5']
 
@@ -63,7 +70,8 @@ const CLAIM_TAG: Record<string, { variant: string; key: string }> = {
 
 const SEV_CLASS: Record<FindingSeverity, string> = { high: 'hi', mid: 'mid', ok: 'ok' }
 
-// 报告主体（8 段 + 目录）。报告页与只读分享页共用同一套渲染（spec §SP-G1e-1 / G2d）。
+// 报告主体（9 段 + 目录，第 4 段 GEO 可见度补充见 spec 2026-07-13-geo-branded-unbranded-redesign.md）。
+// 报告页与只读分享页共用同一套渲染（spec §SP-G1e-1 / G2d）。
 // 语言由调用方 setRequestLocale 决定；本组件无任何 /[locale] 内部导航链接，可用于无 locale 的分享路由。
 // run 缺失即 notFound()——路由级 404。
 export async function ReportView({ runId }: { runId: string }) {
@@ -85,6 +93,9 @@ export async function ReportView({ runId }: { runId: string }) {
     competitors,
     keywords,
     retestSnapshots,
+    project,
+    probeResults,
+    promptRows,
   ] = await Promise.all([
     getFindings(runId),
     getRecommendations(runId),
@@ -95,7 +106,40 @@ export async function ReportView({ runId }: { runId: string }) {
     getConfirmedCompetitors(run.projectId),
     getKeywords(run.projectId),
     getRetestSnapshots(runId),
+    getProject(run.projectId),
+    getRunProbeResults(runId),
+    getRunPrompts(runId),
   ])
+
+  // GEO 可见度补充（同 app/[locale]/runs/[id]/page.tsx 的接线方式）：ai_probe_results 已带
+  // citedUrls/hedged/unknownAdmission，web_search_enabled 只落在 evidence_artifacts.request，
+  // 需按 evidenceId 反查同一批 evidence 补齐，否则 aggregateProbeSummary 全兜底成 unbranded/无引用。
+  const webSearchByEvidence = new Map(
+    evidence.map((e) => [e.id, (e.request as { web_search_enabled?: boolean } | null)?.web_search_enabled]),
+  )
+  const answerByEvidence = new Map(
+    evidence.map((e) => [e.id, (e.payload as { answerText?: string } | null)?.answerText]),
+  )
+  const probeSummary = project
+    ? aggregateProbeSummary({
+        prompts: promptRows,
+        results: probeResults.map((r) => ({
+          promptId: r.promptId,
+          brandPresent: r.brandPresent,
+          competitorsMentioned: r.competitorsMentioned,
+          evidenceId: r.evidenceId,
+          provider: r.provider,
+          sentiment: r.sentiment,
+          answerText: answerByEvidence.get(r.evidenceId),
+          citedUrls: r.citedUrls,
+          hedged: r.hedged,
+          unknownAdmission: r.unknownAdmission,
+          webSearchEnabled: webSearchByEvidence.get(r.evidenceId),
+        })),
+        brand: brandFromDomain(project.domain),
+        competitors: project.competitors ?? [],
+      })
+    : null
 
   const findings: ReportFinding[] = findingRows.map((f) => ({
     id: f.id,
@@ -182,6 +226,7 @@ export async function ReportView({ runId }: { runId: string }) {
     ['sec-summary', t('toc.summary')],
     ['sec-method', t('toc.method')],
     ['sec-pillars', t('toc.pillars')],
+    ['sec-geo', t('toc.geo')],
     ['sec-keywords', t('toc.keywords')],
     ['sec-competitors', t('toc.competitors')],
     ['sec-priority', t('toc.priority')],
@@ -379,13 +424,74 @@ export async function ReportView({ runId }: { runId: string }) {
             })}
           </section>
 
-          {/* ——— 4. 关键词现状与缺口 ——— */}
+          {/* ——— 4. GEO 可见度补充（spec 2026-07-13-geo-branded-unbranded-redesign.md）——— */}
+          <section id="sec-geo" className="report-section">
+            <h3>{t('toc.geo')}</h3>
+            <p className="note">{t('geo.meta')}</p>
+            {probeSummary ? (
+              <div className="card report-method">
+                <p>
+                  {t('geo.unbrandedHeadline', {
+                    present: probeSummary.unbranded.present,
+                    total: probeSummary.unbranded.total,
+                    wilsonPct: Math.round(probeSummary.unbranded.wilsonLow * 100),
+                  })}
+                </p>
+                <p>
+                  {t('geo.brandedHeadline', {
+                    brandedTotal: probeSummary.branded.perEngine.reduce(
+                      (sum, e) => sum + e.grounded + e.speculative + e.unknown + e.unverified + e.undetermined,
+                      0,
+                    ),
+                    grounded: probeSummary.branded.perEngine.reduce((sum, e) => sum + e.grounded, 0),
+                    speculative: probeSummary.branded.perEngine.reduce((sum, e) => sum + e.speculative, 0),
+                  })}
+                </p>
+                <p>{t('geo.citationRate', { pct: Math.round(probeSummary.citationRate * 100) })}</p>
+
+                {probeSummary.branded.perEngine.length > 0 ? (
+                  <div className="report-table-wrap">
+                    <table className="report-table">
+                      <thead>
+                        <tr>
+                          <th>{t('geo.colEngine')}</th>
+                          <th>{t('geo.colType')}</th>
+                          <th>{t('geo.colGrounded')}</th>
+                          <th>{t('geo.colSpeculative')}</th>
+                          <th>{t('geo.colUnknown')}</th>
+                          <th>{t('geo.colUnverified')}</th>
+                          <th>{t('geo.colUndetermined')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {probeSummary.branded.perEngine.map((e) => (
+                          <tr key={e.provider}>
+                            <td className="mono">{e.provider}</td>
+                            <td>{e.webSearchEnabled ? t('geo.engineOnline') : t('geo.engineMemory')}</td>
+                            <td>{e.grounded}</td>
+                            <td>{e.speculative}</td>
+                            <td>{e.unknown}</td>
+                            <td>{e.unverified}</td>
+                            <td>{e.undetermined}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="note">{t('geo.empty')}</p>
+            )}
+          </section>
+
+          {/* ——— 5. 关键词现状与缺口 ——— */}
           <section id="sec-keywords" className="report-section">
             <h3>{t('toc.keywords')}</h3>
             <KeywordTable keywordMetrics={keywordMetrics} keywordGaps={keywordGaps} keywordText={keywordText} />
           </section>
 
-          {/* ——— 5. 竞品对比 ——— */}
+          {/* ——— 6. 竞品对比 ——— */}
           <section id="sec-competitors" className="report-section">
             <h3>{t('toc.competitors')}</h3>
             {competitors.length ? (
@@ -414,13 +520,13 @@ export async function ReportView({ runId }: { runId: string }) {
             )}
           </section>
 
-          {/* ——— 6. 优先级矩阵 ——— */}
+          {/* ——— 7. 优先级矩阵 ——— */}
           <section id="sec-priority" className="report-section">
             <h3>{t('toc.priority')}</h3>
             <PriorityMatrix matrix={model.priorityMatrix} labels={matrixLabels} />
           </section>
 
-          {/* ——— 7. 行动路线图 ——— */}
+          {/* ——— 8. 行动路线图 ——— */}
           <section id="sec-roadmap" className="report-section">
             <h3>{t('toc.roadmap')}</h3>
             {model.roadmap.length ? (
@@ -450,7 +556,7 @@ export async function ReportView({ runId }: { runId: string }) {
             )}
           </section>
 
-          {/* ——— 8. 回测计划与闭环结果 ——— */}
+          {/* ——— 9. 回测计划与闭环结果 ——— */}
           <section id="sec-retest" className="report-section">
             <h3>{t('toc.retest')}</h3>
             <div className="card report-protocol-lock">{t('retest.protocolLock')}</div>

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { setRequestLocale, getTranslations } from 'next-intl/server'
 import { RunHistory, type RunHistoryItem } from '@/components/RunHistory'
 import { GscConnectCard } from '@/components/GscConnectCard'
+import { BrandAliasesCard } from '@/components/BrandAliasesCard'
 import { RetestButton } from '@/components/RetestButton'
 import { getProject, getProjectRuns, getProjectSettings, getFindings } from '@/lib/repositories'
 import { isGscConfigured } from '@/lib/gsc/oauth'
@@ -111,6 +112,11 @@ export default async function ProjectDetailPage({
         gscSiteUrl={settings?.gscSiteUrl ?? null}
         gscAppConfigured={isGscConfigured()}
       />
+
+      {/* 品牌别名（D7）：project_settings.brandAliases 是 per-project 配置，随项目详情页维护
+          （不放全局设置页——SP-G1b 已把设置页明确收窄为不绑定单项目的 BYOK 凭据页）。 */}
+      <h2 className="mt-6 text-sm font-medium">{t('brandAliasesTitle')}</h2>
+      <BrandAliasesCard projectId={project.id} initialAliases={settings?.brandAliases ?? []} />
     </section>
   )
 }

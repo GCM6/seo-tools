@@ -21,9 +21,11 @@ const REASON_ANCHOR: Partial<Record<string, HealthKey>> = {
 // and openable to the raw payload) or `pending` (grey placeholder naming the
 // SP that will supply its data source). No number is ever shown without
 // backing evidence — the product's "证据先于结论" rule made literal.
+// aiVisibility 不在这里：value 已是 unbranded 口径的「present/total」组合字符串
+// （lib/diagnostics.ts deriveAiVisibility），denominator 随 run 变化，不能再拼一个
+// 固定的「/ 20 提问」后缀。
 const UNIT_KEY: Partial<Record<StatCardKey, string>> = {
   indexVisibility: 'stats.indexVisibilityUnit',
-  aiVisibility: 'stats.aiVisibilityUnit',
   avgRank: 'stats.avgRankUnit',
   schemaCoverage: 'stats.schemaCoverageUnit',
 }

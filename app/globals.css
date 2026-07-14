@@ -1036,30 +1036,97 @@ button {
 .map-wrap {
   padding: var(--sp-base);
 }
+.map-evidence-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px var(--sp-base);
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--measured) 22%, var(--ds-border));
+  border-radius: var(--rd-md);
+  background: linear-gradient(110deg, var(--measured-bg), var(--ds-surface-1) 74%);
+}
+.map-evidence-intro > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+.map-evidence-intro > div:first-child span {
+  color: var(--measured);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.map-evidence-intro strong {
+  color: var(--ds-ink);
+  font-size: 14px;
+}
+.map-evidence-intro p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ds-body);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.map-evidence-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  justify-content: end;
+  gap: 5px;
+}
+.map-evidence-stats span {
+  padding: 4px 7px;
+  border: 1px solid color-mix(in srgb, var(--measured) 20%, var(--ds-border));
+  border-radius: var(--rd-pill);
+  color: var(--measured);
+  background: rgba(255, 255, 255, 0.6);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
 .map {
   display: grid;
   grid-template-columns: repeat(10, 1fr);
   gap: 6px;
-  margin-top: var(--sp-xxs);
+  margin-top: var(--sp-base);
 }
 .cell {
   aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border-radius: var(--rd-sm);
   background: var(--ds-surface-2);
   border: 1px solid var(--ds-border);
   position: relative;
+  color: var(--ds-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 650;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 .cell.on {
   background: var(--measured);
   border-color: var(--measured);
+  color: var(--ds-on-ink);
 }
-.cell:focus,
+.cell.no-answer {
+  border-style: dashed;
+  background: transparent;
+  color: var(--ds-muted);
+}
+.cell.selected,
+.cell:focus-visible,
 .cell:hover {
-  outline: 2px solid var(--ds-ink);
-  outline-offset: 1px;
+  z-index: 1;
+  border-color: var(--ds-ink);
+  box-shadow: 0 0 0 2px var(--ds-surface-1), 0 0 0 4px var(--ds-ink);
+  outline: none;
+  transform: scale(1.04);
 }
 .legend {
   display: flex;
+  flex-wrap: wrap;
   gap: 18px;
   font-size: 12px;
   color: var(--ds-body);
@@ -1074,18 +1141,151 @@ button {
   margin-right: 6px;
   vertical-align: -1px;
 }
-.tip {
-  position: fixed;
-  background: var(--ds-ink);
-  color: var(--ds-on-ink);
-  font-size: 12px;
-  padding: 6px 9px;
+.map-evidence-detail {
+  margin-top: var(--sp-base);
+  padding: 14px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--rd-md);
+  background: var(--ds-surface-2);
+}
+.map-evidence-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-sm);
+  color: var(--ds-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.map-evidence-detail b,
+.map-evidence-answers summary b {
+  padding: 3px 6px;
+  border-radius: var(--rd-pill);
+  font-size: 10px;
+  font-weight: 650;
+}
+.map-evidence-detail .hit { color: var(--good); background: var(--good-bg); }
+.map-evidence-detail .miss { color: var(--gap); background: var(--gap-bg); }
+.map-evidence-detail .unmeasured { color: var(--ds-muted); background: var(--ds-surface-1); }
+.map-evidence-question {
+  margin: 9px 0 12px;
+  color: var(--ds-ink);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+.map-evidence-answers {
+  display: grid;
+  gap: 7px;
+}
+.map-evidence-answers details {
+  border: 1px solid var(--ds-border);
   border-radius: var(--rd-sm);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.12s;
-  max-width: 240px;
-  z-index: 50;
+  background: var(--ds-surface-1);
+}
+.map-evidence-answers summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-sm);
+  padding: 9px 10px;
+  cursor: pointer;
+  color: var(--ds-body);
+  font-size: 12px;
+}
+.map-evidence-answers details p,
+.map-evidence-empty {
+  margin: 0;
+  padding: 0 10px 10px;
+  color: var(--ds-body);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* ---- branded 五态 + 分引擎能力徽标（D3/D6：spec 2026-07-13-geo-branded-unbranded-redesign.md）---- */
+/* 下区（品牌提问）与上区（无品牌提问）共用 .map-wrap/.map-evidence-intro 结构，用 .branded
+   修饰符换成 mystic 强调色，让两区在视觉上可一眼区分「测的是两件事」。 */
+.map-evidence-intro.branded {
+  border-color: color-mix(in srgb, var(--ds-mystic) 24%, var(--ds-border));
+  background: linear-gradient(110deg, var(--ds-mystic-muted), var(--ds-surface-1) 74%);
+}
+.map-evidence-intro.branded > div:first-child span {
+  color: var(--ds-mystic);
+}
+.map-evidence-stats.branded span {
+  border-color: color-mix(in srgb, var(--ds-mystic) 20%, var(--ds-border));
+  color: var(--ds-mystic);
+}
+
+.map-wilson-note {
+  margin-top: 6px;
+  color: var(--ds-muted);
+  font-size: 11px;
+}
+
+/* D9：unbranded 0/Y 空态按「机会空间」框架呈现，不用 --gap/警示配色，避免读成故障。 */
+.map-opportunity {
+  margin-top: var(--sp-base);
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--ds-mystic) 26%, var(--ds-border));
+  border-radius: var(--rd-md);
+  background: var(--ds-mystic-muted);
+}
+.map-opportunity strong {
+  color: var(--ds-mystic);
+  font-size: 13px;
+}
+.map-opportunity p {
+  margin: 4px 0 0;
+  color: var(--ds-body);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.map-opportunity a {
+  color: var(--ds-mystic);
+  font-weight: 650;
+}
+
+/* branded 网格五态：grounded 好信号沿用 --good；speculative 沿用「推断」同款 --inferred；
+   unknown（诚实承认不知道）用 --ds-info 中性区分；unverified（断言无依据，最需要关注）用 --gap；
+   undetermined（非联网引擎，结构性无法判断）沿用既有 .no-answer 的虚线中性处理。 */
+.cell.state-grounded { background: var(--good); border-color: var(--good); color: var(--ds-on-ink); }
+.cell.state-speculative { background: var(--inferred); border-color: var(--inferred); color: var(--ds-on-ink); }
+.cell.state-unknown { background: var(--ds-info); border-color: var(--ds-info); color: var(--ds-ink); }
+.cell.state-unverified { background: var(--gap); border-color: var(--gap); color: var(--ds-on-ink); }
+.cell.state-undetermined { border-style: dashed; background: transparent; color: var(--ds-muted); }
+
+.map-evidence-detail .state-grounded { color: var(--good); background: var(--good-bg); }
+.map-evidence-detail .state-speculative { color: var(--inferred); background: var(--inferred-bg); }
+.map-evidence-detail .state-unknown { color: var(--ds-info); background: var(--ds-info-muted); }
+.map-evidence-detail .state-unverified { color: var(--gap); background: var(--gap-bg); }
+.map-evidence-detail .state-undetermined { color: var(--ds-muted); background: var(--ds-surface-1); }
+
+.engine-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px 0;
+  color: var(--ds-body);
+  font-size: 12px;
+}
+.engine-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--rd-pill);
+  font-size: 10px;
+  font-weight: 650;
+  font-family: var(--font-mono);
+}
+.engine-badge.online { color: var(--measured); background: var(--measured-bg); }
+.engine-badge.memory { color: var(--ds-muted); background: var(--ds-surface-2); border: 1px solid var(--ds-border); }
+.engine-memory-hint {
+  margin: 2px 0 0;
+  color: var(--ds-muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 /* ---- competitor SoV ---- */
