@@ -2,12 +2,16 @@
 // 不用 LLM 生成——同一项目输入必须产出同一 prompt set，才能满足「同协议回测」。
 // 模板集版本随 source 字段记录（template_v1），改模板必须升版本号。
 
+import { mentions } from './parse'
+
 export interface PromptSetInput {
   domain: string
   industry: string
   market: string
   language: string
   competitors: string[]
+  // D7：品牌别名（project_settings.brand_aliases）。branded 判定与 brand 逐一尝试匹配。可选。
+  aliases?: string[]
 }
 
 export interface ProbePrompt {
@@ -17,6 +21,14 @@ export interface ProbePrompt {
   market: string
   language: string
   priority: number
+  // D1：问题文本本身是否含品牌/别名——对生成后的问题文本跑与 parse.ts 同源的 mentions 匹配，
+  // 自动覆盖条件分支模板（同一模板有无竞品时可能一个含品牌一个不含）。问题文本/配额/模板版本号不变。
+  branded: boolean
+}
+
+// D1：branded = mentions(promptText, brand) || 别名逐一匹配任一命中。复用 parse.ts 的 mentions，不复制实现。
+function isBranded(text: string, brand: string, aliases: string[]): boolean {
+  return mentions(text, brand) || aliases.some((a) => mentions(text, a))
 }
 
 // 从 URL / 裸域名取品牌词：去 www 与 TLD 后缀，取主域名段。
@@ -81,14 +93,19 @@ function buildVars(input: PromptSetInput): TemplateVars {
 export function buildPromptSet(input: PromptSetInput): ProbePrompt[] {
   const vars = buildVars(input)
   const zh = input.language === 'zh'
-  return TEMPLATES.map(([intent, zhTpl, enTpl], i) => ({
-    text: zh ? zhTpl(vars) : enTpl(vars),
-    intent,
-    source: 'template_v1',
-    market: input.market,
-    language: input.language,
-    priority: i,
-  }))
+  const aliases = input.aliases ?? []
+  return TEMPLATES.map(([intent, zhTpl, enTpl], i) => {
+    const text = zh ? zhTpl(vars) : enTpl(vars)
+    return {
+      text,
+      intent,
+      source: 'template_v1',
+      market: input.market,
+      language: input.language,
+      priority: i,
+      branded: isBranded(text, vars.brand, aliases),
+    }
+  })
 }
 
 // ── prompt 集 v2（分层 30 条）─────────────────────────────────────────────
@@ -159,12 +176,17 @@ const TEMPLATES_V2 = [
 export function buildPromptSetV2(input: PromptSetInput): ProbePrompt[] {
   const vars = buildVars(input)
   const zh = input.language === 'zh'
-  return TEMPLATES_V2.map(([intent, zhTpl, enTpl], i) => ({
-    text: zh ? zhTpl(vars) : enTpl(vars),
-    intent,
-    source: 'template_v2',
-    market: input.market,
-    language: input.language,
-    priority: i,
-  }))
+  const aliases = input.aliases ?? []
+  return TEMPLATES_V2.map(([intent, zhTpl, enTpl], i) => {
+    const text = zh ? zhTpl(vars) : enTpl(vars)
+    return {
+      text,
+      intent,
+      source: 'template_v2',
+      market: input.market,
+      language: input.language,
+      priority: i,
+      branded: isBranded(text, vars.brand, aliases),
+    }
+  })
 }

@@ -66,4 +66,18 @@ describe('classifyProbeSentiment', () => {
     const text = 'Metadocu is reliable and recommended.'
     expect(classifyProbeSentiment(text, 'Metadocu')).toBe(classifyProbeSentiment(text, 'Metadocu'))
   })
+
+  // v5 回归（缺陷 1）：aliases 参数缺省不传时行为不变（旧调用方兼容）。
+  it('defaults to no aliases when the param is omitted (backward compatible)', () => {
+    expect(classifyProbeSentiment('MetaDoc is outdated and lacks features.', 'Metadocu')).toBe('neutral')
+  })
+
+  // v5 新增（D7）：品牌未在句中出现，但别名命中，情感应按别名句判定，不再恒 neutral。
+  it('classifies sentiment via an alias sentence when the primary brand token is absent', () => {
+    expect(classifyProbeSentiment('MetaDoc is outdated and lacks features.', 'Metadocu', ['MetaDoc'])).toBe('negative')
+  })
+
+  it('classifies a positive alias sentence as positive', () => {
+    expect(classifyProbeSentiment('MetaDoc is reliable and recommended.', 'Metadocu', ['MetaDoc'])).toBe('positive')
+  })
 })

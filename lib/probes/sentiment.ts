@@ -1,6 +1,10 @@
 // G09 引用情感分类器：确定性启发式，纯字符串匹配，LLM 不参与、绝不造数字。
-// 只看「含品牌的句子」，在其中做词命中；优先级 比较 > 负面 > 正面 > 中性。
+// 只看「含品牌/别名的句子」，在其中做词命中；优先级 比较 > 负面 > 正面 > 中性。
 // 判定规则（含下方词表）随 PROBE_PARSER_VERSION 固化——改词表/规则必须升版本号。
+// v5（parse.ts 缺陷修复）：新增可选 aliases 参数——D7 品牌别名句此前只按主品牌词过滤，
+// 别名句（如 brand=metadocu、alias=小docu，回答"小docu 不靠谱"）找不到品牌句，情感恒判
+// neutral，G09 负面预警分子被系统性清零。parse.ts:182-183 的 brandPresent/hedged 判定
+// 早已按 brand+aliases 匹配，此处补齐同一口径。
 
 export type ProbeSentiment = 'positive' | 'neutral' | 'negative' | 'comparison'
 
@@ -139,16 +143,21 @@ function splitSentences(text: string): string[] {
     .filter((s) => s.length > 0)
 }
 
-// 品牌是否出现在句中：CJK 子串、拉丁词边界（复用 hitsTerm）。
-function sentenceMentionsBrand(sentence: string, brand: string): boolean {
-  return hitsTerm(sentence, brand)
+// 品牌/别名是否出现在句中：CJK 子串、拉丁词边界（复用 hitsTerm）。任一命中即算命中（D7）。
+function sentenceMentionsBrand(sentence: string, brand: string, aliases: readonly string[]): boolean {
+  return hitsTerm(sentence, brand) || aliases.some((a) => hitsTerm(sentence, a))
 }
 
-// 确定性引用情感分类：只在「含品牌的句子集合」里做词命中。
-// 品牌未出现于文中 → 'neutral'。优先级：comparison > negative > positive > neutral。
-export function classifyProbeSentiment(answerText: string, brand: string): ProbeSentiment {
+// 确定性引用情感分类：只在「含品牌/别名的句子集合」里做词命中。
+// 品牌/别名均未出现于文中 → 'neutral'。优先级：comparison > negative > positive > neutral。
+// aliases 可选——旧调用方不传即视为无别名（v4 行为不变）。
+export function classifyProbeSentiment(
+  answerText: string,
+  brand: string,
+  aliases: readonly string[] = [],
+): ProbeSentiment {
   if (!brand || !answerText) return 'neutral'
-  const brandSentences = splitSentences(answerText).filter((s) => sentenceMentionsBrand(s, brand))
+  const brandSentences = splitSentences(answerText).filter((s) => sentenceMentionsBrand(s, brand, aliases))
   if (brandSentences.length === 0) return 'neutral'
 
   let sawNegative = false

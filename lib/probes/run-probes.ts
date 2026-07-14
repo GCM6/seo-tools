@@ -38,6 +38,8 @@ interface ProjectLike {
 interface ProjectSettingsLike {
   defaultModels: string[]
   probeN: number
+  // D7：品牌别名（project_settings.brand_aliases）——可选，旧调用方/测试可不传，视作无别名。
+  brandAliases?: string[]
 }
 
 export interface ProbeStageDeps {
@@ -59,6 +61,8 @@ export interface ProbeStageDeps {
     competitorsMentioned: string[]
     citedUrls: string[]
     sentiment: string
+    hedged: boolean
+    unknownAdmission: boolean
     rawAnswerHash: string
     parserVersion: string
   }) => Promise<unknown>
@@ -79,7 +83,7 @@ function probeN(settings: ProjectSettingsLike | undefined): number {
 export async function collectProbesStage(
   { step, emit, runId, projectId }: ProbeStageArgs,
   deps: ProbeStageDeps,
-): Promise<{ probedProviders: string[]; promptCount: number }> {
+): Promise<{ probedProviders: string[]; promptCount: number; attemptedCount: number; successfulCount: number }> {
   const config = await step.run('probe-config', async () => {
     const project = await deps.getProject(projectId)
     if (!project) return null
@@ -91,24 +95,29 @@ export async function collectProbesStage(
       .buildProviders()
       .filter((p) => selected.has(p.id) && p.isConfigured())
       .map((p) => p.id)
+    const aliases = settings?.brandAliases ?? []
     return {
       activeProviderIds,
       n: probeN(settings),
       brand: brandFromDomain(project.domain),
       domain: new URL(project.domain).hostname.replace(/^www\./, ''),
       competitors: project.competitors ?? [],
+      aliases,
       promptInput: {
         domain: project.domain,
         industry: project.industry,
         market: project.market,
         language: project.language || 'zh',
         competitors: project.competitors ?? [],
+        aliases,
       },
     }
   })
 
   // 没有「已选中且配好 key」的 provider：整段跳过，不落任何 prompt，面板保持待接入
-  if (!config || config.activeProviderIds.length === 0) return { probedProviders: [], promptCount: 0 }
+  if (!config || config.activeProviderIds.length === 0) {
+    return { probedProviders: [], promptCount: 0, attemptedCount: 0, successfulCount: 0 }
+  }
 
   const providers = deps.buildProviders().filter((p) => config.activeProviderIds.includes(p.id))
 
@@ -122,10 +131,12 @@ export async function collectProbesStage(
     return rows
   })
 
+  let attemptedCount = 0
+  let successfulCount = 0
   for (const [promptIdx, prompt] of prompts.entries()) {
     for (const provider of providers) {
       for (let runIdx = 1; runIdx <= config.n; runIdx++) {
-        await step.run(`probe:${provider.id}:${promptIdx}:${runIdx}`, async () => {
+        const outcome = await step.run(`probe:${provider.id}:${promptIdx}:${runIdx}`, async () => {
           const runAt = new Date().toISOString()
           const requestBase = {
             provider: provider.id,
@@ -148,6 +159,7 @@ export async function collectProbesStage(
               brand: config.brand,
               domain: config.domain,
               competitors: config.competitors,
+              aliases: config.aliases,
             })
             const rawText = JSON.stringify(answer.rawResponse)
             const rawHash = sha256Hex(rawText)
@@ -190,6 +202,9 @@ export async function collectProbesStage(
               citedUrls: parsed.citedUrls,
               // G09 引用情感：测量层解析器分类（parser_version 版本化，可抽查原文），非 agent 生成
               sentiment: parsed.sentiment,
+              // D2：确定性词表检测结果落库，供聚合层 D3 三态判定使用
+              hedged: parsed.hedged,
+              unknownAdmission: parsed.unknownAdmission,
               rawAnswerHash: rawHash,
               parserVersion: PROBE_PARSER_VERSION,
             })
@@ -218,11 +233,18 @@ export async function collectProbesStage(
             return { ok: false, error: message }
           }
         })
+        attemptedCount++
+        if (outcome.ok) successfulCount++
       }
     }
     await emit({ type: 'evidence_created', evidenceType: 'ai_answer' })
     await emit({ type: 'progress', pct: PCT_BASE + Math.round(((promptIdx + 1) / prompts.length) * PCT_SPAN) })
   }
 
-  return { probedProviders: providers.map((p) => p.id), promptCount: prompts.length }
+  return {
+    probedProviders: providers.map((p) => p.id),
+    promptCount: prompts.length,
+    attemptedCount,
+    successfulCount,
+  }
 }

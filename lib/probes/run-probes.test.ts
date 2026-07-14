@@ -84,6 +84,7 @@ describe('collectProbesStage', () => {
 
     // 选中 ChatGPT+Perplexity（AI Overviews 非探针引擎，忽略）；gemini 未选中不探
     expect(out.probedProviders.sort()).toEqual(['openai', 'perplexity'])
+    expect(out).toMatchObject({ attemptedCount: 120, successfulCount: 120 })
     expect(created.prompts).toHaveLength(30)
     // 30 prompts × n=2 × 2 providers
     expect(created.results).toHaveLength(120)
@@ -108,6 +109,7 @@ describe('collectProbesStage', () => {
     })
     const { out } = await run(deps)
     expect(out.probedProviders).toEqual([])
+    expect(out).toMatchObject({ attemptedCount: 0, successfulCount: 0 })
     expect(created.prompts).toHaveLength(0)
     expect(created.evidence).toHaveLength(0)
   })
@@ -118,6 +120,7 @@ describe('collectProbesStage', () => {
     })
     const { out } = await run(deps)
     expect(out.probedProviders.sort()).toEqual(['openai', 'perplexity'])
+    expect(out).toMatchObject({ attemptedCount: 120, successfulCount: 60 })
 
     // perplexity 全成功：60 条 result；openai 全失败：0 条 result 但留 60 条 error evidence
     expect(created.results).toHaveLength(60)
@@ -125,6 +128,41 @@ describe('collectProbesStage', () => {
     const errorEvidence = created.evidence.filter((e) => (e.request as Record<string, unknown>).error_code)
     expect(errorEvidence).toHaveLength(60)
     expect((errorEvidence[0].request as Record<string, unknown>).provider).toBe('openai')
+  })
+
+  it('D2/D7: persists hedged/unknownAdmission on the probe result and threads project_settings.brandAliases into parsing', async () => {
+    const { deps, created } = makeDeps({
+      getProjectSettings: async () => ({
+        projectId: 'proj_1',
+        gscConnected: false,
+        defaultModels: ['ChatGPT'],
+        probeN: 1,
+        marketLocation: '',
+        cachePolicy: 'default',
+        brandAliases: ['小docu'],
+      }),
+      providers: [
+        fakeProvider('openai', {
+          answer: '小docu 顾名思义应该是一款文档工具，但我没有找到相关信息确认其口碑。',
+        }),
+      ],
+    })
+    const { out } = await run(deps)
+    expect(out.probedProviders).toEqual(['openai'])
+    // 品牌 token（metadocu）不在回答里，全靠别名命中——证明 aliases 确实穿线到了 parseProbeAnswer。
+    expect(created.results.every((r) => r.brandPresent === true)).toBe(true)
+    expect(created.results.every((r) => r.hedged === true)).toBe(true)
+    expect(created.results.every((r) => r.unknownAdmission === true)).toBe(true)
+  })
+
+  it('D1: persists prompts.branded straight from buildPromptSetV2', async () => {
+    const { deps, created } = makeDeps()
+    await run(deps)
+    const brandPromptRows = (created.prompts as { intent: string; branded: boolean }[]).filter((p) => p.intent === 'brand')
+    expect(brandPromptRows).toHaveLength(5)
+    expect(brandPromptRows.every((p) => p.branded === true)).toBe(true)
+    const recPromptRows = (created.prompts as { intent: string; branded: boolean }[]).filter((p) => p.intent === 'recommendation')
+    expect(recPromptRows.every((p) => p.branded === false)).toBe(true)
   })
 
   it('emits per-prompt progress within 65..90 and ai_answer evidence events', async () => {
