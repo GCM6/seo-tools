@@ -26,7 +26,7 @@ export default async function KeywordsPage({
   )
   const isEmpty = !keywordMetrics.length && !keywordGaps.length
   return (
-    <Shell active={2} locale={locale} runId={id} domain={project?.domain}>
+    <Shell runId={id} domain={project?.domain}>
       <section className="screen show">
         <h1 className="text-lg font-semibold">
           {project?.domain} · {t('title')}

@@ -14,7 +14,7 @@ const labels = {
   empty: '还没有项目',
   noRun: '尚未诊断',
   retestNone: '—',
-  findingsUnit: (n: number) => `${n} 条`,
+  findingsUnit: '{count} 条',
   actionRunning: '诊断中…',
   actionRetest: '发起回测',
   actionReconfigure: '重新配置',
@@ -22,6 +22,12 @@ const labels = {
   retestStarting: '发起中…',
   retestError: '发起失败',
   retestInProgress: '已有诊断进行中，查看',
+  projectManagement: '项目管理',
+  searchPlaceholder: '输入域名进行搜索…',
+  marketLabel: '市场',
+  retestLabel: '回测:',
+  latestStatusLabel: '最近诊断状态',
+  findingsDetectedLabel: '已检测缺陷',
 }
 const statusLabels = { output: '已完成', diagnosing: '诊断中' }
 const runTypeLabels = { baseline: '基线', retest: '回测' }

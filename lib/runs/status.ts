@@ -4,6 +4,11 @@
 // 否则回测入口永远不出现。failed 是独立终态，不计入 active 也不计入 completed。
 import type { RunStatus } from '@/lib/types'
 
+// A user-stop is stored as a failed run for now so it remains compatible with
+// the existing database status constraint, while still being distinguishable
+// from an execution failure in the UI and workflow guards.
+export const RUN_CANCELLED_REASON = 'cancelled_by_user'
+
 export const ACTIVE_RUN_STATUSES: readonly RunStatus[] = ['draft', 'collecting', 'collected', 'diagnosing']
 export const COMPLETED_RUN_STATUSES: readonly RunStatus[] = ['reviewing', 'output']
 

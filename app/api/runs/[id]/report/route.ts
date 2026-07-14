@@ -6,8 +6,11 @@ import {
   getRecommendations,
   getRunEvidence,
   getReferenceArtifacts,
+  getRunDataSourceStatuses,
+  getRunProbeResults,
+  getConfirmedCompetitors,
 } from '@/lib/repositories'
-import { buildReport, type ReportFinding, type ReportRecommendation } from '@/lib/diagnosis/report'
+import { buildReport, buildReportContractInput, type ReportFinding, type ReportRecommendation } from '@/lib/diagnosis/report'
 import { renderReportMarkdown } from '@/lib/diagnosis/report-markdown'
 import type { Pillar, FindingSeverity } from '@/lib/diagnosis/types'
 import type { ReferenceArtifactRow } from '@/lib/diagnosis/reference-artifacts'
@@ -54,10 +57,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ run, findings, recommendations })
   }
 
-  const [project, evidence, referenceArtifacts] = await Promise.all([
+  const [project, evidence, referenceArtifacts, dataSourceStatuses, probeResults, competitors] = await Promise.all([
     getProject(run.projectId),
     getRunEvidence(id),
     getReferenceArtifacts(),
+    getRunDataSourceStatuses(id),
+    getRunProbeResults(id),
+    getConfirmedCompetitors(run.projectId),
   ])
 
   const reportFindings: ReportFinding[] = findings.map((f) => ({
@@ -102,6 +108,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       findings.map((f) => f.pillar),
     ),
     artifacts,
+    ...buildReportContractInput({
+      domain: project?.domain ?? '',
+      targetMarket: project?.market,
+      language: project?.language,
+      capturedAt: run.finishedAt ?? run.startedAt ?? '',
+      evidence,
+      dataSources: dataSourceStatuses,
+      aiValidSamples: probeResults.length,
+      confirmedCompetitors: competitors.length,
+    }),
     now: new Date(),
   })
 

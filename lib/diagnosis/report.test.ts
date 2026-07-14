@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildReport, type ReportFinding, type ReportRecommendation } from './report'
+import { buildReport, type DataSourceCoverage, type ReportFinding, type ReportRecommendation, type ReportScope } from './report'
 
 const now = new Date('2026-07-06T00:00:00Z')
 
@@ -29,6 +29,22 @@ const rec = (over: Partial<ReportRecommendation>): ReportRecommendation => ({
   status: 'draft',
   outcome: 'unknown',
   validationMethod: 'vm',
+  ...over,
+})
+
+const scope: ReportScope = {
+  domain: 'example.com',
+  entryUrl: 'https://example.com/',
+  capturedAt: '2026-07-06T00:00:00Z',
+}
+
+const source = (sourceKey: string, status: DataSourceCoverage['status'], over: Partial<DataSourceCoverage> = {}): DataSourceCoverage => ({
+  sourceKey,
+  configured: true,
+  authorized: true,
+  attempted: true,
+  status,
+  capturedEvidenceCount: status === 'collected' ? 1 : 0,
   ...over,
 })
 
@@ -119,5 +135,49 @@ describe('buildReport aggregation', () => {
     const horizons = Object.fromEntries(m.roadmap.map((i) => [i.recommendation.id, i.horizon]))
     expect(horizons).toEqual({ q: 'quick', m: 'mid', l: 'long' }) // draft 不进路线图
     expect(m.counts.gated).toBe(3)
+  })
+})
+
+describe('buildReport report contract', () => {
+  it('does not claim market or GEO coverage without confirmed competitors and valid AI samples', () => {
+    const sources = [
+      source('crawl', 'collected'),
+      source('gsc', 'collected'),
+      source('dataforseo', 'collected'),
+      source('ai_probe', 'collected'),
+    ]
+
+    const withoutCompetitors = buildReport({
+      findings: [], recommendations: [], scope, dataSources: sources,
+      coverageStats: { checkedPages: 1, confirmedCompetitors: 0, aiValidSamples: 1 }, now,
+    })
+    expect(withoutCompetitors.reportContract?.level).toBe('R2')
+
+    const withoutAiSamples = buildReport({
+      findings: [], recommendations: [], scope, dataSources: sources,
+      coverageStats: { checkedPages: 1, confirmedCompetitors: 2, aiValidSamples: 0 }, now,
+    })
+    expect(withoutAiSamples.reportContract?.level).toBe('R3')
+
+    const fullSample = buildReport({
+      findings: [], recommendations: [], scope, dataSources: sources,
+      coverageStats: { checkedPages: 1, confirmedCompetitors: 2, aiValidSamples: 3 }, now,
+    })
+    expect(fullSample.reportContract?.level).toBe('R4')
+  })
+
+  it('treats partial and unattempted sources as gaps instead of silently omitting them', () => {
+    const model = buildReport({
+      findings: [],
+      recommendations: [],
+      scope,
+      dataSources: [source('crawl', 'partial', { capturedEvidenceCount: 4 }), source('ai_probe', 'not_attempted')],
+      coverageStats: { checkedPages: 4 },
+      now,
+    })
+
+    expect(model.reportContract?.level).toBe('R1')
+    expect(model.reportContract?.gaps).toEqual(['crawl', 'ai_probe'])
+    expect(model.reportContract?.exclusions).toEqual(['crawl:partial', 'ai_probe:not_attempted'])
   })
 })

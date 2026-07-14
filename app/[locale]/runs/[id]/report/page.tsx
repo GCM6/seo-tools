@@ -21,7 +21,7 @@ export default async function ReportPage({
   const project = run ? await getProject(run.projectId) : undefined
 
   return (
-    <Shell active={4} locale={locale} runId={id} domain={project?.domain}>
+    <Shell runId={id} domain={project?.domain}>
       <div className="report-toolbar no-print">
         <a className="ghost" href={`/api/runs/${id}/report?format=md`} download>
           {t('exportMd')}

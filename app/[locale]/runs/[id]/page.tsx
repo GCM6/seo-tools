@@ -20,6 +20,7 @@ import {
   getRunEvidence,
   getRunPrompts,
   getRunProbeResults,
+  getRecommendations,
 } from '@/lib/repositories'
 import { provenanceForClaim } from '@/lib/evidence'
 import { deriveStatCards } from '@/lib/diagnostics'
@@ -43,15 +44,17 @@ export default async function RunDiagnosisPage({
   setRequestLocale(locale)
 
   // 都只依赖 id，并行取；project 依赖 run.projectId，随后单独取。
-  const [t, run, findings, evidenceRows, promptRows, probeRows] = await Promise.all([
+  const [t, run, findings, evidenceRows, promptRows, probeRows, recommendations] = await Promise.all([
     getTranslations(),
     getRun(id),
     getFindings(id),
     getRunEvidence(id),
     getRunPrompts(id),
     getRunProbeResults(id),
+    getRecommendations(id),
   ])
   const project = run ? await getProject(run.projectId) : undefined
+  const pendingRecommendationCount = recommendations.filter((recommendation) => recommendation.status === 'draft').length
 
   // 回测排期（spec §5.1-6）：nextRetestDueAt ≤ 今天即到期，顶部横幅一键同协议重跑；
   // 在未来则显示次要「下次回测」提示。为空表示尚无 applied 建议触发排期。
@@ -127,7 +130,7 @@ export default async function RunDiagnosisPage({
   // 从当前 run 的真实证据派生指标卡；measured 卡可点开对应证据原文。
   const cards = deriveStatCards(
     evidenceRows.map((e) => ({ id: e.id, type: e.type, claimLevel: e.claimLevel, payload: e.payload })),
-    { probe: probeSummary, sources: { renderProvider: sources.renderProvider } },
+    { probe: probeSummary, sources: { renderProvider: sources.renderProvider, renderStaticFallback: sources.renderStaticFallback } },
   )
   const evidenceById: Record<string, EvidenceView> = Object.fromEntries(
     evidenceRows.map((e) => [e.id, { id: e.id, type: e.type, claimLevel: e.claimLevel, source: e.source, payload: e.payload }]),
@@ -171,7 +174,7 @@ export default async function RunDiagnosisPage({
   )
 
   return (
-    <Shell active={2} locale={locale} runId={id} domain={project?.domain}>
+    <Shell runId={id} domain={project?.domain}>
       <section className="screen show" data-screen="2">
         {retestDue ? (
           <RetestBanner runId={id} locale={locale} />
@@ -189,7 +192,18 @@ export default async function RunDiagnosisPage({
         ) : null}
 
         {run ? (
-          <RunProgress runId={id} initialStatus={run.status as RunStatus} initialFailureReason={run.failureReason ?? ''} />
+          <RunProgress
+            runId={id}
+            initialStatus={run.status as RunStatus}
+            initialFailureReason={run.failureReason ?? ''}
+            reviewGate={run.status === 'reviewing'
+              ? {
+                  pendingCount: pendingRecommendationCount,
+                  totalCount: recommendations.length,
+                  href: `/${locale}/runs/${id}/${pendingRecommendationCount > 0 || recommendations.length === 0 ? 'recommendations' : 'output'}`,
+                }
+              : undefined}
+          />
         ) : null}
 
         <div className="work-summary">
@@ -254,7 +268,7 @@ export default async function RunDiagnosisPage({
           />
         )}
 
-        <div className="sec-h">
+        <div className="sec-h" id="sov-section">
           <h2>{t('screen2.sovTitle')}</h2>
           <span className="meta">{t('screen2.sovMeta')}</span>
         </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useOptimistic, useState, startTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { ProvenanceTag } from './ProvenanceTag'
 
@@ -32,6 +33,24 @@ export interface RecCardProps {
   editDraft?: string
 }
 
+type RecommendationPriority = 'quick_win' | 'strategic' | 'fill_in' | 'low'
+
+const PRIORITIES = new Set<RecommendationPriority>(['quick_win', 'strategic', 'fill_in', 'low'])
+const STATIC_FIX_MARKER = '\n\n参考修复示例（静态模板，非生成内容）：\n'
+
+function normalizePriority(priority: string): RecommendationPriority {
+  return PRIORITIES.has(priority as RecommendationPriority) ? priority as RecommendationPriority : 'fill_in'
+}
+
+function splitRecommendation(title: string) {
+  const markerIndex = title.indexOf(STATIC_FIX_MARKER)
+  if (markerIndex === -1) return { action: title, fixSnippet: '' }
+  return {
+    action: title.slice(0, markerIndex),
+    fixSnippet: title.slice(markerIndex + STATIC_FIX_MARKER.length),
+  }
+}
+
 export function RecCard({
   id,
   priority,
@@ -42,6 +61,9 @@ export function RecCard({
   editDraft = '',
 }: RecCardProps) {
   const t = useTranslations()
+  const router = useRouter()
+  const priorityKey = normalizePriority(priority)
+  const { action, fixSnippet } = splitRecommendation(title)
 
   // Confirmed status (commits after the PATCH settles) + optimistic overlay.
   const [status, setStatus] = useState<RecStatus>(initialStatus)
@@ -69,6 +91,8 @@ export function RecCard({
         if (res.ok) {
           setStatus(next)
           setEditingDraft(false)
+          // 最后一条建议完成确认时，服务端会推进 run 到输出阶段；刷新只读步骤进度。
+          router.refresh()
         }
       } catch {
         // Network error — keep the persisted status; optimistic state rolls back.
@@ -78,9 +102,12 @@ export function RecCard({
 
   const accepted = optimisticStatus === 'accepted'
   const rejected = optimisticStatus === 'rejected'
+  const isEdited = optimisticStatus === 'edited'
+  const statusKey = optimisticStatus === 'draft' ? 'draft' : optimisticStatus
+  const hasDetails = Boolean(fixSnippet || fields.evidence || fields.risk || fields.validationMethod)
 
   const onAccept = () => patch(accepted ? 'draft' : 'accepted')
-  const onReject = () => patch('rejected')
+  const onReject = () => patch(rejected ? 'draft' : 'rejected')
   const onEdit = () => setEditingDraft(true)
   const onSaveEdit = () => patch('edited', { note: draft })
   const onCancelEdit = () => {
@@ -89,10 +116,15 @@ export function RecCard({
   }
 
   return (
-    <div className={`card rec${editingDraft ? ' editing' : ''}`}>
+    <article className={`card rec rec--${priorityKey}${editingDraft ? ' editing' : ''}`} data-status={optimisticStatus}>
       <div className="rec-top">
-        <span className={`prio${priority.toUpperCase() === 'P1' ? '' : ' p2'}`}>{priority}</span>
-        <h3>{title}</h3>
+        <div className="rec-title-block">
+          <div className="rec-eyebrow">
+            <span className="prio">{t(`screen3.priority.${priorityKey}`)}</span>
+            <span className={`rec-status rec-status--${statusKey}`}>{t(`screen3.status.${statusKey}`)}</span>
+          </div>
+          <h3>{action}</h3>
+        </div>
         <div className="rec-actions">
           {editingDraft ? (
             <>
@@ -107,16 +139,17 @@ export function RecCard({
             <>
               <button
                 type="button"
-                className={`act acc${accepted ? ' on' : ''}`}
+                className={`act accept${accepted ? ' on' : ''}`}
                 aria-pressed={accepted}
+                title={accepted ? t('screen3.action.undoAccept') : undefined}
                 onClick={onAccept}
               >
                 {accepted ? t('common.actions.accepted') : t('common.actions.accept')}
               </button>
               <button
                 type="button"
-                className={`act${optimisticStatus === 'edited' ? ' acc on' : ''}`}
-                aria-pressed={optimisticStatus === 'edited'}
+                className={`act edit${isEdited ? ' on' : ''}`}
+                aria-pressed={isEdited}
                 onClick={onEdit}
               >
                 {optimisticStatus === 'edited' ? t('common.actions.edited') : t('common.actions.edit')}
@@ -125,87 +158,100 @@ export function RecCard({
                 type="button"
                 className={`act rej${rejected ? ' on' : ''}`}
                 aria-pressed={rejected}
+                title={rejected ? t('screen3.action.restore') : undefined}
                 onClick={onReject}
               >
-                {t('common.actions.reject')}
+                {rejected ? t('screen3.status.rejected') : t('common.actions.reject')}
               </button>
             </>
           )}
         </div>
       </div>
 
-      {editingDraft ? (
-        <div className="edit-note">
-          <ProvenanceTag variant="i" label={t('common.actions.editing')} />
-        </div>
-      ) : null}
-
       <div className="rec-body">
         {editingDraft ? (
           <div className="field-block full">
-            <div className="fb-l">{t('screen3.label.why')}</div>
+            <div className="fb-l">{t('screen3.label.editedNote')}</div>
             <textarea
               className="edit-area"
               value={draft}
-              aria-label={t('screen3.label.why')}
+              aria-label={t('screen3.label.editedNote')}
               onChange={(e) => setDraft(e.target.value)}
             />
           </div>
         ) : (
           <>
-            {optimisticStatus === 'edited' && fields.editedNote ? (
+            <div className="rec-decision-grid">
+              <div className="rec-rationale">
+                <div className="fb-l">{t('screen3.label.why')}</div>
+                {fields.why ? <p>{fields.why}</p> : <p className="rec-empty">{t('screen3.noRationale')}</p>}
+              </div>
+              <dl className="rec-metrics" aria-label={t('screen3.decisionSummary')}>
+                {fields.impact ? (
+                  <div>
+                    <dt>{t('screen3.label.impact')}</dt>
+                    <dd>{fields.impact}</dd>
+                  </div>
+                ) : null}
+                {fields.effort ? (
+                  <div>
+                    <dt>{t('screen3.label.effort')}</dt>
+                    <dd>{fields.effort}</dd>
+                  </div>
+                ) : null}
+                {fields.confidence ? (
+                  <div>
+                    <dt>{t('screen3.label.confidence')}</dt>
+                    <dd><ProvenanceTag variant={confidenceVariant} label={fields.confidence} /></dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
+
+            {isEdited && fields.editedNote ? (
               <div className="field-block full edited-block">
                 <div className="fb-l">{t('screen3.label.editedNote')}</div>
                 <p>{fields.editedNote}</p>
               </div>
             ) : null}
-            {fields.why ? (
-              <div className="field-block">
-                <div className="fb-l">{t('screen3.label.why')}</div>
-                <p>{fields.why}</p>
-              </div>
-            ) : null}
-            {fields.evidence ? (
-              <div className="field-block">
-                <div className="fb-l">{t('screen3.label.evidence')}</div>
-                <div className="ev-ref">{fields.evidence}</div>
-              </div>
-            ) : null}
-            {fields.impact ? (
-              <div className="field-block">
-                <div className="fb-l">{t('screen3.label.impact')}</div>
-                <p>{fields.impact}</p>
-              </div>
-            ) : null}
-            {fields.effort ? (
-              <div className="field-block">
-                <div className="fb-l">{t('screen3.label.effort')}</div>
-                <p>{fields.effort}</p>
-              </div>
-            ) : null}
-            {fields.risk ? (
-              <div className="field-block">
-                <div className="fb-l">{t('screen3.label.risk')}</div>
-                <p>{fields.risk}</p>
-              </div>
-            ) : null}
-            {fields.validationMethod ? (
-              <div className="field-block">
-                <div className="fb-l">{t('screen3.label.validation')}</div>
-                <p>{fields.validationMethod}</p>
-              </div>
-            ) : null}
-            {fields.confidence ? (
-              <div className="field-block">
-                <div className="fb-l">{t('screen3.label.confidence')}</div>
-                <p>
-                  <ProvenanceTag variant={confidenceVariant} label={fields.confidence} />
-                </p>
-              </div>
+
+            {hasDetails ? (
+              <details className="rec-details">
+                <summary>
+                  <span>{t('screen3.details')}</span>
+                  <span aria-hidden="true">+</span>
+                </summary>
+                <div className="rec-details-grid">
+                  {fields.evidence ? (
+                    <div className="field-block">
+                      <div className="fb-l">{t('screen3.label.evidence')}</div>
+                      <code className="ev-ref">{fields.evidence}</code>
+                    </div>
+                  ) : null}
+                  {fields.risk ? (
+                    <div className="field-block">
+                      <div className="fb-l">{t('screen3.label.risk')}</div>
+                      <p>{fields.risk}</p>
+                    </div>
+                  ) : null}
+                  {fields.validationMethod ? (
+                    <div className="field-block">
+                      <div className="fb-l">{t('screen3.label.validation')}</div>
+                      <p>{fields.validationMethod}</p>
+                    </div>
+                  ) : null}
+                  {fixSnippet ? (
+                    <div className="field-block rec-fix-snippet">
+                      <div className="fb-l">{t('screen3.staticFix')}</div>
+                      <pre><code>{fixSnippet}</code></pre>
+                    </div>
+                  ) : null}
+                </div>
+              </details>
             ) : null}
           </>
         )}
       </div>
-    </div>
+    </article>
   )
 }

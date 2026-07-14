@@ -41,7 +41,10 @@ const psiNoFieldData = {
 }
 
 function mockFetch(json: unknown) {
-  return vi.fn(async (_url: string) => new Response(JSON.stringify(json), { status: 200 }))
+  return vi.fn(async (url: string) => {
+    void url
+    return new Response(JSON.stringify(json), { status: 200 })
+  })
 }
 
 afterEach(() => {

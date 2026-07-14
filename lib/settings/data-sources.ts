@@ -25,12 +25,14 @@ export function buildDataSourceStatuses(
   // 「已配置」= env 有值 或 DB 凭据已录入（SP-G1c：DB>env 覆盖）。
   const has = (k: string) => !!env[k] || dbConfiguredKeys.includes(k)
   const aiCount = AI_PROVIDER_ENVS.filter(has).length
+  const cloudflareReady = has('CLOUDFLARE_ACCOUNT_ID') && has('CLOUDFLARE_API_TOKEN')
+  const browserlessReady = has('BROWSERLESS_API_TOKEN')
   return [
     { key: 'gsc', configured: gsc.gscAppConfigured, connected: gsc.gscConnected, detail: gsc.gscSiteUrl ?? undefined },
     { key: 'googleCse', configured: has('GOOGLE_CSE_API_KEY') && has('GOOGLE_CSE_CX') },
     { key: 'aiProbe', configured: aiCount > 0, detail: `${aiCount}/4` },
     { key: 'dataforseo', configured: has('DATAFORSEO_LOGIN') && has('DATAFORSEO_PASSWORD') },
-    { key: 'render', configured: has('CLOUDFLARE_ACCOUNT_ID') && has('CLOUDFLARE_API_TOKEN') },
+    { key: 'render', configured: cloudflareReady || browserlessReady, detail: cloudflareReady ? 'Cloudflare' : browserlessReady ? 'Browserless' : undefined },
     { key: 'psi', configured: true },
     { key: 'publicCorpora', configured: true },
   ]

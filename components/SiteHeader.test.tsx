@@ -19,6 +19,8 @@ const labels = {
   rules: '规则库',
   settings: '设置',
   newAnalysis: '新建分析',
+  menuTitle: '菜单',
+  themeMode: '主题模式',
 }
 
 const dataHealth = {

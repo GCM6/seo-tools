@@ -3,6 +3,7 @@ import { NonRetriableError } from 'inngest'
 import { collectEvidenceHandler } from './collect-evidence'
 import { SsrfBlockedError } from '@/lib/security/ssrf-guard'
 import type { NewEvidenceArtifact } from '@/lib/repositories'
+import { createBrowserlessRenderProvider } from '@/lib/render/browserless-provider'
 
 function makeDeps(overrides: Record<string, unknown> = {}) {
   return {
@@ -36,12 +37,19 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     })),
     // GSC 默认不连接（getProjectSettings 返回 undefined），GSC 采集块整体跳过；专门用例里再启用。
     refreshGscAccessToken: vi.fn(async () => ({ accessToken: 'access_tok' })),
+    isGscConfigured: vi.fn(() => false),
     querySearchAnalytics: vi.fn(async () => [{ keys: ['buy widgets'], clicks: 10, impressions: 500, ctr: 0.02, position: 8 }]),
-    upsertKeyword: vi.fn(async (_row: unknown) => [{ id: 'kw_1' }]),
-    createKeywordMetrics: vi.fn(async (_rows: { keywordId: string; evidenceId?: string | null }[]) => []),
+    upsertKeyword: vi.fn(async (row: unknown) => {
+      void row
+      return [{ id: 'kw_1' }]
+    }),
+    createKeywordMetrics: vi.fn(async (rows: { keywordId: string; evidenceId?: string | null }[]) => {
+      void rows
+      return []
+    }),
     createEvidenceArtifact: vi.fn(async (input: NewEvidenceArtifact) => [input]),
     markRunStatus: vi.fn(async () => undefined),
-    runProbes: vi.fn(async () => ({ probedProviders: [], promptCount: 0 })),
+    runProbes: vi.fn(async () => ({ probedProviders: [], promptCount: 0, attemptedCount: 0, successfulCount: 0 })),
     getProjectSettings: vi.fn(async () => undefined),
     discoverSitemaps: vi.fn(async () => ({ files: [], pageUrls: [], warnings: [] })),
     runCrawlBatch: vi.fn(async (state: unknown) => ({
@@ -80,6 +88,7 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     getRunPrompts: vi.fn(async () => []),
     getProject: vi.fn(async () => ({ id: 'proj_1', domain: 'example.com', industry: '', market: 'US', language: 'en', competitors: [] })),
     sendDiagnose: vi.fn(async () => undefined),
+    writeDataSourceStatus: vi.fn(async () => undefined),
     ...overrides,
   }
 }
@@ -113,6 +122,31 @@ function makeArgs() {
 }
 
 describe('collectEvidenceHandler', () => {
+  it('uses Browserless as a real renderer fallback and persists the same render_check contract', async () => {
+    const browserlessFetch = vi.fn(async () =>
+      new Response('<html><body><article>JavaScript-rendered product content</article></body></html>', { status: 200 }),
+    )
+    const renderer = createBrowserlessRenderProvider({ apiToken: 'browserless-token', fetchImpl: browserlessFetch as never })
+    const resolveRenderProvider = vi.fn(async () => renderer)
+    const deps = makeDeps({
+      // 只提供解析器，模拟默认依赖从 DB > env 选中 Browserless 的真实路径。
+      resolveRenderProvider,
+    })
+    const { args } = makeArgs()
+
+    await collectEvidenceHandler(args, asCollectDeps(deps))
+
+    expect(resolveRenderProvider).toHaveBeenCalledOnce()
+    expect(browserlessFetch).toHaveBeenCalled()
+    const renderEvidence = deps.createEvidenceArtifact.mock.calls
+      .map((call) => call[0])
+      .find((artifact) => artifact.type === 'render_check')
+    expect(renderEvidence).toMatchObject({
+      claimLevel: 'L4',
+      payload: expect.objectContaining({ initialHtmlMainTextChars: 2, renderedMainTextChars: 'JavaScript-rendered product content'.length }),
+    })
+  })
+
   it('runs checks, persists real evidence artifacts, and marks the run collected', async () => {
     const deps = makeDeps()
     const { args, published } = makeArgs()
@@ -204,6 +238,7 @@ describe('collectEvidenceHandler', () => {
         gscConnected: true, gscRefreshToken: 'refresh_tok', gscSiteUrl: 'sc-domain:example.com',
         crawlEnabled: false, // 隔离：跳过全站爬取，聚焦 GSC 断言
       })),
+      isGscConfigured: vi.fn(() => true),
     })
     const { args, published } = makeArgs()
 
@@ -232,6 +267,9 @@ describe('collectEvidenceHandler', () => {
 
     expect(deps.refreshGscAccessToken).not.toHaveBeenCalled()
     expect(deps.createEvidenceArtifact.mock.calls.some((c) => c[0].type === 'gsc')).toBe(false)
+    expect(deps.writeDataSourceStatus).toHaveBeenCalledWith(expect.objectContaining({
+      sourceKey: 'gsc', configured: false, authorized: false, attempted: false, status: 'not_configured',
+    }))
   })
 
   // AI 探针阶段挂在 render 之后、mark-collected 之前；providers/key 过滤在 stage 内部做，
@@ -249,6 +287,23 @@ describe('collectEvidenceHandler', () => {
     expect(typeof (stageArgs.step as { run: unknown }).run).toBe('function')
     // 探针失败已在 stage 内部兜底；handler 层面 run 仍然 collected
     expect(deps.markRunStatus).toHaveBeenCalledWith('run_1', 'collected', expect.anything())
+    expect(deps.writeDataSourceStatus).toHaveBeenCalledWith(expect.objectContaining({
+      sourceKey: 'ai_probe', status: 'not_configured', attempted: false,
+    }))
+  })
+
+  it('marks AI probe coverage partial when only some attempted samples succeed', async () => {
+    const deps = makeDeps({
+      runProbes: vi.fn(async () => ({ probedProviders: ['openai'], promptCount: 2, attemptedCount: 4, successfulCount: 3 })),
+    })
+    const { args } = makeArgs()
+
+    await collectEvidenceHandler(args, asCollectDeps(deps))
+
+    expect(deps.writeDataSourceStatus).toHaveBeenCalledWith(expect.objectContaining({
+      sourceKey: 'ai_probe', status: 'partial', attempted: true, capturedEvidenceCount: 3,
+      protocolSnapshot: expect.objectContaining({ attemptedSamples: 4, validSamples: 3 }),
+    }))
   })
 
   it('skips render evidence when the render provider is not configured', async () => {
@@ -271,6 +326,10 @@ describe('collectEvidenceHandler', () => {
       'collected',
       expect.objectContaining({ failureReason: null, finishedAt: expect.any(String) }),
     )
+    expect(deps.writeDataSourceStatus).toHaveBeenCalledWith(expect.objectContaining({
+      sourceKey: 'render', status: 'partial', attempted: true,
+      protocolSnapshot: expect.objectContaining({ mode: 'static_html_fallback' }),
+    }))
   })
 
   it('short-circuits on SSRF-blocked URLs: marks failed, publishes failed, throws NonRetriableError', async () => {
@@ -349,7 +408,10 @@ describe('collectEvidenceHandler', () => {
   })
 
   it('DataForSEO 已配置：收集种子词（探针检索式，去品牌）并调用 runDataforseo', async () => {
-    const runDataforseo = vi.fn(async (_args: unknown) => undefined)
+    const runDataforseo = vi.fn(async (args: unknown) => {
+      void args
+      return undefined
+    })
     const deps = makeDeps({
       isDataforseoConfigured: vi.fn(() => true),
       runDataforseo,

@@ -5,6 +5,8 @@ import { KeywordTable } from '@/components/KeywordTable'
 import { PillarBars } from '@/components/PillarBars'
 import { EvidenceLadder } from '@/components/EvidenceLadder'
 import { BlurText } from '@/components/fx/BlurText'
+import { PillarGroupCard } from '@/components/PillarGroupCard'
+import { ReportToc } from '@/components/ReportToc'
 import {
   getRun,
   getFindings,
@@ -12,6 +14,7 @@ import {
   getRunEvidence,
   getReferenceArtifacts,
   getProject,
+  getRunDataSourceStatuses,
   getRunProbeResults,
   getRunPrompts,
   getRunKeywordMetrics,
@@ -20,7 +23,7 @@ import {
   getKeywords,
   getRetestSnapshots,
 } from '@/lib/repositories'
-import { buildReport, type ReportFinding, type ReportRecommendation } from '@/lib/diagnosis/report'
+import { buildReport, buildReportContractInput, type ReportFinding, type ReportRecommendation } from '@/lib/diagnosis/report'
 import { rulesVersionDelta } from '@/lib/diagnosis/rule-proposals'
 import { RULES_VERSION, type Pillar, type FindingSeverity } from '@/lib/diagnosis/types'
 import type { ReferenceArtifactRow } from '@/lib/diagnosis/reference-artifacts'
@@ -94,6 +97,7 @@ export async function ReportView({ runId }: { runId: string }) {
     keywords,
     retestSnapshots,
     project,
+    dataSourceStatuses,
     probeResults,
     promptRows,
   ] = await Promise.all([
@@ -107,6 +111,7 @@ export async function ReportView({ runId }: { runId: string }) {
     getKeywords(run.projectId),
     getRetestSnapshots(runId),
     getProject(run.projectId),
+    getRunDataSourceStatuses(runId),
     getRunProbeResults(runId),
     getRunPrompts(runId),
   ])
@@ -175,6 +180,18 @@ export async function ReportView({ runId }: { runId: string }) {
     refreshCadenceDays: a.refreshCadenceDays,
   }))
 
+  const capturedAt = run.finishedAt ?? run.startedAt ?? ''
+  const reportContractInput = buildReportContractInput({
+    domain: project?.domain ?? '',
+    targetMarket: project?.market,
+    language: project?.language,
+    capturedAt,
+    evidence,
+    dataSources: dataSourceStatuses,
+    aiValidSamples: probeResults.length,
+    confirmedCompetitors: competitors.length,
+  })
+
   const model = buildReport({
     findings,
     recommendations,
@@ -183,10 +200,10 @@ export async function ReportView({ runId }: { runId: string }) {
       findingRows.map((f) => f.pillar),
     ),
     artifacts,
+    ...reportContractInput,
     now: new Date(),
   })
 
-  const capturedAt = run.finishedAt ?? run.startedAt ?? ''
   const dataSources = [...new Set(evidence.map((e) => e.type))]
   const keywordText = new Map(keywords.map((k) => [k.id, { text: k.text, volume: k.searchVolume, difficulty: k.difficulty }]))
 
@@ -244,15 +261,7 @@ export async function ReportView({ runId }: { runId: string }) {
       </div>
 
       <div className="report-layout">
-        <nav className="report-toc no-print" aria-label={t('title')}>
-          <ol>
-            {toc.map(([anchor, label]) => (
-              <li key={anchor}>
-                <a href={`#${anchor}`}>{label}</a>
-              </li>
-            ))}
-          </ol>
-        </nav>
+        <ReportToc toc={toc} title={t('title')} />
 
         <div className="report-body">
           {/* ——— 跨版本回测横幅（规则库升级提示，V0 暂不触发） ——— */}
@@ -353,6 +362,69 @@ export async function ReportView({ runId }: { runId: string }) {
               </dl>
             </div>
 
+            {model.reportContract ? (
+              <div className="card report-method">
+                <h4>{t('contract.scopeTitle')}</h4>
+                <p className="note">{t('contract.scopeMeta')}</p>
+                <dl>
+                  <dt>{t('contract.domain')}</dt>
+                  <dd className="mono">{model.reportContract.scope.domain || '—'}</dd>
+                  <dt>{t('contract.entryUrl')}</dt>
+                  <dd className="mono">{model.reportContract.scope.entryUrl || '—'}</dd>
+                  <dt>{t('contract.market')}</dt>
+                  <dd>{model.reportContract.scope.targetMarket || '—'}</dd>
+                  <dt>{t('contract.language')}</dt>
+                  <dd>{model.reportContract.scope.language || '—'}</dd>
+                  <dt>{t('contract.level')}</dt>
+                  <dd>
+                    <strong>{model.reportContract.level}</strong> · {t(`contract.levelDesc.${model.reportContract.level}`)}
+                  </dd>
+                  <dt>{t('contract.coverage')}</dt>
+                  <dd>
+                    {t('contract.discovered')}: {model.reportContract.coverage.totalDiscovered} · {t('contract.checked')}: {model.reportContract.coverage.checkedPages}
+                    {model.reportContract.coverage.truncated ? ` · ${t('contract.truncated')}` : ''}
+                  </dd>
+                  {model.reportContract.coverage.gscTimeWindow ? (
+                    <>
+                      <dt>{t('contract.gscWindow')}</dt>
+                      <dd>{model.reportContract.coverage.gscTimeWindow}</dd>
+                    </>
+                  ) : null}
+                  <dt>{t('contract.aiSamples')}</dt>
+                  <dd>{model.reportContract.coverage.aiValidSamples ?? 0}</dd>
+                  <dt>{t('contract.competitors')}</dt>
+                  <dd>{model.reportContract.coverage.confirmedCompetitors ?? 0}</dd>
+                </dl>
+
+                <h4>{t('contract.dataSourcesTitle')}</h4>
+                {model.reportContract.dataSources.length ? (
+                  <ul>
+                    {model.reportContract.dataSources.map((source) => (
+                      <li key={source.sourceKey}>
+                        {t(`contract.sourceLabel.${source.sourceKey}`)}：{t(`contract.sourceStatus.${source.status}`)}
+                        {source.capturedEvidenceCount ? ` · ${source.capturedEvidenceCount}` : ''}
+                        {source.failureReason ? ` · ${source.failureReason}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="note">{t('method.noSources')}</p>
+                )}
+
+                {model.reportContract.gaps.length ? (
+                  <>
+                    <h4>{t('contract.gapsTitle')}</h4>
+                    <p className="note">{t('contract.gapHint')}</p>
+                    <ul>
+                      {model.reportContract.gaps.map((sourceKey) => (
+                        <li key={sourceKey}>{t(`contract.sourceLabel.${sourceKey}`)}</li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
             {model.freshness.stale.length ? (
               <div className="card report-stale">
                 <div className="report-stale-h">{t('method.staleTitle')}</div>
@@ -377,13 +449,16 @@ export async function ReportView({ runId }: { runId: string }) {
               const bySev: Record<FindingSeverity, ReportFinding[]> = { high: [], mid: [], ok: [] }
               for (const f of g.findings) bySev[f.severity].push(f)
               return (
-                <div key={g.pillar} className="card report-pillar">
-                  <div className="report-pillar-h">
-                    <span className="report-pillar-name">{pillarName(g.pillar)}</span>
-                    <span className={g.scored ? 'report-pillar-score' : 'report-pillar-score muted'}>
-                      {g.scored ? scoreText(g.score) : t('pillars.unscored')}
-                    </span>
-                  </div>
+                <PillarGroupCard
+                  key={g.pillar}
+                  pillarName={pillarName(g.pillar)}
+                  scoreText={scoreText(g.score)}
+                  isScored={g.scored}
+                  unscoredLabel={t('pillars.unscored')}
+                  noFindingsLabel={t('pillars.noFindings')}
+                  findingsCount={g.findings.length}
+                  findingsLabel={t('pillars.findingsUnit', { count: g.findings.length })}
+                >
                   {g.findings.length ? (
                     (['high', 'mid', 'ok'] as FindingSeverity[]).map((sev) =>
                       bySev[sev].length ? (
@@ -416,10 +491,8 @@ export async function ReportView({ runId }: { runId: string }) {
                         </div>
                       ) : null,
                     )
-                  ) : (
-                    <p className="note">{t('pillars.noFindings')}</p>
-                  )}
-                </div>
+                  ) : null}
+                </PillarGroupCard>
               )
             })}
           </section>

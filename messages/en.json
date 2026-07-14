@@ -3,7 +3,11 @@
     "projects": "Projects",
     "rules": "Rule library",
     "settings": "Settings",
-    "newAnalysis": "New analysis"
+    "newAnalysis": "New analysis",
+    "menuTitle": "Navigation Menu",
+    "themeMode": "Appearance Mode",
+    "themeToggleToDark": "Switch to dark mode",
+    "themeToggleToLight": "Switch to light mode"
   },
   "footer": {
     "productTagline": "Evidence-based SEO + GEO diagnostic workbench",
@@ -25,7 +29,12 @@
       "new": "New analysis",
       "diagnose": "Diagnose",
       "recommend": "Recommendations",
-      "output": "Output"
+      "output": "Output",
+      "progressLabel": "Analysis progress",
+      "inProgress": "In progress",
+      "completed": "Complete",
+      "interrupted": "Interrupted",
+      "reviewPending": "{count} decisions pending"
     },
     "tag": {
       "measured": "Measured",
@@ -66,7 +75,7 @@
       "googleCse": "Google visibility search (CSE)",
       "aiProbe": "AI answer-engine probes",
       "dataforseo": "DataForSEO (keywords/competitors/backlinks)",
-      "render": "Render fetch (Cloudflare)",
+      "render": "Render fetch (optional enhancement)",
       "psi": "PageSpeed / CWV",
       "publicCorpora": "Public corpora (Wikipedia/Reddit)"
     },
@@ -88,7 +97,7 @@
     "keySaved": "Saved ✓",
     "keyCleared": "Cleared",
     "credSource": { "db": "Set · DB", "env": "Set · env", "none": "Not set" },
-    "provider": { "label": "Service", "openai": "OpenAI", "perplexity": "Perplexity", "gemini": "Gemini", "deepseek": "DeepSeek", "googleCse": "Google CSE", "dataforseo": "DataForSEO", "cloudflare": "Cloudflare" }
+    "provider": { "label": "Service", "openai": "OpenAI", "perplexity": "Perplexity", "gemini": "Gemini", "deepseek": "DeepSeek", "googleCse": "Google CSE", "dataforseo": "DataForSEO", "cloudflare": "Cloudflare", "browserless": "Browserless" }
   },
   "projects": {
     "title": "Projects",
@@ -119,7 +128,13 @@
       "reviewing": "In review",
       "output": "Done",
       "failed": "Failed"
-    }
+    },
+    "projectManagement": "Project Management",
+    "searchPlaceholder": "Search domains...",
+    "marketLabel": "Market",
+    "retestLabel": "Retest:",
+    "latestStatusLabel": "Latest status",
+    "findingsDetectedLabel": "Findings detected"
   },
   "projectDetail": {
     "runHistoryTitle": "Run history",
@@ -234,13 +249,13 @@
     "currentTitle": "Current state (objective real data)",
     "currentMeta": "Each dimension shows a measured value only when backed by evidence; the rest are marked pending · open a measured card to view its raw evidence",
     "stats": {
-      "indexVisibility": "Google index visibility",
+      "indexVisibility": "Google front-end visibility signal",
       "indexVisibilityUnit": "results",
       "aiVisibility": "AI visibility (unbranded active recall)",
       "avgRank": "Avg. organic rank",
       "avgRankUnit": "pos.",
-      "crawlableText": "Crawlable body-text share",
-      "schemaCoverage": "Structured-data types",
+      "crawlableText": "Non-rendered body readability",
+      "schemaCoverage": "Structured-data footprint",
       "schemaCoverageUnit": "types"
     },
     "pendingSource": "Pending · {source}",
@@ -276,6 +291,8 @@
       "readyDetail": "You can review findings and confirm recommendations now; every measured value opens to evidence.",
       "failedTitle": "Collection failed",
       "failedDetail": "Reason: {reason}",
+      "cancelledTitle": "Diagnosis stopped",
+      "cancelledDetail": "This run has stopped. Evidence already collected is retained and you can start a new collection at any time.",
       "unknown": "Unknown error",
       "progressLabel": "Collection progress {pct}%",
       "progressSoftLabel": "About {pct}%",
@@ -291,10 +308,29 @@
       "phaseCount": "{checked}/{total}",
       "findingsCount": "{n} findings generated",
       "completedTitle": "Diagnostic evidence is ready",
+      "reviewGate": {
+        "pendingTitle": "{count} recommendations still need a decision",
+        "pendingDetail": "Collection and diagnosis are complete (100%). Output starts only after all {total} recommendations are accepted, edited, or rejected.",
+        "emptyTitle": "No recommendations are ready to confirm",
+        "emptyDetail": "Collection and diagnosis are complete (100%), but this run has no recommendations to send to output. Review the diagnosis to decide whether more recommendations are needed.",
+        "readyTitle": "All recommendations are confirmed; output is ready",
+        "readyDetail": "Every recommendation has been handled. Open output to view execution prompts and the report.",
+        "nextStep": "Next step",
+        "reviewAction": "Review {count} recommendations now",
+        "reviewActionDetail": "Accept, edit, or reject each item to unlock output",
+        "reviewEmptyAction": "Review diagnosis",
+        "reviewEmptyActionDetail": "Decide whether this run needs additional recommendations",
+        "outputAction": "View output",
+        "outputActionDetail": "Open execution prompts and the report for confirmed recommendations"
+      },
       "viewResults": "View diagnosis",
       "retry": "Retry collection",
       "retrying": "Retrying…",
       "retryFailed": "Retry failed, please try again later.",
+      "cancel": "Stop diagnosis",
+      "cancelling": "Stopping…",
+      "cancelConfirm": "Stop this diagnosis? Evidence already collected will be kept.",
+      "cancelFailed": "Could not stop the diagnosis. Please try again later.",
       "streamLabel": "Evidence stream",
       "evidence": {
         "serp_snapshot": "Saved Google site: visibility evidence",
@@ -383,12 +419,12 @@
     "tabGeo": "GEO",
     "tabSeo": "SEO",
     "note": "Only real data collected or generated for the current run is shown; GSC / AI probes / diagnostic generation remain empty until connected.",
-    "sourceRenderProvider": "Cloudflare rendering API",
+    "sourceRenderProvider": "Browser rendering (optional)",
     "configHint": {
       "search_provider": "Set GOOGLE_CSE_API_KEY and GOOGLE_CSE_CX in .env, then re-run the diagnosis",
       "ai_probe": "Set any AI key in .env (OPENAI_API_KEY / PERPLEXITY_API_KEY / GEMINI_API_KEY / DEEPSEEK_API_KEY) and select the engine when creating an analysis",
       "gsc": "Depends on Google Search Console OAuth (read-only), coming in the next iteration",
-      "render_provider": "Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in .env, then re-run the diagnosis",
+      "render_fallback": "This run captured initial HTML and performance evidence in fallback mode; no rendered DOM was captured, so JavaScript content delta cannot be calculated. Browser rendering is optional and does not require the audited site to use Cloudflare.",
       "uncollected": "The crawl source is ready; re-run the diagnosis to collect it"
     },
     "probePending": "No measured AI probe data yet · set any AI key in .env (OPENAI_API_KEY / PERPLEXITY_API_KEY / GEMINI_API_KEY / DEEPSEEK_API_KEY), select the engine when creating an analysis, then re-run",
@@ -396,7 +432,33 @@
   },
   "screen3": {
     "title": "Recommendations",
+    "backToDiagnosis": "Back to diagnostic workspace",
     "meta": "Ranked by \"impact × confidence ÷ effort\" · each must be confirmed before output",
+    "decisionSummary": "Recommendation decision summary",
+    "progress": {
+      "total": "{count} total",
+      "pending": "{count} pending",
+      "ready": "{count} ready for output"
+    },
+    "priority": {
+      "quick_win": "Act first",
+      "strategic": "Strategic investment",
+      "fill_in": "Fill in",
+      "low": "Defer"
+    },
+    "status": {
+      "draft": "Awaiting your call",
+      "accepted": "Included in output",
+      "edited": "Human-adjusted",
+      "rejected": "Rejected"
+    },
+    "action": {
+      "undoAccept": "Undo acceptance",
+      "restore": "Restore to pending"
+    },
+    "details": "View evidence, risk & validation",
+    "staticFix": "Reference fix (static template)",
+    "noRationale": "No additional rationale was recorded. Use the evidence and validation plan to decide.",
     "empty": "No recommendations yet this run; automatic finding-to-recommendation generation is not connected yet",
     "label": {
       "why": "Why",
@@ -463,14 +525,14 @@
       "googleCse": "Google visibility search (CSE)",
       "aiProbe": "AI answer-engine probe",
       "dataforseo": "DataForSEO (keywords/competitors/backlinks)",
-      "render": "Render fetch (Cloudflare)"
+      "render": "Render fetch (automatic fallback)"
     },
     "impact": {
       "gsc": "No GSC: measured keyword clicks/impressions/rank (L4) unavailable",
       "googleCse": "No CSE: traditional search visibility and SERP state can't be captured",
       "aiProbe": "No AI probe: AI answer visibility, answer map and share-of-voice all empty",
       "dataforseo": "No DataForSEO: keyword gaps, competitor discovery and backlink data missing",
-      "render": "No render source: rendered main-text unreachable, SPA content visibility undecidable"
+      "render": "Without browser rendering, initial HTML is still collected, but SPA JavaScript content delta is undecidable"
     }
   },
   "findings": {
@@ -648,7 +710,7 @@
       "unscored": "Not scored",
       "breakdownToggle": "How the score is computed",
       "topFindings": "Highest-impact findings",
-      "noFindings": "No findings yet.",
+      "noFindings": "No issues found this run — this may mean the site performs well within the checked scope, or it may indicate incomplete evidence coverage. Check 'Diagnostic Scope & Coverage' to confirm data source status.",
       "pillarBarsAria": "Five-pillar health score bar chart",
       "evidenceLadderTitle": "Evidence grade (confidence ladder)"
     },
@@ -664,6 +726,55 @@
       "visibility_data_missing": "Visibility data missing: GSC is not connected or DataForSEO is unconfigured, so keyword status lacks data. Connect a data source before locating the constraint.",
       "authority_content": "Authority & content gap: many keyword gaps plus weak authority / corpus signals — focus on content coverage (P3) and brand authority (P5).",
       "fine_tuning": "Fine-tuning stage: no systemic blockers — work items by impact × effort priority."
+    },
+    "contract": {
+      "scopeTitle": "Diagnostic Scope & Coverage",
+      "scopeMeta": "The report first states what it can and cannot answer, preventing blanks from being mistaken for a clean bill of health.",
+      "domain": "Domain",
+      "entryUrl": "Entry URL",
+      "market": "Target market",
+      "language": "Language",
+      "capturedAt": "Captured at",
+      "crawlPages": "Crawl page limit",
+      "crawlDepth": "Crawl depth",
+      "level": "Report level",
+      "levelDesc": {
+        "R0": "Collection status: shows data source gaps and collection failures only",
+        "R1": "Technical discoverability: can assess technical, structural and rendering risks",
+        "R2": "SEO performance: can analyze query/page performance, CTR and ranking opportunities",
+        "R3": "SEO market opportunity: can analyze demand, competitor samples and keyword gaps",
+        "R4": "GEO sample visibility: can assess brand sample visibility in AI search",
+        "R5": "Business priority: can rank by lead/deal impact"
+      },
+      "coverage": "Coverage",
+      "discovered": "Discovered URLs",
+      "checked": "Checked pages",
+      "truncated": "Truncated (reached page limit)",
+      "gscWindow": "GSC time window",
+      "aiSamples": "AI valid samples",
+      "competitors": "Confirmed competitors",
+      "dataSourcesTitle": "Data source status",
+      "gapsTitle": "Uncovered items",
+      "gapHint": "The following data sources are unconfigured or failed; conclusions for these dimensions are unavailable:",
+      "sourceStatus": {
+        "not_configured": "Not configured",
+        "not_authorized": "Not authorized",
+        "not_attempted": "Not attempted",
+        "collected": "Collected",
+        "partial": "Partially collected",
+        "failed": "Collection failed"
+      },
+      "sourceLabel": {
+        "google_cse": "Google front-end visibility",
+        "gsc": "Google Search Console",
+        "crawl": "Site crawl",
+        "render": "Render comparison",
+        "psi": "PageSpeed Insights",
+        "ai_probe": "AI probes",
+        "dataforseo": "DataForSEO",
+        "ua_probe": "UA bot detection",
+        "third_party": "Third-party corpus"
+      }
     },
     "geo": {
       "title": "GEO Visibility Supplement",
@@ -692,7 +803,8 @@
     "pillars": {
       "unscored": "Not scored",
       "evidence": "Evidence",
-      "noFindings": "No hits — no issues."
+      "noFindings": "No hits — no issues.",
+      "findingsUnit": "{count} findings"
     },
     "severity": {
       "high": "High",
@@ -827,5 +939,25 @@
     "errorTarget": "Target is required",
     "sourceLabels": { "scheduled_research": "Scheduled scan", "effectiveness_stats": "Effectiveness stats", "dismissal_stats": "Dismissal stats", "manual": "Manual" },
     "changeLabels": { "new_rule": "New rule", "modify_threshold": "Modify threshold", "deprecate": "Deprecate", "update_artifact": "Update artifact" }
+  },
+  "dashboard": {
+    "welcomeSub": "Evidence-Based Diagnostic Workbench",
+    "welcomeTitle": "Navigate SEO + GEO with Hard Evidence",
+    "welcomeDesc": "Veris diagnoses website visibility across traditional search engines and AI engines, delivering recommendations backed by multi-level verification.",
+    "welcomeCta": "➔ Start New Diagnosis",
+    "recentProjects": "Recent Projects",
+    "viewAllProjects": "View All Projects",
+    "onboardingTitle": "3 Steps to Start AI Search Diagnosis",
+    "onboardingDesc": "Veris helps you monitor visibility on Google and AI answer engines (GEO) using verifiable evidence and actionable prompts.",
+    "step1Title": "Add Website",
+    "step1Desc": "Input your website and optionally key competitors",
+    "step2Title": "Connect Sources",
+    "step2Desc": "Authorize GSC and register AI provider keys",
+    "step3Title": "Run Audit",
+    "step3Desc": "Run unified agent auditing to get verified reports",
+    "recentRunLabel": "Latest",
+    "findingsLabel": "Findings",
+    "readinessLabel": "Diagnostic source readiness",
+    "setupAction": "Setup"
   }
 }

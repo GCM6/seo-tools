@@ -15,7 +15,7 @@ import { computeMainContentDelta } from '@/lib/collection/readability-risk'
 import { fetchPageSpeedInsights, isPsiConfigured } from '@/lib/collection/psi'
 import { collectUaProbe } from '@/lib/collection/ua-probe'
 import { checkThirdPartyPresence } from '@/lib/collection/third-party-presence'
-import { refreshAccessToken } from '@/lib/gsc/oauth'
+import { isGscConfigured, refreshAccessToken } from '@/lib/gsc/oauth'
 import { querySearchAnalytics, mapRowsToKeywordMetrics } from '@/lib/gsc/search-analytics'
 import { impressionWeightedAvgPosition } from '@/lib/gsc/avg-position'
 import { createDataforseoProviderFromEnv, isDataforseoConfigured } from '@/lib/dataforseo'
@@ -30,8 +30,8 @@ import { createCrawlState, runCrawlBatch, leftoverDiscovered, type CrawlPageResu
 import type { LightCheckExtra } from '@/lib/crawl/light-check'
 import { planTemplates } from '@/lib/crawl/template-cluster'
 import { buildSiteAudit, type SiteAuditPage } from '@/lib/crawl/site-audit'
-import { createCloudflareRenderProvider } from '@/lib/render/cloudflare-provider'
 import type { RenderProvider } from '@/lib/render/render-provider'
+import { selectRenderProvider } from '@/lib/render/provider-selection'
 import { createGoogleCseSearchVisibilityProvider, type SearchVisibilityProvider } from '@/lib/search/search-visibility-provider'
 import { collectProbesStage } from '@/lib/probes/run-probes'
 import { buildProbeProviders } from '@/lib/probes/providers'
@@ -55,7 +55,9 @@ import {
   upsertKeyword,
   createKeywordMetrics,
   upsertCompetitor,
+  upsertDataSourceStatus,
 } from '@/lib/repositories'
+import type { DataSourceStatusUpsert } from '@/lib/repositories'
 
 interface CollectStep {
   run<T>(id: string, fn: () => Promise<T> | T): Promise<T>
@@ -73,6 +75,7 @@ interface CollectDeps {
   fetchRobotsCheck: typeof fetchRobotsCheck
   extractSchema: typeof extractSchema
   renderProvider: RenderProvider
+  resolveRenderProvider?: () => Promise<RenderProvider>
   searchVisibilityProvider: SearchVisibilityProvider
   // PSI 性能采集（T09a-c 证据源）。免 key 可用；失败降级不阻断整轮采集。
   fetchPageSpeedInsights: typeof fetchPageSpeedInsights
@@ -82,6 +85,7 @@ interface CollectDeps {
   checkThirdPartyPresence: typeof checkThirdPartyPresence
   // GSC 关键词采集（K 组证据源）。仅在项目已连接 OAuth 时触发；失败降级不阻断。
   refreshGscAccessToken: (refreshToken: string) => Promise<{ accessToken: string }>
+  isGscConfigured: typeof isGscConfigured
   querySearchAnalytics: typeof querySearchAnalytics
   upsertKeyword: typeof upsertKeyword
   createKeywordMetrics: typeof createKeywordMetrics
@@ -107,6 +111,8 @@ interface CollectDeps {
   getRunProbeResults: typeof getRunProbeResults
   // 采集完成后触发诊断生成链（spec §5）。注入以便单测无副作用地断言其被调用。
   sendDiagnose: (data: DiagnoseRequestedEventData) => Promise<unknown>
+  // 数据源状态写入（诊断报告合同 §3.1）：每个 provider 的 guard / 跳过 / 失败 / 成功 均落状态。
+  writeDataSourceStatus: (input: DataSourceStatusUpsert) => Promise<unknown>
 }
 
 // GSC 查询窗口：数据有 ~2 天延迟，取 [今-31, 今-3] 的 28 天窗口。在 step 内计算以保重试幂等。
@@ -131,10 +137,13 @@ function defaultDeps(): CollectDeps {
     fetchPageFacts,
     fetchRobotsCheck,
     extractSchema,
-    renderProvider: createCloudflareRenderProvider({
-      accountId: process.env.CLOUDFLARE_ACCOUNT_ID ?? '',
-      apiToken: process.env.CLOUDFLARE_API_TOKEN ?? '',
-    }),
+    renderProvider: selectRenderProvider(process.env),
+    resolveRenderProvider: async () => selectRenderProvider(await resolveCredentials([
+      'CLOUDFLARE_ACCOUNT_ID',
+      'CLOUDFLARE_API_TOKEN',
+      'BROWSERLESS_API_TOKEN',
+      'BROWSERLESS_CONTENT_URL',
+    ])),
     searchVisibilityProvider: createGoogleCseSearchVisibilityProvider({
       apiKey: process.env.GOOGLE_CSE_API_KEY ?? '',
       cx: process.env.GOOGLE_CSE_CX ?? '',
@@ -144,6 +153,7 @@ function defaultDeps(): CollectDeps {
     collectUaProbe,
     checkThirdPartyPresence,
     refreshGscAccessToken: (refreshToken) => refreshAccessToken(refreshToken),
+    isGscConfigured,
     querySearchAnalytics,
     upsertKeyword,
     createKeywordMetrics,
@@ -176,6 +186,7 @@ function defaultDeps(): CollectDeps {
     getProjectTemplates,
     getRunProbeResults,
     sendDiagnose: (data) => inngest.send(buildDiagnoseRequestedEvent(data)),
+    writeDataSourceStatus: (input) => upsertDataSourceStatus(input),
   }
 }
 
@@ -212,24 +223,46 @@ export async function collectEvidenceHandler(
 
   await emit({ type: 'progress', pct: 8 })
 
-  if (deps.searchVisibilityProvider.isConfigured()) {
-    const visibility = await step.run('google-site-visibility', () => deps.searchVisibilityProvider.checkSite(domain))
-    const rawText = JSON.stringify(visibility)
-    await step.run('persist-serp-snapshot', () =>
-      deps.createEvidenceArtifact({
-        id: `ev_${crypto.randomUUID()}`,
-        projectId,
-        runId,
-        type: 'serp_snapshot',
-        claimLevel: 'L2',
-        source: 'google_custom_search',
-        request: { query: visibility.query, domain, note: 'Google search front-end visibility signal, not GSC index truth' },
-        payload: visibility,
-        rawText,
-        rawHash: sha256Hex(rawText),
-      }),
-    )
-    await emit({ type: 'evidence_created', evidenceType: 'serp_snapshot' })
+  // —— 数据源状态写入（报告合同 §3.1）——
+  // 辅助：简化 writeDataSourceStatus 调用
+  const writeDss = async (input: Omit<DataSourceStatusUpsert, 'runId'>) => {
+    // 覆盖度遥测不能把原本可降级的诊断任务变成失败任务；实际采集证据仍由各 provider 的错误路径负责。
+    try {
+      return await step.run(`dss-${input.sourceKey}`, () => deps.writeDataSourceStatus({ runId, ...input }))
+    } catch {
+      return undefined
+    }
+  }
+  // 渲染凭据与其他 BYOK 一样以 DB 优先、env 回退解析；Cloudflare 未配时自动选 Browserless。
+  const renderProvider = deps.resolveRenderProvider ? await deps.resolveRenderProvider() : deps.renderProvider
+
+  // Google CSE 可见性信号
+  const cseConfigured = deps.searchVisibilityProvider.isConfigured()
+  if (cseConfigured) {
+    try {
+      const visibility = await step.run('google-site-visibility', () => deps.searchVisibilityProvider.checkSite(domain))
+      const rawText = JSON.stringify(visibility)
+      await step.run('persist-serp-snapshot', () =>
+        deps.createEvidenceArtifact({
+          id: `ev_${crypto.randomUUID()}`,
+          projectId,
+          runId,
+          type: 'serp_snapshot',
+          claimLevel: 'L2',
+          source: 'google_custom_search',
+          request: { query: visibility.query, domain, note: 'Google search front-end visibility signal, not GSC index truth' },
+          payload: visibility,
+          rawText,
+          rawHash: sha256Hex(rawText),
+        }),
+      )
+      await emit({ type: 'evidence_created', evidenceType: 'serp_snapshot' })
+      await writeDss({ sourceKey: 'google_cse', configured: true, authorized: true, attempted: true, status: 'collected', capturedEvidenceCount: 1 })
+    } catch (err) {
+      await writeDss({ sourceKey: 'google_cse', configured: true, authorized: true, attempted: true, status: 'failed', failureReason: errorReason(err) })
+    }
+  } else {
+    await writeDss({ sourceKey: 'google_cse', configured: false, authorized: false, attempted: false, status: 'not_configured' })
   }
   await emit({ type: 'progress', pct: 20 })
 
@@ -363,10 +396,21 @@ export async function collectEvidenceHandler(
         .map((p) => ({ url: p.url, mainTextChars: p.mainTextChars, httpStatus: p.httpStatus, checkStatus: p.checkStatus }))
       await deps.syncUrlTemplates(projectId, planTemplates(candidates, entrySeed))
     })
+    await writeDss({
+      sourceKey: 'crawl',
+      configured: true,
+      authorized: true,
+      attempted: true,
+      status: leftover.length ? 'partial' : 'collected',
+      capturedEvidenceCount: crawlState.checkedCount,
+      protocolSnapshot: { maxPages, maxDepth, truncated: leftover.length },
+    })
+  } else {
+    await writeDss({ sourceKey: 'crawl', configured: true, authorized: true, attempted: false, status: 'not_attempted', protocolSnapshot: { crawlEnabled: false } })
   }
 
-  if (deps.renderProvider.isConfigured?.() ?? true) {
-    const rendered = await step.run('render-check', () => deps.renderProvider.renderMainText(entryUrl))
+  if (renderProvider.isConfigured?.() ?? true) {
+    const rendered = await step.run('render-check', () => renderProvider.renderMainText(entryUrl))
     const delta = computeMainContentDelta(pageFacts.mainTextChars, rendered.mainTextChars)
     await step.run('persist-render-check', () =>
       deps.createEvidenceArtifact({
@@ -386,6 +430,19 @@ export async function collectEvidenceHandler(
       }),
     )
     await emit({ type: 'evidence_created', evidenceType: 'render_check' })
+    await writeDss({ sourceKey: 'render', configured: true, authorized: true, attempted: true, status: 'collected', capturedEvidenceCount: 1 })
+  } else {
+    // 没有托管浏览器也不阻断：本轮已持久化 page_fetch（初始 HTML）和 PSI。
+    // 明确写为 partial，而不是把静态抓取伪装成 render_check；诊断层会展示降级说明。
+    await writeDss({
+      sourceKey: 'render', configured: false, authorized: false, attempted: true, status: 'partial',
+      capturedEvidenceCount: 0,
+      protocolSnapshot: {
+        mode: 'static_html_fallback',
+        evidence: ['page_fetch', 'psi'],
+        limitation: 'rendered DOM and JavaScript content delta were not captured',
+      },
+    })
   }
 
   // —— PSI 性能采集（T09a-c）——：入口页移动端 CWV 字段数据 + Lighthouse 实验室线索。
@@ -410,9 +467,13 @@ export async function collectEvidenceHandler(
         }),
       )
       await emit({ type: 'evidence_created', evidenceType: 'psi' })
+      await writeDss({ sourceKey: 'psi', configured: true, authorized: true, attempted: true, status: 'collected', capturedEvidenceCount: 1 })
     } catch {
       // PSI 失败仅降级，不影响其余证据与诊断触发。
+      await writeDss({ sourceKey: 'psi', configured: true, authorized: true, attempted: true, status: 'failed', failureReason: 'psi_fetch_failed' })
     }
+  } else {
+    await writeDss({ sourceKey: 'psi', configured: false, authorized: false, attempted: false, status: 'not_configured' })
   }
 
   // GSC query 维 Top 展示词：作为 DataForSEO 种子词的真实需求来源（未连 GSC 时留空，种子仅来自探针）。
@@ -421,7 +482,9 @@ export async function collectEvidenceHandler(
   // —— GSC 关键词采集（K 组）——：已连接 OAuth 的项目拉 query 维 + page×query 交叉维，
   // 落 gsc 证据（供规则）+ keyword_metrics（供关键词现状 tab 与回测）。未连接则整块跳过，K 组 no-op。
   const refreshToken = readGscToken(settings?.gscRefreshToken)
-  if (settings?.gscConnected && refreshToken && settings.gscSiteUrl) {
+  const gscAppConfigured = deps.isGscConfigured()
+  const gscProjectAuthorized = Boolean(settings?.gscConnected && refreshToken && settings.gscSiteUrl)
+  if (gscAppConfigured && gscProjectAuthorized && refreshToken && settings?.gscSiteUrl) {
     const siteUrl = settings.gscSiteUrl
     try {
       const gsc = await step.run('gsc-query', async () => {
@@ -482,9 +545,20 @@ export async function collectEvidenceHandler(
         await deps.createKeywordMetrics(metricRows)
       })
       await emit({ type: 'evidence_created', evidenceType: 'gsc' })
-    } catch {
+      await writeDss({ sourceKey: 'gsc', configured: true, authorized: true, attempted: true, status: 'collected', capturedEvidenceCount: 2, protocolSnapshot: { siteUrl, dateRange: gscDateRange() } })
+    } catch (err) {
       // GSC 失败（令牌过期/权限/网络）仅降级，不阻断采集与诊断。
+      await writeDss({ sourceKey: 'gsc', configured: true, authorized: true, attempted: true, status: 'failed', failureReason: errorReason(err) })
     }
+  } else {
+    // GSC 运行环境和项目授权是两件事：OAuth 三件套存在但项目未连时，应提示未授权而非未配置。
+    await writeDss({
+      sourceKey: 'gsc',
+      configured: gscAppConfigured,
+      authorized: gscProjectAuthorized,
+      attempted: false,
+      status: gscAppConfigured ? 'not_authorized' : 'not_configured',
+    })
   }
 
   // —— 模板代表页 + 重点页深检：渲染调用数 = 模板数 + 重点页数，而非全站页数 ——
@@ -511,8 +585,8 @@ export async function collectEvidenceHandler(
         rawText: JSON.stringify(deepSchema.raw), rawHash: sha256Hex(JSON.stringify(deepSchema.raw)),
       }),
     )
-    if (deps.renderProvider.isConfigured?.() ?? true) {
-      const deepRendered = await step.run(`deep-render:${target.url}`, () => deps.renderProvider.renderMainText(target.url))
+    if (renderProvider.isConfigured?.() ?? true) {
+      const deepRendered = await step.run(`deep-render:${target.url}`, () => renderProvider.renderMainText(target.url))
       const deepDelta = computeMainContentDelta(facts.mainTextChars, deepRendered.mainTextChars)
       await step.run(`deep-persist-render:${target.url}`, () =>
         deps.createEvidenceArtifact({
@@ -556,7 +630,32 @@ export async function collectEvidenceHandler(
   }
 
   // AI 探针（20 prompts × provider × n）：进度在 65→90 区间由 stage 自行推进
-  await deps.runProbes({ step, emit, runId, projectId, entryUrl })
+  try {
+    const probe = await deps.runProbes({ step, emit, runId, projectId, entryUrl })
+    if (probe.probedProviders.length === 0) {
+      await writeDss({ sourceKey: 'ai_probe', configured: false, authorized: false, attempted: false, status: 'not_configured' })
+    } else if (probe.successfulCount === 0) {
+      await writeDss({
+        sourceKey: 'ai_probe', configured: true, authorized: true, attempted: true, status: 'failed',
+        failureReason: 'no_valid_probe_results',
+        protocolSnapshot: { providers: probe.probedProviders, promptCount: probe.promptCount, attemptedSamples: probe.attemptedCount, validSamples: 0 },
+      })
+    } else {
+      await writeDss({
+        sourceKey: 'ai_probe', configured: true, authorized: true, attempted: true,
+        status: probe.successfulCount < probe.attemptedCount ? 'partial' : 'collected',
+        capturedEvidenceCount: probe.successfulCount,
+        protocolSnapshot: {
+          providers: probe.probedProviders,
+          promptCount: probe.promptCount,
+          attemptedSamples: probe.attemptedCount,
+          validSamples: probe.successfulCount,
+        },
+      })
+    }
+  } catch (err) {
+    await writeDss({ sourceKey: 'ai_probe', configured: true, authorized: true, attempted: true, status: 'failed', failureReason: errorReason(err) })
+  }
 
   // —— site_audit：全站轻检不可变快照（含探针引用归属），findings 与 retest 的引用锚 ——
   if (crawlEnabled) {
@@ -626,6 +725,9 @@ export async function collectEvidenceHandler(
       competitorTopN: settings?.competitorSerpTopN ?? 10,
       provider: deps.dataforseoProvider,
     })
+    await writeDss({ sourceKey: 'dataforseo', configured: true, authorized: true, attempted: true, status: 'collected' })
+  } else {
+    await writeDss({ sourceKey: 'dataforseo', configured: false, authorized: false, attempted: false, status: 'not_configured' })
   }
 
   // —— GEO 深化采集（Phase D）——：AI 爬虫可达性 + llms.txt（G02/G08）+ 第三方语料（G07）。
@@ -648,8 +750,10 @@ export async function collectEvidenceHandler(
       }),
     )
     await emit({ type: 'evidence_created', evidenceType: 'ua_probe' })
+    await writeDss({ sourceKey: 'ua_probe', configured: true, authorized: true, attempted: true, status: 'collected', capturedEvidenceCount: 1 })
   } catch {
     // UA 探测失败仅降级，G02/G08 no-op。
+    await writeDss({ sourceKey: 'ua_probe', configured: true, authorized: true, attempted: true, status: 'failed', failureReason: 'ua_probe_failed' })
   }
 
   try {
@@ -671,8 +775,10 @@ export async function collectEvidenceHandler(
       }),
     )
     await emit({ type: 'evidence_created', evidenceType: 'third_party_presence' })
+    await writeDss({ sourceKey: 'third_party', configured: true, authorized: true, attempted: true, status: 'collected', capturedEvidenceCount: 1 })
   } catch {
     // 第三方语料检测失败仅降级，G07 no-op。
+    await writeDss({ sourceKey: 'third_party', configured: true, authorized: true, attempted: true, status: 'failed', failureReason: 'third_party_check_failed' })
   }
 
   await emit({ type: 'progress', pct: 90 })

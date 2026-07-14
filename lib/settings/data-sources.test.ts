@@ -31,6 +31,10 @@ describe('buildDataSourceStatuses', () => {
     const rows = buildDataSourceStatuses({}, { gscAppConfigured: false, gscConnected: false, gscSiteUrl: null })
     expect(rows.find((r) => r.key === 'gsc')).toMatchObject({ configured: false, connected: false })
   })
+  it('没有 Cloudflare 时，Browserless token 也能启用浏览器级渲染', () => {
+    const rows = buildDataSourceStatuses({ BROWSERLESS_API_TOKEN: 'token' }, gscConn)
+    expect(rows.find((r) => r.key === 'render')).toMatchObject({ configured: true, detail: 'Browserless' })
+  })
   it('DB 已配探针键 → aiProbe 认为已配置（即使 env 空）', () => {
     const rows = buildDataSourceStatuses({}, { gscAppConfigured: false, gscConnected: false, gscSiteUrl: null }, ['OPENAI_API_KEY'])
     const ai = rows.find((s) => s.key === 'aiProbe')!

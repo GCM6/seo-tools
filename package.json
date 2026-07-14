@@ -13,7 +13,8 @@
     "db:init": "pnpm db:push && pnpm db:seed",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx db/seed.ts",
-    "db:migrate-gsc": "tsx db/migrate-gsc-tokens.ts"
+    "db:migrate-gsc": "tsx db/migrate-gsc-tokens.ts",
+    "reparse-probes": "tsx scripts/reparse-probes.ts"
   },
   "dependencies": {
     "@inngest/realtime": "^0.4.6",

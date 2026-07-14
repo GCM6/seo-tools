@@ -66,7 +66,7 @@ export default async function OutputPage({
   const verifiedFacts = allFacts.filter((f) => f.status === 'verified')
 
   return (
-    <Shell active={4} locale={locale} runId={id} domain={domain}>
+    <Shell runId={id} domain={domain}>
       <div className="sec-h">
         <h2>{t('title')}</h2>
         <span className="meta">{t('meta', { count: gated.length })}</span>

@@ -2,12 +2,14 @@
 
 import { useEffect, useReducer, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import type { RunStatus } from '@/lib/types'
 import { PHASES, initialStagelineState, reduceProgress, type ProgressMessage } from '@/lib/runs/stageline'
 import { CountUp } from '@/components/fx/CountUp'
 import { AnimatedList } from '@/components/fx/AnimatedList'
 import { BlurText } from '@/components/fx/BlurText'
+import { RUN_CANCELLED_REASON } from '@/lib/runs/status'
 
 // 最近若干条证据事件（逐条滑入用），仅前端展示态，独立于 reducer。
 const STREAM_MAX = 6
@@ -16,10 +18,12 @@ export function RunProgress({
   runId,
   initialStatus,
   initialFailureReason = '',
+  reviewGate,
 }: {
   runId: string
   initialStatus: RunStatus
   initialFailureReason?: string
+  reviewGate?: { pendingCount: number; totalCount: number; href: string }
 }) {
   const t = useTranslations('screen2.run')
   const router = useRouter()
@@ -27,6 +31,8 @@ export function RunProgress({
   const [stream, setStream] = useState<{ key: string; type: string }[]>([])
   const [retrying, setRetrying] = useState(false)
   const [retryErr, setRetryErr] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelErr, setCancelErr] = useState(false)
 
   useEffect(() => {
     if (initialStatus !== 'collecting' && initialStatus !== 'diagnosing') return
@@ -57,6 +63,16 @@ export function RunProgress({
     else setRetryErr(true)
   }
 
+  async function cancel() {
+    if (!window.confirm(t('cancelConfirm'))) return
+    setCancelling(true)
+    setCancelErr(false)
+    const res = await fetch(`/api/runs/${runId}/cancel`, { method: 'POST' })
+    setCancelling(false)
+    if (res.ok) router.refresh()
+    else setCancelErr(true)
+  }
+
   const tone = state.status === 'failed' ? 'failed' : state.status === 'collecting' ? 'collecting' : 'ready'
   const displayPct = state.status === 'collecting' ? t('progressSoftLabel', { pct: state.pct }) : `${state.pct}%`
 
@@ -64,6 +80,9 @@ export function RunProgress({
     () => stream.map((e) => ({ key: e.key, node: <span>{t(`evidence.${e.type}`)}</span> })),
     [stream, t],
   )
+  const canCancel =
+    (initialStatus === 'collecting' || initialStatus === 'diagnosing') && state.status !== 'failed'
+  const cancelledByUser = state.reason === RUN_CANCELLED_REASON
 
   return (
     <div className={`run-progress ${tone}`}>
@@ -74,15 +93,65 @@ export function RunProgress({
             <div className="rp-eyebrow">{t('eyebrow')}</div>
             {state.status === 'collected' ? (
               <h2>
-                <BlurText>{t('completedTitle')}</BlurText>
+                <BlurText>
+                  {reviewGate
+                    ? reviewGate.totalCount === 0
+                      ? t('reviewGate.emptyTitle')
+                      : reviewGate.pendingCount > 0
+                        ? t('reviewGate.pendingTitle', { count: reviewGate.pendingCount })
+                        : t('reviewGate.readyTitle')
+                    : t('completedTitle')}
+                </BlurText>
               </h2>
             ) : (
-              <h2>{state.status === 'failed' ? t('failedTitle') : t('collectingTitle')}</h2>
+              <h2>
+                {state.status === 'failed'
+                  ? cancelledByUser
+                    ? t('cancelledTitle')
+                    : t('failedTitle')
+                  : t('collectingTitle')}
+              </h2>
             )}
             {state.status === 'failed' ? (
-              <p>{t('failedDetail', { reason: state.reason || t('unknown') })}</p>
+              <p>
+                {cancelledByUser
+                  ? t('cancelledDetail')
+                  : t('failedDetail', { reason: state.reason || t('unknown') })}
+              </p>
             ) : state.status === 'collected' ? (
-              <p>{t('readyDetail')}</p>
+              <>
+                <p>
+                  {reviewGate
+                    ? reviewGate.totalCount === 0
+                      ? t('reviewGate.emptyDetail')
+                      : reviewGate.pendingCount > 0
+                        ? t('reviewGate.pendingDetail', { total: reviewGate.totalCount })
+                        : t('reviewGate.readyDetail')
+                    : t('readyDetail')}
+                </p>
+                {reviewGate ? (
+                  <Link href={reviewGate.href} className="rp-gate-action">
+                    <span className="rp-gate-action-kicker">{t('reviewGate.nextStep')}</span>
+                    <span className="rp-gate-action-copy">
+                      <strong>
+                        {reviewGate.pendingCount > 0
+                          ? t('reviewGate.reviewAction', { count: reviewGate.pendingCount })
+                          : reviewGate.totalCount === 0
+                            ? t('reviewGate.reviewEmptyAction')
+                            : t('reviewGate.outputAction')}
+                      </strong>
+                      <small>
+                        {reviewGate.pendingCount > 0
+                          ? t('reviewGate.reviewActionDetail')
+                          : reviewGate.totalCount === 0
+                            ? t('reviewGate.reviewEmptyActionDetail')
+                            : t('reviewGate.outputActionDetail')}
+                      </small>
+                    </span>
+                    <span className="rp-gate-action-arrow" aria-hidden="true">→</span>
+                  </Link>
+                ) : null}
+              </>
             ) : (
               <p>{t('collectingDetail')}</p>
             )}
@@ -122,6 +191,19 @@ export function RunProgress({
       {streamItems.length > 0 && (
         <div className="rp-events" aria-label={t('streamLabel')}>
           <AnimatedList items={streamItems} />
+        </div>
+      )}
+
+      {canCancel && (
+        <div className="mt-3">
+          <button type="button" className="run-cancel" onClick={cancel} disabled={cancelling}>
+            {cancelling ? t('cancelling') : t('cancel')}
+          </button>
+          {cancelErr && (
+            <span role="status" className="ml-2 text-xs">
+              {t('cancelFailed')}
+            </span>
+          )}
         </div>
       )}
 

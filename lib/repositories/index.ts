@@ -1,12 +1,13 @@
-import { eq, asc, desc, and, isNull, isNotNull, inArray, sql } from 'drizzle-orm'
+import { eq, asc, desc, and, isNull, isNotNull, inArray, ne, or, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
-import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals, providerCredentials, reportShares } from '@/db/schema'
+import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals, providerCredentials, reportShares, dataSourceStatuses } from '@/db/schema'
+import type { DataSourceStatus } from '@/db/schema'
 import { hasValidEvidence, computeArtifactUpdate, assertReleasableVersion } from '@/lib/diagnosis/rule-proposals'
 import type { EvidenceType, EvidenceLevel, RunStatus, ClaimType } from '@/lib/types'
 import type { LightCheckExtra } from '@/lib/crawl/light-check'
 import { assertFindingClaimEvidence } from './validators'
 import { pickLatestRun, pickActiveRun, pickRetestAnchor } from '@/lib/projects/summary'
-import { ACTIVE_RUN_STATUSES } from '@/lib/runs/status'
+import { ACTIVE_RUN_STATUSES, RUN_CANCELLED_REASON } from '@/lib/runs/status'
 import { encryptSecret } from '@/lib/crypto/secrets'
 import { encryptGscToken } from '@/lib/gsc/token-crypto'
 import { generateShareToken } from '@/lib/share/token'
@@ -101,9 +102,23 @@ export const createEvidenceArtifact = (input: NewEvidenceArtifact) =>
 export const markRunStatus = (
   runId: string,
   status: RunStatus,
-  extra?: { finishedAt?: string; failureReason?: string | null },
+  extra?: { finishedAt?: string; failureReason?: string | null; allowCancelled?: boolean },
 ) =>
-  db.update(runs).set({ status, ...extra }).where(eq(runs.id, runId))
+  db
+    .update(runs)
+    .set({
+      status,
+      finishedAt: extra?.finishedAt,
+      failureReason: extra?.failureReason,
+    })
+    .where(
+      extra?.allowCancelled
+        ? eq(runs.id, runId)
+        : and(
+            eq(runs.id, runId),
+            or(isNull(runs.failureReason), ne(runs.failureReason, RUN_CANCELLED_REASON)),
+          ),
+    )
 
 // 同项目并发保护（spec §2.3）：POST /api/runs 与 POST /api/runs/[id]/retest 插入新 run 前
 // 先查是否已有进行中 run，命中则拒绝创建（409），避免同一项目并发采集/诊断。
@@ -512,5 +527,51 @@ export const createReportShare = async (
     .returning()
   return created
 }
+
+// —— run 级数据源状态（诊断报告合同 §3.1）——
+// upsert：采集编排中每个 provider 的 guard / 跳过 / 失败 / 成功 均调用此函数写入终态。
+export interface DataSourceStatusUpsert {
+  runId: string
+  sourceKey: string
+  configured: boolean
+  authorized: boolean
+  attempted: boolean
+  status: DataSourceStatus
+  failureReason?: string | null
+  capturedEvidenceCount?: number
+  protocolSnapshot?: unknown
+}
+
+export const upsertDataSourceStatus = (input: DataSourceStatusUpsert) =>
+  db
+    .insert(dataSourceStatuses)
+    .values({
+      id: `dss_${crypto.randomUUID()}`,
+      runId: input.runId,
+      sourceKey: input.sourceKey,
+      configured: input.configured,
+      authorized: input.authorized,
+      attempted: input.attempted,
+      status: input.status,
+      failureReason: input.failureReason ?? null,
+      capturedEvidenceCount: input.capturedEvidenceCount ?? 0,
+      protocolSnapshot: input.protocolSnapshot ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [dataSourceStatuses.runId, dataSourceStatuses.sourceKey],
+      set: {
+        configured: sql`excluded.configured`,
+        authorized: sql`excluded.authorized`,
+        attempted: sql`excluded.attempted`,
+        status: sql`excluded.status`,
+        failureReason: sql`excluded.failure_reason`,
+        capturedEvidenceCount: sql`excluded.captured_evidence_count`,
+        protocolSnapshot: sql`excluded.protocol_snapshot`,
+      },
+    })
+    .returning()
+
+export const getRunDataSourceStatuses = (runId: string) =>
+  db.select().from(dataSourceStatuses).where(eq(dataSourceStatuses.runId, runId))
 
 export * from './validators'

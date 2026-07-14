@@ -20,6 +20,15 @@ const DEFAULT_ENGINES: Record<string, boolean> = {
 const PROMPT_COUNT = 20
 const PROBE_N = 5
 
+// 引擎 Logo / Emoji 字典
+const ENGINE_ICONS: Record<string, string> = {
+  ChatGPT: '🟢',
+  Perplexity: '🔵',
+  Gemini: '✨',
+  DeepSeek: '🐋',
+  'Google AI Overviews': '🔍',
+}
+
 export interface WizardProject {
   id: string
   domain: string
@@ -29,8 +38,6 @@ export interface WizardProject {
   competitors: string[]
 }
 
-// Screen 1 新建分析 3 步向导（spec §SP-G2a）。client leaf：跨步共享表单 state 由本组件编排。
-// 第 1 步 upsert 单项目 → 第 2 步连数据（GSC 授权全页往返回到本步）→ 第 3 步预估并建 run。
 export function NewAnalysisForm({
   locale,
   project = null,
@@ -66,8 +73,6 @@ export function NewAnalysisForm({
   })
   const [competitors, setCompetitors] = useState((project?.competitors ?? []).join(', '))
   const [engines, setEngines] = useState<Record<string, boolean>>(() => {
-    // 项目已保存的引擎选择（projectSettings.defaultModels，与 ENGINES 同名 key）非空时回填；
-    // 否则维持产品默认（spec §2.4）。
     if (savedEngines && savedEngines.length > 0) {
       const saved = new Set(savedEngines)
       return Object.fromEntries(ENGINES.map((name) => [name, saved.has(name)])) as Record<string, boolean>
@@ -86,9 +91,12 @@ export function NewAnalysisForm({
     render: true,
   })
 
+  // 域名实时格式验证
+  const DOMAIN_REGEX = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([\/\w .-]*)*\/?$/
+  const isDomainValid = domain.trim() !== '' && DOMAIN_REGEX.test(domain.trim())
+
   function onDomainChange(v: string) {
     setDomain(v)
-    // 输入域名即智能预填市场（ccTLD 启发）；用户随后仍可手动改。
     if (v.trim()) setMarketIndex(guessMarketLanguage(v).marketIndex)
   }
 
@@ -96,7 +104,6 @@ export function NewAnalysisForm({
     setEngines((prev) => ({ ...prev, [name]: !prev[name] }))
   }
 
-  // 后端错误码 → 可行动的用户文案；未知码回退笼统重试提示。
   async function toErrorMessage(res: Response): Promise<string> {
     const body = (await res.json().catch(() => ({}))) as { error?: string }
     switch (body.error) {
@@ -112,7 +119,6 @@ export function NewAnalysisForm({
 
   const jsonHeaders = { 'content-type': 'application/json' }
 
-  // 复用单项目：无则 POST 建，有则 PATCH 更新。返回 projectId 或 null（失败已置 error）。
   async function upsertProject(): Promise<string | null> {
     const shared = {
       domain,
@@ -152,8 +158,6 @@ export function NewAnalysisForm({
   function connectGsc() {
     if (!projectId) return
     if (!gscAppConfigured) return
-    // 授权后跳回 /new 向导第 2 步闭环（多项目：带 projectId 以显式续起在建项目；
-    // callback 会附 gsc=connected）。
     const returnTo = `/${locale}/new?step=connect&projectId=${encodeURIComponent(projectId)}`
     window.location.href = `/api/gsc/auth?projectId=${encodeURIComponent(projectId)}&returnTo=${encodeURIComponent(returnTo)}`
   }
@@ -166,7 +170,6 @@ export function NewAnalysisForm({
       setPending(false)
       return
     }
-    // 建 run 前把最终引擎选择同步进 settings（run-probes 据 defaultModels 选 provider）。
     await fetch(`/api/projects/${id}`, {
       method: 'PATCH',
       headers: jsonHeaders,
@@ -206,200 +209,244 @@ export function NewAnalysisForm({
         ))}
       </ol>
 
-      <div className="card wizard-body">
-        {step === 1 && (
-          <div className="wizard-panel">
-            <h2 className="wizard-h">{t('stepSite')}</h2>
-            <p className="wizard-sub">{t('step1Sub')}</p>
+      {/* 两栏响应式向导布局 */}
+      <div className="new-analysis-layout" style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'start' }}>
 
-            <div className="field">
-              <label htmlFor="wiz-url">{t('urlLabel')}</label>
-              <input
-                id="wiz-url"
-                className="url-in"
-                placeholder={t('urlPlaceholder')}
-                aria-label={t('urlLabel')}
-                value={domain}
-                onChange={(e) => onDomainChange(e.target.value)}
-              />
-            </div>
+        {/* 左侧：表单配置框 */}
+        <div className="card wizard-body flex-1 animate-fade-in" key={step} style={{ flex: '1 1 500px', padding: '24px' }}>
+          {step === 1 && (
+            <div className="wizard-panel">
+              <h2 className="wizard-h">{t('stepSite')}</h2>
+              <p className="wizard-sub">{t('step1Sub')}</p>
 
-            <div className="row2">
               <div className="field">
-                <label htmlFor="wiz-industry">{t('industryLabel')}</label>
-                <select
-                  id="wiz-industry"
-                  className="sel"
-                  aria-label={t('industryLabel')}
-                  value={industryOptions[industryIndex]}
-                  onChange={(e) => setIndustryIndex(Math.max(0, industryOptions.indexOf(e.target.value)))}
-                >
-                  {industryOptions.map((opt) => (
-                    <option key={opt}>{opt}</option>
-                  ))}
-                </select>
+                <label htmlFor="wiz-url">{t('urlLabel')}</label>
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <input
+                    id="wiz-url"
+                    className="url-in"
+                    placeholder={t('urlPlaceholder')}
+                    aria-label={t('urlLabel')}
+                    value={domain}
+                    onChange={(e) => onDomainChange(e.target.value)}
+                    style={{ paddingRight: '90px' }}
+                  />
+                  {domain.trim() && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        right: '16px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: isDomainValid ? 'var(--good)' : 'var(--gap)'
+                      }}
+                    >
+                      {isDomainValid ? '✓ 格式正确' : '✗ 格式无效'}
+                    </span>
+                  )}
+                </div>
               </div>
+
+              <div className="row2">
+                <div className="field">
+                  <label htmlFor="wiz-industry">{t('industryLabel')}</label>
+                  <select
+                    id="wiz-industry"
+                    className="sel"
+                    aria-label={t('industryLabel')}
+                    value={industryOptions[industryIndex]}
+                    onChange={(e) => setIndustryIndex(Math.max(0, industryOptions.indexOf(e.target.value)))}
+                  >
+                    {industryOptions.map((opt) => (
+                      <option key={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="wiz-market">{t('marketLabel')}</label>
+                  <select
+                    id="wiz-market"
+                    className="sel"
+                    aria-label={t('marketLabel')}
+                    value={marketOptions[marketIndex]}
+                    onChange={(e) => setMarketIndex(Math.max(0, marketOptions.indexOf(e.target.value)))}
+                  >
+                    {marketOptions.map((opt) => (
+                      <option key={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div className="field">
-                <label htmlFor="wiz-market">{t('marketLabel')}</label>
-                <select
-                  id="wiz-market"
-                  className="sel"
-                  aria-label={t('marketLabel')}
-                  value={marketOptions[marketIndex]}
-                  onChange={(e) => setMarketIndex(Math.max(0, marketOptions.indexOf(e.target.value)))}
-                >
-                  {marketOptions.map((opt) => (
-                    <option key={opt}>{opt}</option>
-                  ))}
-                </select>
+                <label htmlFor="wiz-competitors">{t('competitorsOptional')}</label>
+                <input
+                  id="wiz-competitors"
+                  className="txt"
+                  placeholder={t('competitorsPlaceholder')}
+                  value={competitors}
+                  onChange={(e) => setCompetitors(e.target.value)}
+                />
+                <p className="wizard-hint">{t('competitorsOptionalHint')}</p>
               </div>
-            </div>
 
-            <div className="field">
-              <label htmlFor="wiz-competitors">{t('competitorsOptional')}</label>
-              <input
-                id="wiz-competitors"
-                className="txt"
-                placeholder={t('competitorsPlaceholder')}
-                value={competitors}
-                onChange={(e) => setCompetitors(e.target.value)}
-              />
-              <p className="wizard-hint">{t('competitorsOptionalHint')}</p>
-            </div>
-
-            <div className="wizard-nav">
-              <button type="button" className="run-btn" onClick={goToConnect} disabled={pending}>
-                {pending ? t('starting') : t('next')}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div className="wizard-panel">
-            <h2 className="wizard-h">{t('stepConnect')}</h2>
-            <p className="wizard-sub">{t('step2Sub')}</p>
-
-            <div className={`connect-card${gscConnected ? ' connected' : ''}`}>
-              <div className="cc-body">
-                <div className="cc-title">{t('gscTitle')}</div>
-                <div className="cc-desc">{gscConnected ? t('gscDesc') : t('gscImpact')}</div>
-              </div>
-              {gscConnected ? (
-                <span className="cc-state ok">{t('stateConnected')}</span>
-              ) : (
-                <button type="button" className="cc-action" onClick={connectGsc} disabled={!gscAppConfigured}>
-                  {t('gscConnectCta')}
+              <div className="wizard-nav">
+                <button type="button" className="run-btn" onClick={goToConnect} disabled={pending}>
+                  {pending ? t('starting') : t('next')}
                 </button>
-              )}
-            </div>
-            {!gscConnected && !gscAppConfigured && <p className="wizard-hint">{t('gscNotConfiguredHint')}</p>}
-
-            <div className={`connect-card${aiProbeConfigured ? ' connected' : ''}`}>
-              <div className="cc-body">
-                <div className="cc-title">{t('aiProbeTitle')}</div>
-                <div className="cc-desc">{aiProbeConfigured ? t('aiProbeDesc') : t('aiProbeImpact')}</div>
-              </div>
-              {aiProbeConfigured ? (
-                <span className="cc-state ok">{t('stateConfigured')}</span>
-              ) : (
-                <a className="cc-action" href={`/${locale}/settings#source-aiProbe`}>
-                  {t('aiProbeCta')}
-                </a>
-              )}
-            </div>
-
-            <div className="field">
-              <label>{t('enginesLabel')}</label>
-              <div className="chips">
-                {ENGINES.map((name) => (
-                  <label key={name} className={`chip${engines[name] ? ' on' : ''}`}>
-                    <input type="checkbox" checked={engines[name]} onChange={() => toggleEngine(name)} />
-                    {name}
-                  </label>
-                ))}
               </div>
             </div>
+          )}
 
-            <p className="wizard-hint">{t('skipHint')}</p>
+          {step === 2 && (
+            <div className="wizard-panel">
+              <h2 className="wizard-h">{t('stepConnect')}</h2>
+              <p className="wizard-sub">{t('step2Sub')}</p>
 
-            <div className="wizard-nav">
-              <button type="button" className="ghost-btn" onClick={() => setStep(1)}>
-                {t('back')}
-              </button>
-              <button type="button" className="run-btn" onClick={() => setStep(3)}>
-                {t('next')}
-              </button>
+              <div className={`connect-card${gscConnected ? ' connected' : ''}`}>
+                <div className="cc-body">
+                  <div className="cc-title">{t('gscTitle')}</div>
+                  <div className="cc-desc">{gscConnected ? t('gscDesc') : t('gscImpact')}</div>
+                </div>
+                {gscConnected ? (
+                  <span className="cc-state ok">{t('stateConnected')}</span>
+                ) : (
+                  <button type="button" className="cc-action" onClick={connectGsc} disabled={!gscAppConfigured}>
+                    {t('gscConnectCta')}
+                  </button>
+                )}
+              </div>
+              {!gscConnected && !gscAppConfigured && <p className="wizard-hint">{t('gscNotConfiguredHint')}</p>}
+
+              <div className={`connect-card${aiProbeConfigured ? ' connected' : ''}`}>
+                <div className="cc-body">
+                  <div className="cc-title">{t('aiProbeTitle')}</div>
+                  <div className="cc-desc">{aiProbeConfigured ? t('aiProbeDesc') : t('aiProbeImpact')}</div>
+                </div>
+                {aiProbeConfigured ? (
+                  <span className="cc-state ok">{t('stateConfigured')}</span>
+                ) : (
+                  <a className="cc-action" href={`/${locale}/settings#source-aiProbe`}>
+                    {t('aiProbeCta')}
+                  </a>
+                )}
+              </div>
+
+              <div className="field">
+                <label>{t('enginesLabel')}</label>
+                <div className="chips">
+                  {ENGINES.map((name) => (
+                    <label key={name} className={`chip${engines[name] ? ' on' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={engines[name]} aria-label={name} onChange={() => toggleEngine(name)} />
+                      <span>{ENGINE_ICONS[name]} {name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <p className="wizard-hint">{t('skipHint')}</p>
+
+              <div className="wizard-nav">
+                <button type="button" className="ghost" onClick={() => setStep(1)} style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px' }}>
+                  {t('back')}
+                </button>
+                <button type="button" className="run-btn" onClick={() => setStep(3)} style={{ marginTop: 0 }}>
+                  {t('next')}
+                </button>
+              </div>
             </div>
+          )}
+
+          {step === 3 && (
+            <div className="wizard-panel">
+              <h2 className="wizard-h">{t('stepConfirm')}</h2>
+              <p className="wizard-sub">{t('step3Sub')}</p>
+
+              <dl className="scope-grid" style={{ marginBottom: '24px' }}>
+                <div>
+                  <dt>{t('scopeDomain')}</dt>
+                  <dd className="mono">{domain || '—'}</dd>
+                </div>
+                <div>
+                  <dt>{t('scopeIndustry')}</dt>
+                  <dd>{industryOptions[industryIndex]}</dd>
+                </div>
+                <div>
+                  <dt>{t('scopeMarket')}</dt>
+                  <dd>{marketOptions[marketIndex]}</dd>
+                </div>
+                <div>
+                  <dt>{t('scopeEngines')}</dt>
+                  <dd>{selectedEngines.length ? selectedEngines.join(' · ') : t('briefNoEngines')}</dd>
+                </div>
+                <div>
+                  <dt>{t('scopeData')}</dt>
+                  <dd>{dataSummary}</dd>
+                </div>
+              </dl>
+
+              <div className="wizard-nav">
+                <button type="button" className="ghost" onClick={() => setStep(2)} style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px' }}>
+                  {t('back')}
+                </button>
+                <button type="button" className="run-btn" onClick={start} disabled={pending} style={{ marginTop: 0 }}>
+                  {pending ? t('starting') : t('run')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <p className="note" style={{ color: 'var(--ds-error, red)', marginTop: '16px' }}>
+              {error}
+            </p>
+          )}
+        </div>
+
+        {/* 右侧：实时预估控制侧栏 */}
+        <div className="card wizard-sidebar p-5" style={{ flex: '0 0 320px', width: '320px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--ds-ink)', margin: '0 0 4px 0', borderBottom: '1px solid var(--ds-border-subtle)', paddingBottom: '8px' }}>
+            {locale === 'zh' ? '诊断预算与配置预估' : 'Budget & Config Estimate'}
+          </h3>
+
+          <div className="estimate-box" style={{ margin: 0, padding: 0, border: 0, background: 'transparent' }}>
+            <div className="estimate-title" style={{ fontSize: '12px', color: 'var(--ds-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+              {t('estimateTitle')}
+            </div>
+
+            <div className="estimate-grid" style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', borderBottom: '1px dashed var(--ds-border-subtle)', paddingBottom: '8px' }}>
+                <span style={{ fontSize: '12.5px', color: 'var(--ds-body)' }}>{t('estimateTime')}</span>
+                <b style={{ fontSize: '13px', color: 'var(--ds-ink)', fontWeight: 600 }}>
+                  {t('estimateTimeValue', { low: estimate.timeLowMin, high: estimate.timeHighMin })}
+                </b>
+              </div>
+              <div style={{ display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', borderBottom: '1px dashed var(--ds-border-subtle)', paddingBottom: '8px' }}>
+                <span style={{ fontSize: '12.5px', color: 'var(--ds-body)' }}>{t('estimateCost')}</span>
+                <b style={{ fontSize: '13px', color: 'var(--ds-ink)', fontWeight: 600 }}>
+                  {t('estimateCostValue', { low: estimate.costLowUsd, high: estimate.costHighUsd })}
+                </b>
+              </div>
+              <div style={{ display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', borderBottom: '1px dashed var(--ds-border-subtle)', paddingBottom: '8px' }}>
+                <span style={{ fontSize: '12.5px', color: 'var(--ds-body)' }}>{t('estimateProbeCalls')}</span>
+                <b style={{ fontSize: '13px', color: 'var(--ds-ink)', fontWeight: 600 }}>
+                  {t('estimateProbeCallsValue', { calls: estimate.probeCalls })}
+                </b>
+              </div>
+            </div>
+
+            <p className="estimate-disclaimer" style={{ fontSize: '11px', color: 'var(--ds-muted)', lineHeight: 1.5, margin: 0 }}>
+              {/* 这里在 zh.json 中翻译成了 “预估（非实测）”，为确保单元测试顺利匹配，我们将该字样在 sidebar 中展示 */}
+              {t('estimateDisclaimer')}
+            </p>
           </div>
-        )}
+        </div>
 
-        {step === 3 && (
-          <div className="wizard-panel">
-            <h2 className="wizard-h">{t('stepConfirm')}</h2>
-            <p className="wizard-sub">{t('step3Sub')}</p>
-
-            <dl className="scope-grid">
-              <div>
-                <dt>{t('scopeDomain')}</dt>
-                <dd className="mono">{domain || '—'}</dd>
-              </div>
-              <div>
-                <dt>{t('scopeIndustry')}</dt>
-                <dd>{industryOptions[industryIndex]}</dd>
-              </div>
-              <div>
-                <dt>{t('scopeMarket')}</dt>
-                <dd>{marketOptions[marketIndex]}</dd>
-              </div>
-              <div>
-                <dt>{t('scopeEngines')}</dt>
-                <dd>{selectedEngines.length ? selectedEngines.join(' · ') : t('briefNoEngines')}</dd>
-              </div>
-              <div>
-                <dt>{t('scopeData')}</dt>
-                <dd>{dataSummary}</dd>
-              </div>
-            </dl>
-
-            <div className="estimate-box">
-              <div className="estimate-title">{t('estimateTitle')}</div>
-              <div className="estimate-grid">
-                <div>
-                  <span>{t('estimateTime')}</span>
-                  <b>{t('estimateTimeValue', { low: estimate.timeLowMin, high: estimate.timeHighMin })}</b>
-                </div>
-                <div>
-                  <span>{t('estimateCost')}</span>
-                  <b>{t('estimateCostValue', { low: estimate.costLowUsd, high: estimate.costHighUsd })}</b>
-                </div>
-                <div>
-                  <span>{t('estimateProbeCalls')}</span>
-                  <b>{t('estimateProbeCallsValue', { calls: estimate.probeCalls })}</b>
-                </div>
-              </div>
-              <p className="estimate-disclaimer">{t('estimateDisclaimer')}</p>
-            </div>
-
-            <div className="wizard-nav">
-              <button type="button" className="ghost-btn" onClick={() => setStep(2)}>
-                {t('back')}
-              </button>
-              <button type="button" className="run-btn" onClick={start} disabled={pending}>
-                {pending ? t('starting') : t('run')}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {error && (
-          <p className="note" style={{ color: 'var(--ds-error, red)' }}>
-            {error}
-          </p>
-        )}
       </div>
 
-      <div className="note">{t('note')}</div>
+      <div className="note" style={{ marginTop: '24px' }}>{t('note')}</div>
     </section>
   )
 }

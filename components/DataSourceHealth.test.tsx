@@ -48,7 +48,7 @@ describe('DataSourceHealth', () => {
     expect(screen.getByText('Google 可见性检索')).toBeInTheDocument()
   })
 
-  it('仅 down 源显示「去连接」，链接指向对应设置锚点', () => {
+  it('仅 down 源显示「去连接」；CSE / DataForSEO 直接进入官方控制台', () => {
     render(<DataSourceHealth items={items} up={2} total={5} locale="zh" />)
     fireEvent.click(screen.getByRole('button', { name: /数据源 2\/5/ }))
     const links = screen.getAllByRole('link', { name: '去连接' })
@@ -56,16 +56,16 @@ describe('DataSourceHealth', () => {
     expect(links).toHaveLength(3)
     const hrefs = links.map((l) => l.getAttribute('href'))
     expect(hrefs).toContain('/zh/settings#source-aiProbe')
-    expect(hrefs).toContain('/zh/settings#source-gsc')
+    expect(hrefs).toContain('https://console.cloud.google.com/apis/credentials')
     expect(hrefs).not.toContain('/zh/settings#source-googleCse')
   })
 
-  it('传 projectId 时 gsc「去连接」指向项目详情，其余源仍指设置页锚点', () => {
+  it('传 projectId 时 gsc「去连接」指向项目详情，DataForSEO 仍直达官方控制台', () => {
     render(<DataSourceHealth items={items} up={2} total={5} locale="zh" projectId="proj_a" />)
     fireEvent.click(screen.getByRole('button', { name: /数据源 2\/5/ }))
     const hrefs = screen.getAllByRole('link', { name: '去连接' }).map((l) => l.getAttribute('href'))
     expect(hrefs).toContain('/zh/projects/proj_a')
-    expect(hrefs).not.toContain('/zh/settings#source-gsc')
+    expect(hrefs).toContain('https://app.dataforseo.com/api-access')
     // 全局源仍走设置页
     expect(hrefs).toContain('/zh/settings#source-aiProbe')
   })

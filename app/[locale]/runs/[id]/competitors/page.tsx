@@ -46,7 +46,7 @@ export default async function CompetitorsPage({
   const pct = (s: string | null) => (s == null ? '—' : `${Math.round(Number(s) * 100)}%`)
 
   return (
-    <Shell active={2} locale={locale} runId={id} domain={project?.domain}>
+    <Shell runId={id} domain={project?.domain}>
       <section className="screen show">
         <h1 className="text-lg font-semibold">
           {project?.domain} · {t('title')}

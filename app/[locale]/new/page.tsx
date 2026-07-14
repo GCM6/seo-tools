@@ -33,7 +33,7 @@ export default async function NewAnalysisPage({
   const initialStep = step === 'connect' || gsc === 'connected' ? 2 : 1
 
   return (
-    <Shell active={1} locale={locale}>
+    <Shell>
       <NewAnalysisForm
         locale={locale}
         project={

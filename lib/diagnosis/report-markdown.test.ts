@@ -134,4 +134,24 @@ describe('renderReportMarkdown', () => {
     expect(md).toContain('规则库最后校验于 2026-01-01T00:00:00Z')
     expect(md).toContain('AI 爬虫 User-Agent 清单')
   })
+
+  it('renders the report contract and incomplete data-source states', () => {
+    const model = buildReport({
+      findings: [],
+      recommendations: [],
+      scope: { domain: 'example.com', entryUrl: 'https://example.com/', capturedAt: '2026-07-06' },
+      dataSources: [{
+        sourceKey: 'ai_probe', configured: true, authorized: true, attempted: true,
+        status: 'partial', capturedEvidenceCount: 2,
+      }],
+      coverageStats: { checkedPages: 3, aiValidSamples: 2 },
+      now: NOW,
+    })
+
+    const md = renderReportMarkdown(model, { domain: 'example.com', runId: 'run_1', capturedAt: '2026-07-06' })
+    expect(md).toContain('### 诊断范围与覆盖度')
+    expect(md).toContain('报告等级：R0')
+    expect(md).toContain('ai_probe：partial（证据 2）')
+    expect(md).toContain('未覆盖项：ai_probe')
+  })
 })

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import Script from 'next/script'
 import { SITE_NAME, SITE_URL } from '@/lib/site'
 
 export const metadata: Metadata = {
@@ -51,12 +52,16 @@ export default function HomePage() {
   return (
     <main>
       {/* JSON-LD：仅用 CLAUDE.md / plan-ux.md 已确认的产品事实，不含 offers/rating（方案 C-1 勘误：不部署 FAQPage / 不为无实据字段编造数据）。 */}
-      <script
+      <Script
+        id="ld-organization"
         type="application/ld+json"
+        strategy="beforeInteractive"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
       />
-      <script
+      <Script
+        id="ld-software-application"
         type="application/ld+json"
+        strategy="beforeInteractive"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationJsonLd) }}
       />
 

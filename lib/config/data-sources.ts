@@ -7,6 +7,9 @@ import type { AiProbeProviderId } from '@/lib/probes/providers/types'
 export interface DataSourceStatus {
   searchProvider: boolean
   renderProvider: boolean
+  // 无托管浏览器时，page_fetch 仍会采集初始 HTML；它不能替代 JS 渲染对比，
+  // 但能让技术诊断继续进行，不能因此把整轮诊断阻断。
+  renderStaticFallback: true
   aiProviders: AiProbeProviderId[]
   // GSC OAuth 尚未实现（下一期），恒为 false
   gsc: false
@@ -20,7 +23,10 @@ export function dataSourceStatus(env: Record<string, string | undefined> = proce
   if (env.DEEPSEEK_API_KEY) aiProviders.push('deepseek')
   return {
     searchProvider: Boolean(env.GOOGLE_CSE_API_KEY && env.GOOGLE_CSE_CX),
-    renderProvider: Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN),
+    renderProvider: Boolean(
+      (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN) || env.BROWSERLESS_API_TOKEN,
+    ),
+    renderStaticFallback: true,
     aiProviders,
     gsc: false,
   }

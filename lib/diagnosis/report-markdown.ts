@@ -57,7 +57,7 @@ function recLine(r: ReportRecommendation): string {
 
 export function renderReportMarkdown(model: ReportModel, meta: ReportMarkdownMeta): string {
   const L: string[] = []
-  const { execSummary, pillarGroups, priorityMatrix, roadmap, freshness, counts } = model
+  const { execSummary, pillarGroups, priorityMatrix, roadmap, freshness, counts, reportContract } = model
 
   // —— 报告头 ——
   L.push(`# 综合诊断报告 · ${meta.domain || '（未命名站点）'}`)
@@ -116,6 +116,38 @@ export function renderReportMarkdown(model: ReportModel, meta: ReportMarkdownMet
   L.push('')
   L.push(`- 采集时间：${meta.capturedAt || '—'}`)
   L.push('')
+  if (reportContract) {
+    L.push('### 诊断范围与覆盖度')
+    L.push('')
+    L.push(`- 域名：${reportContract.scope.domain || '—'}`)
+    L.push(`- 入口 URL：${reportContract.scope.entryUrl || '—'}`)
+    L.push(`- 目标市场：${reportContract.scope.targetMarket || '—'}`)
+    L.push(`- 语言：${reportContract.scope.language || '—'}`)
+    L.push(`- 报告等级：${reportContract.level}`)
+    L.push(`- URL 覆盖：发现 ${reportContract.coverage.totalDiscovered} / 实际检查 ${reportContract.coverage.checkedPages}${reportContract.coverage.truncated ? '（达到页数上限，已截断）' : ''}`)
+    if (reportContract.coverage.gscTimeWindow) L.push(`- GSC 时间窗：${reportContract.coverage.gscTimeWindow}`)
+    L.push(`- AI 有效样本：${reportContract.coverage.aiValidSamples ?? 0}`)
+    L.push(`- 已确认竞品：${reportContract.coverage.confirmedCompetitors ?? 0}`)
+    L.push('')
+    L.push('### 数据源状态')
+    L.push('')
+    if (reportContract.dataSources.length) {
+      for (const source of reportContract.dataSources) {
+        const suffix = [
+          source.capturedEvidenceCount ? `证据 ${source.capturedEvidenceCount}` : '',
+          source.failureReason ? `原因：${source.failureReason}` : '',
+        ].filter(Boolean).join('；')
+        L.push(`- ${source.sourceKey}：${source.status}${suffix ? `（${suffix}）` : ''}`)
+      }
+    } else {
+      L.push('- 本轮没有数据源状态记录。')
+    }
+    if (reportContract.gaps.length) {
+      L.push('')
+      L.push(`未覆盖项：${reportContract.gaps.join('、')}。这些维度不能据空白得出正面结论。`)
+    }
+    L.push('')
+  }
   if (freshness.stale.length) {
     const date = freshness.oldestVerifiedAt ?? '尚未校验'
     L.push('### 规则保鲜告警')

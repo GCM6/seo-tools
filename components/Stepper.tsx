@@ -1,49 +1,66 @@
 'use client'
 
-import Link from 'next/link'
 import { useTranslations } from 'next-intl'
+import type { RunStatus } from '@/lib/types'
 
-// Client leaf: the 4-step workflow nav with the active step highlighted.
-// Labels come from the `common.steps` message catalog (no hardcoded copy).
+// Client leaf: run 状态驱动的只读工作流进度，不承担页面导航。
+// 诊断的详情子页仍在页面内通过专用链接进入，避免未完成阶段被步骤条越级访问。
+export function getWorkflowStep(status?: RunStatus): 1 | 2 | 3 | 4 {
+  if (!status) return 1
+  if (status === 'reviewing') return 3
+  if (status === 'output') return 4
+  return 2
+}
+
 export function Stepper({
-  active,
-  runId,
-  locale,
+  status,
+  pendingRecommendationCount,
 }: {
-  active: 1 | 2 | 3 | 4
-  runId?: string
-  locale: string
+  status?: RunStatus
+  pendingRecommendationCount?: number
 }) {
   const t = useTranslations('common.steps')
+  const active = getWorkflowStep(status)
+  const failed = status === 'failed'
 
   const items = [
-    { n: 1, key: 'new', href: `/${locale}`, enabled: true },
-    { n: 2, key: 'diagnose', href: runId ? `/${locale}/runs/${runId}` : '', enabled: Boolean(runId) },
-    { n: 3, key: 'recommend', href: runId ? `/${locale}/runs/${runId}/recommendations` : '', enabled: Boolean(runId) },
-    { n: 4, key: 'output', href: runId ? `/${locale}/runs/${runId}/output` : '', enabled: Boolean(runId) },
+    { n: 1, key: 'new' },
+    { n: 2, key: 'diagnose' },
+    { n: 3, key: 'recommend' },
+    { n: 4, key: 'output' },
   ] as const
 
   return (
-    <div className="stepper" role="tablist">
-      {items.map((it) =>
-        it.enabled ? (
-          <Link
+    <div className="stepper" role="list" aria-label={t('progressLabel')}>
+      {items.map((it) => {
+        const isActive = it.n === active
+        const isDone = it.n < active
+        const isFailed = isActive && failed
+        const stateLabel = isFailed
+          ? t('interrupted')
+          : isActive
+            ? status === 'reviewing' && typeof pendingRecommendationCount === 'number' && pendingRecommendationCount > 0
+              ? t('reviewPending', { count: pendingRecommendationCount })
+              : t('inProgress')
+            : isDone
+              ? t('completed')
+              : ''
+
+        return (
+          <div
             key={it.n}
-            href={it.href}
-            role="tab"
-            aria-selected={it.n === active}
-            className={`step${it.n === active ? ' active' : ''}${it.n < active ? ' done' : ''}`}
+            role="listitem"
+            aria-current={isActive ? 'step' : undefined}
+            className={`step${isActive ? ' active' : ''}${isDone ? ' done' : ''}${!isActive && !isDone ? ' disabled' : ''}${isFailed ? ' failed' : ''}`}
           >
-            <span className="n">{it.n}</span>
-            {t(it.key)}
-          </Link>
-        ) : (
-          <span key={it.n} role="tab" aria-selected={false} aria-disabled="true" className="step disabled">
-            <span className="n">{it.n}</span>
-            {t(it.key)}
-          </span>
-        ),
-      )}
+            <span className="n" aria-hidden="true">{isDone ? '✓' : it.n}</span>
+            <span className="step-copy">
+              <span>{t(it.key)}</span>
+              {stateLabel ? <small className="step-status">{stateLabel}</small> : null}
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }

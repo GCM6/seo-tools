@@ -3,7 +3,11 @@
     "projects": "项目",
     "rules": "规则库",
     "settings": "设置",
-    "newAnalysis": "新建分析"
+    "newAnalysis": "新建分析",
+    "menuTitle": "导航菜单",
+    "themeMode": "外观模式",
+    "themeToggleToDark": "切换至暗色模式",
+    "themeToggleToLight": "切换至亮色模式"
   },
   "footer": {
     "productTagline": "SEO + GEO 证据化诊断工作台",
@@ -25,7 +29,12 @@
       "new": "新建分析",
       "diagnose": "诊断",
       "recommend": "优化建议",
-      "output": "输出"
+      "output": "输出",
+      "progressLabel": "分析进度",
+      "inProgress": "进行中",
+      "completed": "已完成",
+      "interrupted": "已中断",
+      "reviewPending": "待确认 {count} 条"
     },
     "tag": {
       "measured": "实测",
@@ -66,7 +75,7 @@
       "googleCse": "Google 可见性检索 (CSE)",
       "aiProbe": "AI 答案引擎探针",
       "dataforseo": "DataForSEO（关键词/竞品/外链）",
-      "render": "渲染抓取 (Cloudflare)",
+      "render": "渲染抓取（可选增强）",
       "psi": "PageSpeed / CWV",
       "publicCorpora": "公开语料 (Wikipedia/Reddit)"
     },
@@ -88,7 +97,7 @@
     "keySaved": "已保存 ✓",
     "keyCleared": "已清除",
     "credSource": { "db": "已配置·DB", "env": "已配置·环境变量", "none": "未配置" },
-    "provider": { "label": "服务", "openai": "OpenAI", "perplexity": "Perplexity", "gemini": "Gemini", "deepseek": "DeepSeek", "googleCse": "Google CSE", "dataforseo": "DataForSEO", "cloudflare": "Cloudflare" }
+    "provider": { "label": "服务", "openai": "OpenAI", "perplexity": "Perplexity", "gemini": "Gemini", "deepseek": "DeepSeek", "googleCse": "Google CSE", "dataforseo": "DataForSEO", "cloudflare": "Cloudflare", "browserless": "Browserless" }
   },
   "projects": {
     "title": "项目",
@@ -119,7 +128,13 @@
       "reviewing": "待复核",
       "output": "已完成",
       "failed": "失败"
-    }
+    },
+    "projectManagement": "项目管理",
+    "searchPlaceholder": "输入域名进行搜索…",
+    "marketLabel": "市场",
+    "retestLabel": "回测:",
+    "latestStatusLabel": "最近诊断状态",
+    "findingsDetectedLabel": "已检测缺陷"
   },
   "projectDetail": {
     "runHistoryTitle": "诊断历史",
@@ -234,13 +249,13 @@
     "currentTitle": "现状（客观真实数据）",
     "currentMeta": "每个维度仅在有对应证据时显示实测值，其余标注为待接入 · 点开实测卡可查看原始证据",
     "stats": {
-      "indexVisibility": "Google 收录可见性",
+      "indexVisibility": "Google 前台可见性信号",
       "indexVisibilityUnit": "结果",
       "aiVisibility": "AI 可见度（无品牌提问主动召回）",
       "avgRank": "平均自然排名",
       "avgRankUnit": "位",
-      "crawlableText": "正文可抓取占比",
-      "schemaCoverage": "结构化数据类型",
+      "crawlableText": "非渲染正文可读性",
+      "schemaCoverage": "结构化数据足迹",
       "schemaCoverageUnit": "类"
     },
     "pendingSource": "待接入 · {source}",
@@ -276,6 +291,8 @@
       "readyDetail": "本轮可进入问题复核与建议确认；所有实测值都能展开查看证据。",
       "failedTitle": "采集失败",
       "failedDetail": "失败原因：{reason}",
+      "cancelledTitle": "诊断已中止",
+      "cancelledDetail": "本轮诊断已停止；已采集的证据会保留，可随时重新发起采集。",
       "unknown": "未知错误",
       "progressLabel": "采集进度 {pct}%",
       "progressSoftLabel": "约 {pct}%",
@@ -291,10 +308,29 @@
       "phaseCount": "{checked}/{total}",
       "findingsCount": "已生成 {n} 条发现",
       "completedTitle": "诊断证据已就绪",
+      "reviewGate": {
+        "pendingTitle": "还有 {count} 条优化建议待确认",
+        "pendingDetail": "采集与诊断已完成（100%）。全部 {total} 条建议被接受、编辑或否决前，输出不会开始。",
+        "emptyTitle": "尚未生成可确认的优化建议",
+        "emptyDetail": "采集与诊断已完成（100%），但本轮没有可进入输出的建议。请先查看诊断结果，确认是否需要补充建议。",
+        "readyTitle": "优化建议已全部确认，输出已就绪",
+        "readyDetail": "全部建议已处理，可进入输出查看已确认建议生成的执行提示词与报告。",
+        "nextStep": "下一步",
+        "reviewAction": "现在去确认 {count} 条优化建议",
+        "reviewActionDetail": "逐条决定接受、编辑或否决，完成后即可生成输出",
+        "reviewEmptyAction": "查看诊断结果",
+        "reviewEmptyActionDetail": "确认是否需要补充新的优化建议",
+        "outputAction": "查看输出",
+        "outputActionDetail": "打开已确认建议生成的执行提示词与报告"
+      },
       "viewResults": "查看诊断结果",
       "retry": "重试采集",
       "retrying": "正在重试…",
       "retryFailed": "重试失败，请稍后再试。",
+      "cancel": "中止诊断",
+      "cancelling": "正在中止…",
+      "cancelConfirm": "要中止本轮诊断吗？已采集的证据会保留。",
+      "cancelFailed": "中止失败，请稍后再试。",
       "streamLabel": "证据流",
       "evidence": {
         "serp_snapshot": "已保存 Google site: 可见性证据",
@@ -383,12 +419,12 @@
     "tabGeo": "GEO",
     "tabSeo": "SEO",
     "note": "只展示当前 run 已采集或已生成的真实数据；依赖 GSC / AI 探针 / 诊断生成器的维度未接入前保持空态。",
-    "sourceRenderProvider": "Cloudflare 渲染 API",
+    "sourceRenderProvider": "浏览器渲染（可选）",
     "configHint": {
       "search_provider": "在 .env 配置 GOOGLE_CSE_API_KEY 与 GOOGLE_CSE_CX，重新诊断后出数",
       "ai_probe": "在 .env 配置任一 AI key（OPENAI_API_KEY / PERPLEXITY_API_KEY / GEMINI_API_KEY / DEEPSEEK_API_KEY），新建分析时勾选对应引擎",
       "gsc": "依赖 Google Search Console OAuth（只读），将在下一期接入",
-      "render_provider": "在 .env 配置 CLOUDFLARE_ACCOUNT_ID 与 CLOUDFLARE_API_TOKEN，重新诊断后出数",
+      "render_fallback": "本轮已降级采集初始 HTML 与性能证据；未取得 JS 渲染后正文，无法计算正文差异。浏览器级渲染为可选增强，不要求被诊断的网站部署在 Cloudflare。",
       "uncollected": "抓取数据源已就绪，重新诊断即可采集"
     },
     "probePending": "尚无 AI 探针实测数据 · 在 .env 配置任一 AI key（OPENAI_API_KEY / PERPLEXITY_API_KEY / GEMINI_API_KEY / DEEPSEEK_API_KEY），并在新建分析勾选对应引擎后重新诊断",
@@ -396,7 +432,33 @@
   },
   "screen3": {
     "title": "优化建议",
+    "backToDiagnosis": "返回诊断工作台",
     "meta": "按「影响 × 置信 ÷ 工作量」排序 · 逐条确认后才进入输出",
+    "decisionSummary": "建议决策摘要",
+    "progress": {
+      "total": "共 {count} 条",
+      "pending": "待确认 {count}",
+      "ready": "可输出 {count}"
+    },
+    "priority": {
+      "quick_win": "优先处理",
+      "strategic": "重点投入",
+      "fill_in": "顺手补齐",
+      "low": "暂缓处理"
+    },
+    "status": {
+      "draft": "待你确认",
+      "accepted": "已纳入输出",
+      "edited": "已人工调整",
+      "rejected": "已否决"
+    },
+    "action": {
+      "undoAccept": "撤销接受",
+      "restore": "恢复为待确认"
+    },
+    "details": "查看证据、风险与验证",
+    "staticFix": "参考修复示例（静态模板）",
+    "noRationale": "暂无补充说明，请结合证据和验证方式判断。",
     "empty": "本轮尚无优化建议；诊断发现的自动生成与转建议尚未接入",
     "label": {
       "why": "为什么",
@@ -463,14 +525,14 @@
       "googleCse": "Google 可见性检索 (CSE)",
       "aiProbe": "AI 答案引擎探针",
       "dataforseo": "DataForSEO（关键词/竞品/外链）",
-      "render": "渲染抓取 (Cloudflare)"
+      "render": "渲染抓取（自动降级）"
     },
     "impact": {
       "gsc": "缺 GSC：实测关键词点击/曝光/排名（L4）无从谈起",
       "googleCse": "缺 CSE：传统搜索可见度与 SERP 现状抓不到",
       "aiProbe": "缺 AI 探针：AI 答案可见度、答案地图、竞争声量全空",
       "dataforseo": "缺 DataForSEO：关键词缺口、竞品发现、外链数据缺失",
-      "render": "缺渲染源：抓不到渲染后正文，SPA 内容可见性无法判定"
+      "render": "未启用浏览器渲染时仍会抓初始 HTML；但 SPA 的 JS 正文差异无法判定"
     }
   },
   "findings": {
@@ -648,7 +710,7 @@
       "unscored": "未评分",
       "breakdownToggle": "分数怎么算的",
       "topFindings": "最高影响发现",
-      "noFindings": "暂无发现。",
+      "noFindings": "本轮未发现相关问题——这可能表示站点在已检查范围内表现良好，也可能表示证据覆盖不完整。请查看『诊断范围与覆盖度』确认数据源状态。",
       "pillarBarsAria": "五支柱健康分条形图",
       "evidenceLadderTitle": "证据等级（可信度阶梯）"
     },
@@ -664,6 +726,55 @@
       "visibility_data_missing": "可见性数据不足：尚未接入 GSC 或未配置 DataForSEO，关键词现状缺乏数据，建议先接入数据源再定位约束。",
       "authority_content": "权威与内容竞争力不足：关键词缺口较多且权威 / 语料信号偏弱，建议聚焦内容覆盖（P3）与品牌权威（P5）。",
       "fine_tuning": "精细优化阶段：无系统性阻断，可按影响 × 成本优先级逐项打磨。"
+    },
+    "contract": {
+      "scopeTitle": "诊断范围与覆盖度",
+      "scopeMeta": "报告先说明本次能回答和不能回答什么，避免空白被误解为良好状态。",
+      "domain": "域名",
+      "entryUrl": "入口 URL",
+      "market": "目标市场",
+      "language": "语言",
+      "capturedAt": "采集时间",
+      "crawlPages": "爬取页数上限",
+      "crawlDepth": "爬取深度",
+      "level": "报告等级",
+      "levelDesc": {
+        "R0": "采集状态：仅展示数据源缺口和采集失败信息",
+        "R1": "技术可发现性：可评估技术、结构和渲染风险",
+        "R2": "SEO 表现：可分析查询/页面表现、CTR 和排名机会",
+        "R3": "SEO 市场机会：可分析需求、竞品样本和关键词缺口",
+        "R4": "GEO 样本可见度：可评估品牌在 AI 搜索中的样本可见度",
+        "R5": "业务优先级：可按有效线索/商机影响排序"
+      },
+      "coverage": "覆盖度",
+      "discovered": "发现 URL 数",
+      "checked": "实际检查数",
+      "truncated": "已截断（达到页数上限）",
+      "gscWindow": "GSC 时间窗",
+      "aiSamples": "AI 有效样本数",
+      "competitors": "已确认竞品数",
+      "dataSourcesTitle": "数据源状态",
+      "gapsTitle": "未覆盖项",
+      "gapHint": "以下数据源未配置或采集失败，相关维度的结论不可用：",
+      "sourceStatus": {
+        "not_configured": "未配置",
+        "not_authorized": "未授权",
+        "not_attempted": "未尝试",
+        "collected": "已采集",
+        "partial": "部分采集",
+        "failed": "采集失败"
+      },
+      "sourceLabel": {
+        "google_cse": "Google 前台可见性",
+        "gsc": "Google Search Console",
+        "crawl": "全站爬取",
+        "render": "渲染对比",
+        "psi": "PageSpeed Insights",
+        "ai_probe": "AI 探针",
+        "dataforseo": "DataForSEO",
+        "ua_probe": "UA 爬虫探测",
+        "third_party": "第三方语料"
+      }
     },
     "geo": {
       "title": "GEO 可见度补充",
@@ -692,7 +803,8 @@
     "pillars": {
       "unscored": "未评分",
       "evidence": "证据",
-      "noFindings": "无命中，暂无问题。"
+      "noFindings": "无命中，暂无问题。",
+      "findingsUnit": "{count} 项发现"
     },
     "severity": {
       "high": "高",
@@ -827,5 +939,25 @@
     "errorTarget": "目标不能为空",
     "sourceLabels": { "scheduled_research": "定期巡检", "effectiveness_stats": "效果统计", "dismissal_stats": "误报统计", "manual": "手动" },
     "changeLabels": { "new_rule": "新增规则", "modify_threshold": "调整阈值", "deprecate": "弃用", "update_artifact": "更新资产" }
+  },
+  "dashboard": {
+    "welcomeSub": "证据驱动的诊断控制台",
+    "welcomeTitle": "用事实与实测，穿透 SEO 与 GEO 迷雾",
+    "welcomeDesc": "Veris 诊断网站在传统搜索引擎与主流 AI 答案引擎（ChatGPT/Perplexity/Gemini）中的可见度，产出由事实支撑的优化建议与执行 prompt。",
+    "welcomeCta": "➔ 开始诊断新网站",
+    "recentProjects": "最近项目",
+    "viewAllProjects": "查看全部项目",
+    "onboardingTitle": "三步开启 AI 时代的搜索诊断",
+    "onboardingDesc": "Veris 帮助您监测网站在 Google 传统搜索和 AI 答案引擎（GEO）中的可见度，产出由真实证据支撑的优化建议与 Prompt。",
+    "step1Title": "录入目标网站",
+    "step1Desc": "输入需要分析的网站域名，可选择填写主要对手",
+    "step2Title": "授权连接数据",
+    "step2Desc": "绑定 GSC 数据，并录入相关 AI 引擎的 API 密钥",
+    "step3Title": "一键开启诊断",
+    "step3Desc": "系统运行探测流程，生成带有多级证据的诊断报告",
+    "recentRunLabel": "最近诊断",
+    "findingsLabel": "缺陷数",
+    "readinessLabel": "核心诊断数据源就绪度",
+    "setupAction": "去配置"
   }
 }

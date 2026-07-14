@@ -17,9 +17,9 @@ export default async function ProjectsPage({ params }: { params: Promise<{ local
   const projects = await listProjectsWithSummary()
 
   return (
-    <section className="screen show">
-      <h1 className="text-lg font-semibold">{t('title')}</h1>
-      <p className="mt-1 text-sm text-neutral-500">{t('subtitle')}</p>
+    <section className="shell screen show">
+      <h1 className="projects-title">{t('title')}</h1>
+      <p className="projects-subtitle">{t('subtitle')}</p>
       <ProjectList
         locale={locale}
         projects={projects}
@@ -33,7 +33,7 @@ export default async function ProjectsPage({ params }: { params: Promise<{ local
           empty: t('empty'),
           noRun: t('noRun'),
           retestNone: t('retestNone'),
-          findingsUnit: (count: number) => t('findingsUnit', { count }),
+          findingsUnit: t.raw('findingsUnit') as string,
           actionRunning: t('actionRunning'),
           actionRetest: t('actionRetest'),
           actionReconfigure: t('actionReconfigure'),
@@ -41,6 +41,12 @@ export default async function ProjectsPage({ params }: { params: Promise<{ local
           retestStarting: tr('starting'),
           retestError: tr('error'),
           retestInProgress: tr('inProgress'),
+          projectManagement: t('projectManagement'),
+          searchPlaceholder: t('searchPlaceholder'),
+          marketLabel: t('marketLabel'),
+          retestLabel: t('retestLabel'),
+          latestStatusLabel: t('latestStatusLabel'),
+          findingsDetectedLabel: t('findingsDetectedLabel'),
         }}
         statusLabels={t.raw('status') as Record<string, string>}
         runTypeLabels={t.raw('runType') as Record<string, string>}

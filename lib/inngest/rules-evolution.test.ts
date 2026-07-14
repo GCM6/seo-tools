@@ -16,7 +16,10 @@ function makeDeps(over: Record<string, unknown> = {}) {
     now: () => FIXED_NOW,
     getReferenceArtifacts: vi.fn(async () => [] as unknown[]),
     getPendingProposalKeys: vi.fn(async () => new Set<string>()),
-    createRuleChangeProposal: vi.fn(async (_row: unknown) => [{}] as unknown[]),
+    createRuleChangeProposal: vi.fn(async (row: unknown) => {
+      void row
+      return [{}] as unknown[]
+    }),
     getFindingStatRecords: vi.fn(async () => [] as unknown[]),
     getRecStatRecords: vi.fn(async () => [] as unknown[]),
     ...over,

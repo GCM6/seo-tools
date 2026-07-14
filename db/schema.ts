@@ -67,6 +67,38 @@ export const runs = sqliteTable('runs', {
   check('runs_status', sql`${t.status} in ('draft','collecting','collected','diagnosing','reviewing','output','failed')`),
 ])
 
+// —— run 级数据源状态（诊断报告合同 §3.1）——
+// 每次 run 对每个数据源记录一条状态行，支撑报告头部「诊断范围与覆盖度」、
+// 空态文案和降级逻辑。不再依赖"有没有 evidence 行"反推。
+export type DataSourceStatus = 'not_configured' | 'not_authorized' | 'not_attempted' | 'collected' | 'partial' | 'failed'
+
+export const dataSourceStatuses = sqliteTable('data_source_statuses', {
+  id: text('id').primaryKey(),
+  runId: text('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
+  // 数据源标识，与 evidence_artifacts.type 不完全一致——这里按「功能模块」粒度：
+  // google_cse / gsc / crawl / render / psi / ai_probe / dataforseo / ua_probe / third_party
+  sourceKey: text('source_key').notNull(),
+  // 是否已配置（env / BYOK key 存在）
+  configured: integer('configured', { mode: 'boolean' }).notNull().default(false),
+  // 是否已授权（如 GSC OAuth 授权完成）
+  authorized: integer('authorized', { mode: 'boolean' }).notNull().default(false),
+  // 本次 run 是否尝试过采集
+  attempted: integer('attempted', { mode: 'boolean' }).notNull().default(false),
+  // 6 态终态
+  status: text('status').$type<DataSourceStatus>().notNull().default('not_configured'),
+  // 失败原因（status=failed 时填写）
+  failureReason: text('failure_reason'),
+  // 本次采集到的证据条数
+  capturedEvidenceCount: integer('captured_evidence_count').notNull().default(0),
+  // 协议快照：冻结本次采集的配置参数（如 GSC 时间窗、爬取页数上限、探针 provider 列表等）
+  protocolSnapshot: text('protocol_snapshot', { mode: 'json' }),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [
+  uniqueIndex('data_source_statuses_run_source').on(t.runId, t.sourceKey),
+  check('dss_status', sql`${t.status} in ('not_configured','not_authorized','not_attempted','collected','partial','failed')`),
+])
+
+
 // 站点页面：全站轻检的「当前状态」模型（可变）。不可变快照存 site_audit evidence。
 export const sitePages = sqliteTable('site_pages', {
   id: text('id').primaryKey(),

@@ -24,7 +24,7 @@ export default async function FactsPage({
   const facts = await getBrandFacts(project.id)
 
   return (
-    <Shell active={4} locale={locale} runId={id} domain={project.domain}>
+    <Shell runId={id} domain={project.domain}>
       <section className="screen show">
         <div className="sec-h">
           <h2>{t('title')}</h2>

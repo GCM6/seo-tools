@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server'
 import { ProvenanceTag } from './ProvenanceTag'
 import { EvidenceDrawer, type EvidenceView } from './EvidenceDrawer'
 import { provenanceForLevel } from '@/lib/evidence'
+import { Skeleton } from './Skeleton'
 import type { StatCard, StatCardKey } from '@/lib/diagnostics'
 import type { HealthKey } from '@/lib/settings/data-source-health'
 
@@ -12,7 +13,6 @@ const REASON_ANCHOR: Partial<Record<string, HealthKey>> = {
   search_provider: 'googleCse',
   ai_probe: 'aiProbe',
   gsc: 'gsc',
-  render_provider: 'render',
 }
 
 // Screen 2 stat strip — four fixed diagnosis dimensions derived from the
@@ -48,34 +48,26 @@ export async function StatStrip({
         const label = t(`stats.${c.key}`)
 
         if (c.state === 'pending') {
-          // uncollected：数据源已就绪、本轮未采到（≠功能未建）；其余：数据源未接入。
+          // uncollected：数据源已就绪、本轮未采到（≠功能未建）；render_fallback 表示
+          // 基础 HTML 已采，只是没有浏览器级 JS 差异证据，因此不强迫用户接 Cloudflare。
           // 指引精确到环境变量（内部工具，直接告诉开发者配什么）。
-          const isUncollected = c.reason === 'uncollected'
-          const source =
-            c.reason === 'search_provider'
-              ? t('sourceSearchProvider')
-              : c.reason === 'ai_probe'
-                ? t('sourceAiProbe')
-                : c.reason === 'gsc'
-                  ? t('sourceGsc')
-                  : c.reason === 'render_provider'
-                    ? t('sourceRenderProvider')
-                    : ''
-          const tagLabel = isUncollected ? t('uncollected') : t('pendingSource', { source })
           const hint = t(`configHint.${c.reason}`)
           // 缺源卡给「去连接」直达设置页对应锚点（uncollected 除外，见 REASON_ANCHOR 注释）。
           const anchor = locale && c.reason ? REASON_ANCHOR[c.reason] : undefined
           return (
-            <div key={c.key} className="card stat pending" title={hint}>
+            <div key={c.key} className="card stat pending" title={hint} style={{ display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative' }}>
               <div className="k">{label}</div>
-              <div className="v muted">—</div>
-              <div className="b">
-                <ProvenanceTag variant="g" label={tagLabel} />
+              {/* 优雅的骨架屏值 */}
+              <div className="v muted" style={{ display: 'flex', alignItems: 'center', minHeight: '32px' }}>
+                <Skeleton width="60%" height={24} />
               </div>
-              <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--ds-muted)', marginTop: 6 }}>{hint}</div>
+              <div className="b" style={{ display: 'flex', alignItems: 'center', minHeight: '20px' }}>
+                <Skeleton width="45%" height={16} />
+              </div>
+              <div style={{ fontSize: 11, lineHeight: 1.5, color: 'var(--ds-muted)', marginTop: 4 }}>{hint}</div>
               {anchor ? (
-                <Link href={`/${locale}/settings#source-${anchor}`} className="stat-connect">
-                  {tRoot('dataHealth.connect')}
+                <Link href={`/${locale}/settings#source-${anchor}`} className="stat-connect" style={{ fontSize: '11.5px', textDecoration: 'none', color: 'var(--ds-primary)', fontWeight: 500, marginTop: '4px' }}>
+                  {tRoot('dataHealth.connect')} &rarr;
                 </Link>
               ) : null}
             </div>

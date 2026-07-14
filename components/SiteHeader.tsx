@@ -2,6 +2,9 @@ import { getTranslations } from 'next-intl/server'
 import Link from 'next/link'
 import { LocaleSwitch } from './LocaleSwitch'
 import { DataSourceHealth } from './DataSourceHealth'
+import { Logo } from './Logo'
+import { ThemeToggle } from './ThemeToggle'
+import { MobileNav } from './MobileNav'
 import { loadDataSourceStatuses } from '@/lib/settings/load-statuses'
 import { summarizeDataSourceHealth } from '@/lib/settings/data-source-health'
 import type { DataSourceHealth as DataSourceHealthSummary } from '@/lib/settings/data-source-health'
@@ -25,6 +28,8 @@ export async function SiteHeader({ locale }: { locale: string }) {
         rules: t('rules'),
         settings: t('settings'),
         newAnalysis: t('newAnalysis'),
+        menuTitle: t('menuTitle'),
+        themeMode: t('themeMode'),
       }}
     />
   )
@@ -38,16 +43,21 @@ export function SiteHeaderView({
   dataHealth,
 }: {
   locale: string
-  labels: { projects: string; rules: string; settings: string; newAnalysis: string }
+  labels: {
+    projects: string
+    rules: string
+    settings: string
+    newAnalysis: string
+    menuTitle: string
+    themeMode: string
+  }
   dataHealth: DataSourceHealthSummary
 }) {
   return (
     <header className="site-header">
       <div className="site-header-inner">
-        <Link href={`/${locale}/`} className="brand">
-          <span className="logo">
-            Ver<b>i</b>s
-          </span>
+        <Link href={`/${locale}/`} className="brand" aria-label="Veris Home">
+          <Logo />
         </Link>
         <nav className="site-nav" aria-label="Primary">
           <Link href={`/${locale}/projects`} className="nav-link">
@@ -68,9 +78,15 @@ export function SiteHeaderView({
             locale={locale}
           />
           <LocaleSwitch />
+          <ThemeToggle />
           <Link href={`/${locale}/new`} className="run-btn">
             {labels.newAnalysis}
           </Link>
+        </div>
+
+        {/* 移动端汉堡包抽屉组件 */}
+        <div className="mobile-nav-trigger">
+          <MobileNav locale={locale} labels={labels} />
         </div>
       </div>
     </header>

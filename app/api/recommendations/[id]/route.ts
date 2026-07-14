@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { recommendations } from '@/db/schema'
-import { getRun, markRecommendationApplied, setProjectNextRetestDue } from '@/lib/repositories'
+import { getRun, markRecommendationApplied, markRunStatus, setProjectNextRetestDue } from '@/lib/repositories'
 
 const VALID_STATUS = ['draft', 'accepted', 'edited', 'rejected'] as const
 
@@ -53,6 +53,24 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     })
     .where(eq(recommendations.id, id))
     .returning()
+
+  // 第 4 步只有在全部建议均已人工处理后才开放：任一建议回到草稿，即回到确认阶段。
+  // 这样 Stepper 的输出态来自真实状态机，而不是用户手动点进某个 URL。
+  const run = await getRun(rec.runId)
+  if (run && (run.status === 'reviewing' || run.status === 'output')) {
+    const allRecommendations = await db.query.recommendations.findMany({
+      where: eq(recommendations.runId, rec.runId),
+    })
+    const allDecided = allRecommendations.length > 0 && allRecommendations.every((item) => item.status !== 'draft')
+    const nextRunStatus = allDecided ? 'output' : 'reviewing'
+
+    if (run.status !== nextRunStatus) {
+      await markRunStatus(run.id, nextRunStatus, {
+        finishedAt: run.finishedAt ?? undefined,
+        failureReason: run.failureReason,
+      })
+    }
+  }
 
   return NextResponse.json(updated)
 }

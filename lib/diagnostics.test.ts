@@ -137,11 +137,11 @@ describe('deriveStatCards', () => {
     expect(card(cards, 'aiVisibility')).toMatchObject({ state: 'pending', reason: 'ai_probe' })
   })
 
-  // Cloudflare 未配置时缺 render_check 不是「本轮未采集」而是「渲染数据源未接入」——
-  // 空态必须能区分，否则用户以为重跑一次就有数。
-  it('reports render_provider (not uncollected) when Cloudflare is unconfigured and render evidence is missing', () => {
-    const cards = deriveStatCards([], { sources: { renderProvider: false } })
-    expect(card(cards, 'crawlableText')).toMatchObject({ state: 'pending', reason: 'render_provider' })
+  // 浏览器渲染未配置时，基础 HTML 抓取仍会跑；空态必须标为「降级采集」，
+  // 否则用户会以为重跑一次即可得到 JS 渲染差异。
+  it('reports render_fallback (not uncollected) when browser rendering is unavailable', () => {
+    const cards = deriveStatCards([], { sources: { renderProvider: false, renderStaticFallback: true } })
+    expect(card(cards, 'crawlableText')).toMatchObject({ state: 'pending', reason: 'render_fallback' })
   })
 
   it('keeps uncollected when the render provider is configured but evidence is missing this run', () => {

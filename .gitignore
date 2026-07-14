@@ -45,6 +45,7 @@ yarn-error.log*
 # local database (libSQL)
 *.db
 *.db-*
+*.db.bak
 veris.db
 
 # vercel

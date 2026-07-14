@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server'
 import Link from 'next/link'
 import { RULES_VERSION } from '@/lib/diagnosis/types'
 import { version as APP_VERSION } from '@/package.json'
+import { Logo } from './Logo'
 
 // 协议版本（探针协议 provider/model/params/prompts 的整体版本，spec §3 / plan-ux §5.2）；
 // 与 RULES_VERSION 分开钉版本号——规则库与探针协议各自独立演进。
@@ -70,7 +71,7 @@ export function SiteFooterView({
     <footer className="site-footer">
       <div className="site-footer-inner">
         <div className="sf-col">
-          <span className="sf-col-title">Veris</span>
+          <Logo />
           <p className="sf-tagline">{labels.productTagline}</p>
           <p className="sf-methodology">{labels.productMethodology}</p>
         </div>

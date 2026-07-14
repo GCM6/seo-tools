@@ -47,7 +47,7 @@ export default async function SiteStructurePage({
 
   if (!payload) {
     return (
-      <Shell active={2} locale={locale} runId={id} domain={project?.domain}>
+      <Shell runId={id} domain={project?.domain}>
         <section className="screen show">
           <h1 className="text-lg font-semibold">{t('title')}</h1>
           <p className="mt-4 text-sm text-neutral-500">{t('noData')}</p>
@@ -69,7 +69,7 @@ export default async function SiteStructurePage({
   const statuses = ['checked', 'discovered_only', 'blocked_by_robots', 'error'] as const
 
   return (
-    <Shell active={2} locale={locale} runId={id} domain={project?.domain}>
+    <Shell runId={id} domain={project?.domain}>
       <section className="screen show">
         <h1 className="text-lg font-semibold">
           {project?.domain} · {t('title')}

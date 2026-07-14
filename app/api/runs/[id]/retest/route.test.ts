@@ -23,8 +23,14 @@ const getRunMock = vi.fn(async (id: string) =>
 const getProjectMock = vi.fn(async (id: string) =>
   id === 'proj_1' ? { id: 'proj_1', domain: 'https://example.com/' } : null,
 )
-const markRunStatusMock = vi.fn(async () => undefined)
-const findActiveRunMock = vi.fn(async () => undefined as { id: string; status: string } | undefined)
+const markRunStatusMock = vi.fn(async (...args: unknown[]) => {
+  void args
+  return undefined
+})
+const findActiveRunMock = vi.fn(async (...args: unknown[]) => {
+  void args
+  return undefined as { id: string; status: string } | undefined
+})
 
 vi.mock('@/lib/repositories', () => ({
   getRun: (id: string) => getRunMock(id),
@@ -33,7 +39,10 @@ vi.mock('@/lib/repositories', () => ({
   findActiveRun: (id: string) => findActiveRunMock(id),
 }))
 
-const sendMock = vi.fn(async () => ({ ids: ['evt_1'] }))
+const sendMock = vi.fn(async (...args: unknown[]) => {
+  void args
+  return { ids: ['evt_1'] }
+})
 
 vi.mock('@/lib/inngest/client', () => ({
   inngest: { send: (...args: unknown[]) => sendMock(...(args as [])) },

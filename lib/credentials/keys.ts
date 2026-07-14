@@ -1,6 +1,6 @@
 // BYOK 凭据允许清单：矩阵/保存路由/测连接的共用真源。键名 = env 变量名，使 DB>env 同名覆盖。
 export type CredentialProvider =
-  | 'openai' | 'perplexity' | 'gemini' | 'deepseek' | 'googleCse' | 'dataforseo' | 'cloudflare'
+  | 'openai' | 'perplexity' | 'gemini' | 'deepseek' | 'googleCse' | 'dataforseo' | 'cloudflare' | 'browserless'
 
 export interface CredentialKeyMeta {
   key: string
@@ -19,6 +19,7 @@ export const CREDENTIAL_KEYS: CredentialKeyMeta[] = [
   { key: 'DATAFORSEO_PASSWORD', provider: 'dataforseo', testable: false },
   { key: 'CLOUDFLARE_ACCOUNT_ID', provider: 'cloudflare', testable: false },
   { key: 'CLOUDFLARE_API_TOKEN', provider: 'cloudflare', testable: false },
+  { key: 'BROWSERLESS_API_TOKEN', provider: 'browserless', testable: false },
 ]
 
 export const isAllowedCredentialKey = (k: string): boolean => CREDENTIAL_KEYS.some((c) => c.key === k)

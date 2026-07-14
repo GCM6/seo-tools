@@ -12,7 +12,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const project = await getProject(run.projectId)
   if (!project) return NextResponse.json({ error: 'not_found' }, { status: 404 })
 
-  await markRunStatus(id, 'collecting', { failureReason: null })
+  await markRunStatus(id, 'collecting', { failureReason: null, allowCancelled: true })
   try {
     await inngest.send(buildCollectRequestedEvent(run, project.domain))
   } catch (err) {

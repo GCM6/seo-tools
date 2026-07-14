@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
+import Script from 'next/script'
 import { Geist, Geist_Mono, Noto_Sans_SC } from 'next/font/google'
 import { NextIntlClientProvider, hasLocale } from 'next-intl'
 import { setRequestLocale } from 'next-intl/server'
@@ -63,6 +64,26 @@ export default async function LocaleLayout({
 
   return (
     <html lang={locale} className={fontVariables}>
+      <head>
+        <Script
+          id="theme-init"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var savedTheme = localStorage.getItem('theme');
+                  if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                    document.documentElement.classList.add('dark');
+                  } else {
+                    document.documentElement.classList.remove('dark');
+                  }
+                } catch (e) {}
+              })()
+            `,
+          }}
+        />
+      </head>
       <body>
         {/* SiteHeader 内含 client 组件（LocaleSwitch/DataSourceHealth），必须在 Provider 内渲染
             （design spec §1.3）。全站导航/footer 从"每页自包 Shell"改为 layout 统一渲染，

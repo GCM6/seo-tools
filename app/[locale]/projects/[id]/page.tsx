@@ -48,7 +48,7 @@ export default async function ProjectDetailPage({
   return (
     <section className="screen show">
       <div className="sec-h">
-        <h1 className="text-lg font-semibold mono">{project.domain}</h1>
+        <h1 className="project-detail-title">{project.domain}</h1>
         {activeRun ? (
           <Link href={`/${locale}/runs/${activeRun.id}`} className="run-btn">
             {tp('actionRunning')}
@@ -80,7 +80,7 @@ export default async function ProjectDetailPage({
         <p className="note">{t('retestDue', { date: project.nextRetestDueAt })}</p>
       ) : null}
 
-      <h2 className="mt-6 text-sm font-medium">{t('runHistoryTitle')}</h2>
+      <h2 className="project-detail-section-title">{t('runHistoryTitle')}</h2>
       <RunHistory
         locale={locale}
         runs={runs}

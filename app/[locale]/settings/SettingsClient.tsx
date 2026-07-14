@@ -11,6 +11,7 @@ interface SopDetail {
   benefit: string
   sopSteps: string[]
   envKeys?: string[]
+  quickLinks?: Array<{ label: string; href: string }>
 }
 
 function getSourceSopDetails(key: string): SopDetail | null {
@@ -24,7 +25,7 @@ function getSourceSopDetails(key: string): SopDetail | null {
           '进入“API 和服务 > 库”，搜索并启用 "Google Search Console API"。',
           '进入“OAuth 同意屏幕”，配置应用名称，并在 Scope 范围中确保包含 Search Console 的只读权限（例如 ../auth/webmasters.readonly）。',
           '进入“凭据”页面，点击“创建凭据”并选择“OAuth 客户端 ID”，应用类型选择“Web 应用程序”。',
-          '在“已授权的重定向 URI”中，添加您的回调地址（例如本地开发填：http://localhost:3000/api/auth/callback/google）。',
+          '在“已授权的重定向 URI”中，添加您的回调地址（例如本地开发填：http://localhost:3000/api/gsc/callback）。',
           '创建成功后，将生成的 Client ID 与 Client Secret 配置到本地 .env 中的 GOOGLE_OAUTH_CLIENT_ID 和 GOOGLE_OAUTH_CLIENT_SECRET 变量。',
           '最后，前往具体“项目详情页”点击“连接 GSC”按钮，进行 OAuth 扫码授权，并勾选绑定域名站点即可。',
         ],
@@ -33,18 +34,27 @@ function getSourceSopDetails(key: string): SopDetail | null {
           'GOOGLE_OAUTH_CLIENT_SECRET',
           'GOOGLE_OAUTH_REDIRECT_URI',
         ],
+        quickLinks: [
+          { label: '打开 Google Cloud 的 OAuth 凭据页', href: 'https://console.cloud.google.com/apis/credentials' },
+          { label: '打开 Search Console 添加或确认站点', href: 'https://search.google.com/search-console' },
+        ],
       }
     case 'googleCse':
       return {
         why: '通过 Google 自定义搜索引擎 (CSE) 提供对传统 Google 网页搜索结果的实时抓取和收录验证。',
         benefit: '验证网站的自然收录状态，实时监控关键词在 Google 搜索结果（SERP）中的真实快照与排名位置。',
         sopSteps: [
-          '访问 Google CSE 控制台 (https://programmablesearch.google.com/) 创建自定义搜索引擎。',
-          '在设置中开启 "搜索整个网络" (Search the entire web) 开关。',
-          '获取搜索引擎 ID 并在本地配置：GOOGLE_CSE_CX="你的CX值"。',
-          '在右侧凭据录入区填入 GOOGLE_CSE_API_KEY 并保存。',
+          '访问 Google CSE 控制台 (https://cse.google.com/cse/) 创建自定义搜索引擎。',
+          '新建 CSE 只能配置指定站点；若账户已有全网搜索引擎，可在设置中继续使用它。',
+          '获取搜索引擎 ID（CX）后，在右侧凭据录入区填入 GOOGLE_CSE_CX。',
+          '在 Google Cloud 凭据页创建 API Key 后，同样在右侧填入 GOOGLE_CSE_API_KEY 并保存。',
+          '如果 Google 不允许该账户新开 Custom Search JSON API，请改用 DataForSEO 获取 SERP 数据，不要在此反复尝试。',
         ],
         envKeys: ['GOOGLE_CSE_CX', 'GOOGLE_CSE_API_KEY'],
+        quickLinks: [
+          { label: '打开 CSE 控制台（已有 API 资格时获取 CX）', href: 'https://programmablesearchengine.google.com/controlpanel/all' },
+          { label: '打开 Google Cloud 凭据页（创建 API Key）', href: 'https://console.cloud.google.com/apis/credentials' },
+        ],
       }
     case 'aiProbe':
       return {
@@ -61,19 +71,26 @@ function getSourceSopDetails(key: string): SopDetail | null {
         benefit: '支持外链指标、关键词检索量、竞品 SoV 及关键词缺口诊断，填补自有流量数据之外的全球市场诊断数据。',
         sopSteps: [
           '注册并登录 DataForSEO 控制台。',
-          '在本地 .env 配置文件中设置：DATAFORSEO_LOGIN 与 DATAFORSEO_PASSWORD。',
+          '将 API Access 中的 Login 与 API password 分别填入右侧的 DATAFORSEO_LOGIN、DATAFORSEO_PASSWORD 并保存。',
         ],
         envKeys: ['DATAFORSEO_LOGIN', 'DATAFORSEO_PASSWORD'],
+        quickLinks: [
+          { label: '打开 DataForSEO API Access（复制 Login / Password）', href: 'https://app.dataforseo.com/api-access' },
+        ],
       }
     case 'render':
       return {
-        why: '基于 Cloudflare Browser Rendering 提供页面端动态 JavaScript 渲染和解析诊断。',
-        benefit: '能够完整支持单页应用 (SPA) 站点的可解析性诊断，计算正文内容的“可解析性占比”。',
+        why: '浏览器级渲染不绑定目标网站的 CDN：系统优先使用 Cloudflare；没有 Cloudflare 时会切换到 Browserless Chromium，二者都取得 JavaScript 执行后的真实 HTML。',
+        benefit: '两种渲染器都会计算初始 HTML 与 JS 渲染后正文的差异，因此 SPA 可抓取性、正文占比和 render_check 证据保持同一套结果合同。',
         sopSteps: [
-          '登录 Cloudflare 控制台，获取 Account ID 并生成具有 Browser Rendering 权限的 API Token。',
-          '在本地 .env 配置文件中设置 CLOUDFLARE_ACCOUNT_ID 与 CLOUDFLARE_API_TOKEN。',
+          '方案 A：在右侧填入 CLOUDFLARE_ACCOUNT_ID 与 CLOUDFLARE_API_TOKEN，使用 Cloudflare Browser Rendering。',
+          '方案 B：没有 Cloudflare 时，在右侧填入 BROWSERLESS_API_TOKEN，系统将调用 Browserless Chromium 的 Content API，获得同样的渲染后 HTML。',
+          '若自托管 Browserless，在服务环境设置 BROWSERLESS_CONTENT_URL=https://<你的渲染服务>/chromium/content；未设置时使用 Browserless 托管 Content API。',
         ],
-        envKeys: ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'],
+        envKeys: ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN', 'BROWSERLESS_API_TOKEN', 'BROWSERLESS_CONTENT_URL'],
+        quickLinks: [
+          { label: '打开 Browserless 获取 API Token', href: 'https://www.browserless.io/' },
+        ],
       }
     case 'psi':
       return {
@@ -112,7 +129,7 @@ export function SettingsClient({
     if (parts.length === 1) return text
 
     return parts.map((part, index) => {
-      if (urlRegex.test(part)) {
+      if (/^https?:\/\//.test(part)) {
         return (
           <a
             key={index}
@@ -165,8 +182,8 @@ export function SettingsClient({
         if (s.configured) return '已成功配置 DataForSEO，支持拉取真实搜索量、竞品 SoV 及关键词诊断。'
         return '需在本地 .env 配置文件中设置 DATAFORSEO_LOGIN 与 DATAFORSEO_PASSWORD。'
       case 'render':
-        if (s.configured) return '已连接 Cloudflare 托管浏览器渲染，支持正文可抓取占比诊断。'
-        return '需在本地 .env 配置文件中设置 CLOUDFLARE_ACCOUNT_ID 与 CLOUDFLARE_API_TOKEN。'
+        if (s.configured) return `已启用 ${s.detail ?? '浏览器'} 级渲染，可实测初始 HTML 与 JS 渲染后正文的差异。`
+        return '请配置 Cloudflare 或 Browserless 任一真实浏览器渲染器；仅基础 HTML 抓取无法得到 SPA 的 JS 正文差异。'
       case 'psi':
         return 'Google PageSpeed Insights 诊断服务已就绪，开箱即用，无需额外凭据。'
       case 'publicCorpora':
@@ -337,6 +354,30 @@ export function SettingsClient({
                             </div>
                             
                             <div className="border-t border-border-subtle/50 my-2" />
+
+                            {sop.quickLinks && sop.quickLinks.length > 0 && (
+                              <>
+                                <div>
+                                  <div className="flex items-center gap-1 text-ink font-semibold mb-1">
+                                    <span className="text-xs">↗</span> 直接去连接
+                                  </div>
+                                  <div className="flex flex-wrap gap-1.5 pl-4">
+                                    {sop.quickLinks.map((link) => (
+                                      <a
+                                        key={link.href}
+                                        href={link.href}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-primary-muted px-2 py-1 text-[10px] font-medium text-primary hover:bg-primary/15"
+                                      >
+                                        {link.label}<span aria-hidden="true">↗</span>
+                                      </a>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="border-t border-border-subtle/50 my-2" />
+                              </>
+                            )}
                             
                             <div>
                               <div className="flex items-center gap-1 text-ink font-semibold mb-0.5">

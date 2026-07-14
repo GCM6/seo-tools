@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import type { HealthItem } from '@/lib/settings/data-source-health'
+import { getDataSourceConnectHref, isExternalConnectHref } from '@/lib/settings/connect-links'
 
 // 顶栏常驻的数据源健康度 pill + 抽屉。client leaf——只有它需要交互（toggle）。
 // pill 显示 up/total，配色随健康度分档；点开抽屉逐源列出状态 + 缺失影响，
@@ -27,10 +28,9 @@ export function DataSourceHealth({
   // 健康度分档：全绿 ok / 半 warn / 全缺 bad——驱动 pill 语义配色。
   const tone = up >= total ? 'ok' : up === 0 ? 'bad' : 'warn'
 
-  // GSC 连接已按项目移到项目详情页（SP-G1b）；其余源（aiProbe/dataforseo…）仍在全局设置页。
-  // 有 projectId 时 gsc「去连接」指向项目详情，否则回退设置页锚点（不回归）。
-  const connectHref = (key: string): string =>
-    key === 'gsc' && projectId ? `/${locale}/projects/${projectId}` : `/${locale}/settings#source-${key}`
+  // GSC 有项目上下文时回项目完成 OAuth；否则、以及 CSE/DataForSEO，直接去官方控制台。
+  // 其余本地 BYOK 源仍定位到本应用的凭据区。
+  const connectHref = (key: HealthItem['key']) => getDataSourceConnectHref(key, locale, projectId)
 
   return (
     <div className="ds-health">
@@ -58,11 +58,18 @@ export function DataSourceHealth({
               </div>
               {it.up ? (
                 <span className="ds-row-ok">{t('statusUp')}</span>
-              ) : (
-                <Link href={connectHref(it.key)} className="ds-row-connect">
-                  {t('connect')}
-                </Link>
-              )}
+              ) : (() => {
+                const href = connectHref(it.key)
+                return isExternalConnectHref(href) ? (
+                  <a href={href} target="_blank" rel="noopener noreferrer" className="ds-row-connect">
+                    {t('connect')}
+                  </a>
+                ) : (
+                  <Link href={href} className="ds-row-connect">
+                    {t('connect')}
+                  </Link>
+                )
+              })()}
             </div>
           ))}
         </div>

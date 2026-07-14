@@ -76,7 +76,8 @@ function riskText(promptType: PromptType, hit: RuleHit): string {
 }
 
 // 单条命中 → 建议草稿：查模板（无则按 side 兜底），套 Impact×Effort 四象限，全部中文文案。
-export function generateRecommendation(hit: RuleHit, _ctx?: { domain?: string }): RecommendationDraft {
+export function generateRecommendation(hit: RuleHit, ctx?: { domain?: string }): RecommendationDraft {
+  void ctx
   const tpl = templates[hit.ruleId] ?? genericTemplate(hit.side)
   const impact = impactLevel(hit)
   const priority = priorityQuadrant(impact, tpl.effort)
