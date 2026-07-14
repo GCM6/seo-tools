@@ -50,6 +50,13 @@
       "when": 1783478351105,
       "tag": "0006_wide_odin",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1783936617257,
+      "tag": "0008_tiny_the_twelve",
+      "breakpoints": true
     }
   ]
 }

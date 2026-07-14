@@ -34,6 +34,9 @@ export const projectSettings = sqliteTable('project_settings', {
   crawlEnabled: integer('crawl_enabled', { mode: 'boolean' }).notNull().default(true),
   crawlMaxPages: integer('crawl_max_pages').notNull().default(200),
   crawlMaxDepth: integer('crawl_max_depth').notNull().default(3),
+  // D7（GEO branded/unbranded 重设计）：用户在设置页维护的品牌别名，供探针 branded 判定 /
+  // parse 的 mentions 逐一匹配。匹配配置而非发布事实，不走 verified 闸门。
+  brandAliases: text('brand_aliases', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
 })
 
 export const brandFacts = sqliteTable('brand_facts', {
@@ -124,6 +127,9 @@ export const prompts = sqliteTable('prompts', {
   market: text('market').notNull().default(''),
   language: text('language').notNull().default(''),
   priority: integer('priority').notNull().default(0),
+  // D1（GEO branded/unbranded 重设计）：问题文本本身是否含品牌/别名（自动覆盖条件分支模板）。
+  // 生成时判定，探测协议（问题文本/配额/template 版本）本身不变。
+  branded: integer('branded', { mode: 'boolean' }).notNull().default(false),
 })
 
 export const evidenceArtifacts = sqliteTable('evidence_artifacts', {
@@ -159,6 +165,9 @@ export const aiProbeResults = sqliteTable('ai_probe_results', {
   competitorsMentioned: text('competitors_mentioned', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
   citedUrls: text('cited_urls', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
   sentiment: text('sentiment').notNull().default('neutral'),
+  // D2：确定性词表检测——猜测标记 / 承认不知道，零 LLM。判定语义随 PROBE_PARSER_VERSION（lib/probes/parse.ts）演进。
+  hedged: integer('hedged', { mode: 'boolean' }).notNull().default(false),
+  unknownAdmission: integer('unknown_admission', { mode: 'boolean' }).notNull().default(false),
   rawAnswerHash: text('raw_answer_hash').notNull(),
   parserVersion: text('parser_version').notNull().default('v0'),
 })
