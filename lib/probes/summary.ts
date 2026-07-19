@@ -4,12 +4,28 @@
 import { competitorsInText } from './parse'
 import { wilsonLowerBound } from '@/lib/stats/wilson'
 import { resolveWebSearchEnabled, classifyBrandedAnswer } from './engine-capability'
+import { classifyCitationOrigin } from './citation-origin'
+import { classifyCitationPlatform, isUgcPlatform, type CitationPlatform } from './citation-platform'
 
 // D6（分引擎语义标注）：引擎按 webSearchEnabled 分「检索型 / 记忆型」。summary 是纯函数，
 // 不做 IO——调用方理应把每条结果实测到的 web_search_enabled 传进来（evidence payload 已落
 // 该字段，参见 deepseek.ts:3-5 注释）；读不到时按 provider 静态能力表兜底。判定实现（含五态
 // 分类）已收口到 lib/probes/engine-capability.ts，作为 lib/diagnosis/rules/geo.ts 与
 // components/probeEngineCapability.ts 的唯一真源（Wave 3 消除三份复制）。
+
+// 项目 domain 归一化：projects.domain 落库时可能带协议/www（如 "https://www.example.com"），
+// 而 ProbeSummaryInput.domain（供 owned/third_party 判定，见下方注释）以及
+// classifyCitationOrigin/hostMatchesDomain 期望的是裸 host。三处调用点（lib/inngest/
+// generate-findings.ts 的 run-rules step + 回测 buildRunMetrics、lib/inngest/
+// reevaluate-competitors.ts）共用这一份实现，不各写一份。解析失败（domain 本就是裸 host，
+// 不是合法 URL）时原样返回，不抛错。
+export function normalizeProjectDomain(raw: string): string {
+  try {
+    return new URL(raw).hostname.replace(/^www\./, '')
+  } catch {
+    return raw
+  }
+}
 
 export interface ProbeSummaryInput {
   prompts: { id: string; text: string; priority: number; branded?: boolean }[]
@@ -34,6 +50,9 @@ export interface ProbeSummaryInput {
   }[]
   brand: string
   competitors: string[]
+  // ⑤（引用来源归属分类）：目标域名，供 citedDomains 判定 owned/third_party。可选——旧调用方
+  // 不传时无法验证"自有"，保守把全部被引用域名归为 third_party（不产出无证据结论）。
+  domain?: string
 }
 
 // 引用情感分布（G09）：对含品牌样本按 sentiment 计数。分类器是测量层解析器（parser_version 版本化）。
@@ -43,6 +62,16 @@ export interface SentimentBreakdown {
   negative: number
   comparison: number
   total: number
+}
+
+// ⑤：被引用域名分布条目——域名（已归一去 www）、出现次数、owned/third_party 归属、平台分类。
+export interface CitedDomainEntry {
+  domain: string
+  count: number
+  origin: 'owned' | 'third_party'
+  // 平台分类（新增）：域名→已知社区/参考类平台，认不出的域名一律 'other'（不猜测），
+  // 分类实现见 citation-platform.ts。
+  platform: CitationPlatform
 }
 
 export interface SovEntry {
@@ -107,10 +136,21 @@ export interface ProbeSummary {
   // D4：联网引擎的回答中 citedUrls 非空占比（0..1 原始比率，不取整）。其回测方差远大于 presence，
   // 阈值独立判断，不与 presence/SoV 共用同一套噪声纪律。
   citationRate: number
+  // ⑤：被引用域名分布（域名→出现次数，标注 owned/third_party、平台分类），按次数降序。只统计
+  // 正文真正引用的 citedUrls（不含 retrievedUrls——"仅被检索到"不是"被引用"，语义上不该混进
+  // 这个分布）。全集口径（branded+unbranded 均计入），与既有 owned/third_party 归属口径一致。
+  citedDomains: CitedDomainEntry[]
+  // 社区/UGC 引用占比（新增）：cited 引用条数中落在社区/UGC 平台（reddit/quora/youtube/linkedin，
+  // 见 citation-platform.ts 的 isUgcPlatform）的占比。口径：只统计 unbranded 问题子集下的
+  // citedUrls（与 sov/sovByEngine 同一限定，见 D4 注释）——品牌题下模型倾向复述官方信息源，
+  // 混入会稀释/扭曲"自然討論面引用"这个信号；分母是 unbranded 子集下全部 citedUrls 条数
+  // （不含 retrievedUrls，与 citedDomains 同口径），为 0 时无法计算比例，返回 null（不是 0%，
+  // 避免"无数据"被误读为"测得 0%"）。
+  ugcCitationShare: number | null
 }
 
 export function aggregateProbeSummary(input: ProbeSummaryInput): ProbeSummary | null {
-  const { prompts, results, brand, competitors } = input
+  const { prompts, results, brand, competitors, domain } = input
   if (results.length === 0) return null
 
   const ordered = [...prompts].sort((a, b) => a.priority - b.priority)
@@ -253,6 +293,49 @@ export function aggregateProbeSummary(input: ProbeSummaryInput): ProbeSummary | 
   const citationRate =
     onlineResults.length === 0 ? 0 : onlineResults.filter((r) => (r.citedUrls ?? []).length > 0).length / onlineResults.length
 
+  // —— ⑤：被引用域名分布——对全部样本的 citedUrls（只认正文引用，不含 retrievedUrls）按归一化
+  // 域名（去 www、小写）计数，畸形 URL 忽略（不产出无证据的域名条目）。origin 用原始 URL 经
+  // classifyCitationOrigin 判定（复用 citation-origin.ts 唯一实现，不重复一套匹配逻辑）；
+  // domain 未传时无法验证"自有"，全部保守归为 third_party（见 ProbeSummaryInput.domain 注释）。
+  const domainCounts = new Map<string, { count: number; origin: 'owned' | 'third_party'; platform: CitationPlatform }>()
+  for (const r of results) {
+    for (const u of r.citedUrls ?? []) {
+      let host: string
+      try {
+        host = new URL(u).hostname.replace(/^www\./, '').toLowerCase()
+      } catch {
+        continue // 畸形 URL：忽略，不计入分布
+      }
+      const origin = domain ? classifyCitationOrigin(u, domain) : 'third_party'
+      const platform = classifyCitationPlatform(host)
+      const bucket = domainCounts.get(host) ?? { count: 0, origin, platform }
+      bucket.count += 1
+      domainCounts.set(host, bucket)
+    }
+  }
+  const citedDomains: CitedDomainEntry[] = [...domainCounts.entries()]
+    .map(([d, b]) => ({ domain: d, count: b.count, origin: b.origin, platform: b.platform }))
+    .sort((a, b) => b.count - a.count || a.domain.localeCompare(b.domain))
+
+  // —— 社区/UGC 引用占比（新增）——：限定 unbranded 子集（复用上面已算好的 unbrandedResults，
+  // 与 sov/sovByEngine 同一限定），只认 citedUrls（不含 retrievedUrls），畸形 URL 与 citedDomains
+  // 循环同规则忽略、不计入分母（见字段注释）。
+  let unbrandedCitedTotal = 0
+  let unbrandedUgcCitedCount = 0
+  for (const r of unbrandedResults) {
+    for (const u of r.citedUrls ?? []) {
+      let host: string
+      try {
+        host = new URL(u).hostname.replace(/^www\./, '').toLowerCase()
+      } catch {
+        continue // 畸形 URL：忽略，不计入分子分母
+      }
+      unbrandedCitedTotal += 1
+      if (isUgcPlatform(classifyCitationPlatform(host))) unbrandedUgcCitedCount += 1
+    }
+  }
+  const ugcCitationShare = unbrandedCitedTotal === 0 ? null : unbrandedUgcCitedCount / unbrandedCitedTotal
+
   return {
     promptsTotal: ordered.length,
     promptsPresent: perPrompt.filter((p) => p.present).length,
@@ -266,5 +349,7 @@ export function aggregateProbeSummary(input: ProbeSummaryInput): ProbeSummary | 
     unbranded,
     branded: brandedBreakdown,
     citationRate,
+    citedDomains,
+    ugcCitationShare,
   }
 }

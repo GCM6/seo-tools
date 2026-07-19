@@ -3,6 +3,7 @@ import { NonRetriableError } from 'inngest'
 import { generateFindingsHandler } from './generate-findings'
 import type { RuleHit } from '@/lib/diagnosis/types'
 import { aggregateRuleStats } from '@/lib/diagnosis/rule-stats'
+import { aggregateAioExposure } from '@/lib/serp/aio-summary'
 
 function makeHit(overrides: Partial<RuleHit> = {}): RuleHit {
   return {
@@ -30,6 +31,12 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     })),
     getRunPrompts: vi.fn(async () => [{ id: 'p_1', text: 'best tool?', priority: 0 }]),
     getRunProbeResults: vi.fn(async () => []),
+    // GEO 新口径回测扩展：默认无 AIO 采集（旧 run / 未配置 DataForSEO 的常见状态）——
+    // 空结果 + 全零 summary，配合 retest-metrics.ts 的「measuredQueries===0 → 无数据」判定。
+    getRunSerpAioResults: vi.fn(async () => []),
+    aggregateAioExposure: vi.fn(() => ({
+      totalQueries: 0, measuredQueries: 0, aioPresentCount: 0, ownedCitedCount: 0, citedDomains: [], perQuery: [],
+    })),
     createFindings: vi.fn(async (rows: unknown[]) => rows),
     createRecommendations: vi.fn(async (rows: unknown[]) => rows),
     markRunStatus: vi.fn(async () => undefined),
@@ -172,10 +179,27 @@ describe('generateFindingsHandler', () => {
     const probeInput = (deps.aggregateProbeSummary.mock.calls[0] as unknown[])[0] as Record<string, unknown>
     expect(probeInput.brand).toBe('example')
     expect(probeInput.competitors).toEqual(['rival.com'])
+    // 遗留②修复（第二波任务）：run-rules step 此前未传 domain，citedDomains 的 owned 判定
+    // 恒为 third_party；现在应补齐归一化后的裸 host（去协议、去 www，与 buildRunMetrics 同一写法）。
+    expect(probeInput.domain).toBe('example.com')
     // buildRuleContext 收到派生的 project + 证据行
     const ctxInput = (deps.buildRuleContext.mock.calls[0] as unknown[])[0] as { project: { domain: string }; evidence: unknown[] }
     expect(ctxInput.project.domain).toBe('example.com')
     expect(ctxInput.evidence).toHaveLength(1)
+  })
+
+  it('run-rules 路径下 domain 归一化：project.domain 带协议/www 时 aggregateProbeSummary 收到裸 host', async () => {
+    const deps = makeDeps({
+      getProject: vi.fn(async () => ({
+        id: 'proj_1', domain: 'https://www.example.com', industry: '', market: 'US', language: 'en', competitors: ['rival.com'], ownerId: 'local',
+      })),
+    })
+    const { args } = makeArgs()
+
+    await generateFindingsHandler(args, asDeps(deps))
+
+    const probeInput = (deps.aggregateProbeSummary.mock.calls[0] as unknown[])[0] as Record<string, unknown>
+    expect(probeInput.domain).toBe('example.com')
   })
 
   // —— 回测收尾（spec §5.1-3）——
@@ -380,6 +404,66 @@ describe('generateFindingsHandler', () => {
     const snapRows = deps.createRetestSnapshots.mock.calls[0][0] as Array<Record<string, string>>
     const names = snapRows.map((r) => r.metricName)
     expect(names).toContain('probe.brand_presence')
+  })
+
+  // —— GEO 新口径回测扩展：citedDomains owned 占比 + AIO 实测曝光 ——
+  it('buildRunMetrics 现在给 aggregateProbeSummary 传 domain（此前遗漏，owned 判定永远算不出）', async () => {
+    const deps = makeRetestDeps()
+    const { args } = makeArgs({ baselineRunId: 'run_base' })
+    await generateFindingsHandler(args, asDeps(deps))
+    const calls = deps.aggregateProbeSummary.mock.calls as unknown as Array<[Record<string, unknown>]>
+    // run-rules 步骤那次调用历史上就不传 domain（未在本任务范围内修复）；
+    // 这里断言 buildRunMetrics 派生的调用里 domain 已补上（去协议、去 www 的裸 host）。
+    expect(calls.some((c) => c[0].domain === 'example.com')).toBe(true)
+  })
+
+  it('两轮都有 serp_aio 数据 → retest_snapshots 含 aio.present_rate / aio.owned_cited_rate 正常涨跌', async () => {
+    const deps = makeRetestDeps({
+      getRunSerpAioResults: vi.fn(async (rid: string) =>
+        rid === 'run_base'
+          ? [{ keyword: 'k1', aioPresent: true, targetDomainCited: false, citedUrls: ['https://other.com/a'] }]
+          : [
+              { keyword: 'k1', aioPresent: true, targetDomainCited: true, citedUrls: ['https://example.com/a'] },
+              { keyword: 'k2', aioPresent: true, targetDomainCited: true, citedUrls: ['https://example.com/b'] },
+            ],
+      ),
+      aggregateAioExposure,
+    })
+    const { args } = makeArgs({ baselineRunId: 'run_base' })
+    await generateFindingsHandler(args, asDeps(deps))
+    const snapRows = deps.createRetestSnapshots.mock.calls[0][0] as Array<Record<string, string>>
+    const byMetric = Object.fromEntries(snapRows.map((r) => [r.metricName, r]))
+    // baseline: 1/1 present(100%) 0/1 owned(0%)；retest: 2/2 present(100%) 2/2 owned(100%)
+    expect(byMetric['aio.present_rate']).toMatchObject({ baselineValue: '100%', retestValue: '100%', delta: '0' })
+    expect(byMetric['aio.owned_cited_rate']).toMatchObject({ baselineValue: '0%', retestValue: '100%', delta: '+100' })
+    expect(byMetric['aio.owned_cited_rate'].interpretation).toContain('上升')
+    expect(byMetric['aio.owned_cited_rate'].interpretation).toContain('实测')
+  })
+
+  it('baseline 无 serp_aio 数据、retest 有 → aio 指标只展示当前值，delta 标不可比', async () => {
+    const deps = makeRetestDeps({
+      // 默认 getRunSerpAioResults 返回 []（见 makeDeps），只覆盖 retest 侧有数据。
+      getRunSerpAioResults: vi.fn(async (rid: string) =>
+        rid === 'run_base' ? [] : [{ keyword: 'k1', aioPresent: true, targetDomainCited: true, citedUrls: ['https://example.com/a'] }],
+      ),
+      aggregateAioExposure,
+    })
+    const { args } = makeArgs({ baselineRunId: 'run_base' })
+    await generateFindingsHandler(args, asDeps(deps))
+    const snapRows = deps.createRetestSnapshots.mock.calls[0][0] as Array<Record<string, string>>
+    const byMetric = Object.fromEntries(snapRows.map((r) => [r.metricName, r]))
+    expect(byMetric['aio.present_rate']).toMatchObject({ baselineValue: '—', retestValue: '100%', delta: '—' })
+    expect(byMetric['aio.present_rate'].interpretation).not.toMatch(/上升|下降/)
+  })
+
+  it('两轮都无 serp_aio 数据（默认兼容态）→ 不产出 aio.* 行', async () => {
+    const deps = makeRetestDeps()
+    const { args } = makeArgs({ baselineRunId: 'run_base' })
+    await generateFindingsHandler(args, asDeps(deps))
+    const snapRows = deps.createRetestSnapshots.mock.calls[0][0] as Array<Record<string, string>>
+    const names = snapRows.map((r) => r.metricName)
+    expect(names).not.toContain('aio.present_rate')
+    expect(names).not.toContain('aio.owned_cited_rate')
   })
 
   it('无 baselineRunId 时不触发回测 delta（保持原行为）', async () => {

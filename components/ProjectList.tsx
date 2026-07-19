@@ -10,6 +10,7 @@ export interface ProjectSummaryItem {
   id: string
   domain: string
   market: string
+  gscReady: boolean
   nextRetestDueAt: string | null
   latestRun: { id: string; runType: string; status: string; startedAt: string | null; findingCount: number } | null
   // 重新分析三态判定所需（spec §2.1 修订）：进行中 run / 可回测的锚点 baseline。
@@ -89,6 +90,8 @@ export function ProjectList({
     retestLabel: string
     latestStatusLabel: string
     findingsDetectedLabel: string
+    gscConnected: string
+    gscPending: string
   }
   statusLabels: Record<string, string>
   runTypeLabels: Record<string, string>
@@ -146,6 +149,10 @@ export function ProjectList({
                     <div className="project-card-meta">
                       <span className="project-card-meta-item">
                         {p.market} {labels.marketLabel}
+                      </span>
+                      <span className={`project-card-meta-item ${p.gscReady ? 'text-success' : 'text-muted'}`}>
+                        <span className={`status-indicator-dot ${p.gscReady ? 'active' : 'inactive'}`} />
+                        {p.gscReady ? labels.gscConnected : labels.gscPending}
                       </span>
                       <span className="project-card-meta-item project-card-meta-retest">
                         <CalendarIcon />

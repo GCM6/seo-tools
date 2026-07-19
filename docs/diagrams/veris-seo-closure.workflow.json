@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Veris SEO / GEO 真实闭环与当前断点",
+    "subtitle": "基于当前工作区代码：实线为已落地链路；异常泳道是尚未闭合的业务与运营环节",
+    "output": "docs/diagrams/veris-seo-closure.html",
+    "viewBox": [720, 860]
+  },
+  "lanes": [
+    { "id": "owner", "label": "客户 / 运营负责人" },
+    { "id": "collection", "label": "Veris 采集与证据" },
+    { "id": "decision", "label": "Veris 诊断与人工决策" },
+    { "id": "execution", "label": "人工执行与验证" },
+    { "id": "gaps", "label": "未闭环的断点", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "scope", "label": "01 范围与授权", "fromCol": 0, "toCol": 0 },
+    { "id": "evidence", "label": "02 证据采集", "fromCol": 1, "toCol": 2, "variant": "emphasis" },
+    { "id": "diagnose", "label": "03 诊断与确认", "fromCol": 3, "toCol": 4, "variant": "emphasis" },
+    { "id": "verify", "label": "04 执行与回测", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "providers", "label": "网站 + GSC + CSE + 渲染 + AI / SERP", "lane": "collection", "fromCol": 1, "toCol": 3, "variant": "dashed" },
+    { "id": "human_gate", "label": "不可自动发布", "lane": "decision", "fromCol": 3, "toCol": 4, "variant": "security" },
+    { "id": "closure_gaps", "label": "需要产品化补齐", "lane": "gaps", "fromCol": 2, "toCol": 5, "variant": "security" }
+  ],
+  "mainPath": ["scope_input", "create_run", "collect_evidence", "persist_contract", "findings", "human_gate", "output_prompt", "apply", "retest"],
+  "nodes": [
+    { "id": "scope_input", "lane": "owner", "col": 0, "type": "external", "label": "范围 / 授权", "sublabel": "站点、市场、GSC、竞品", "tag": "人工输入" },
+    { "id": "create_run", "lane": "collection", "col": 0, "type": "backend", "label": "创建 Run", "sublabel": "异步编排", "width": 72 },
+    { "id": "collect_evidence", "lane": "collection", "col": 1, "type": "cloud", "label": "采集证据", "sublabel": "站内 + 外部 BYOK", "width": 72 },
+    { "id": "persist_contract", "lane": "collection", "col": 3, "type": "database", "label": "证据 / 覆盖", "sublabel": "原文、hash、状态", "width": 76 },
+    { "id": "findings", "lane": "decision", "col": 3, "type": "backend", "label": "规则诊断", "sublabel": "findings + 建议", "width": 70 },
+    { "id": "human_gate", "lane": "owner", "col": 3, "type": "security", "label": "人工闸门", "sublabel": "接受 / 编辑 / 否决", "width": 76 },
+    { "id": "output_prompt", "lane": "decision", "col": 4, "type": "frontend", "label": "输出资产", "sublabel": "报告 + prompt", "width": 54 },
+    { "id": "apply", "lane": "execution", "col": 4, "type": "external", "label": "人工实施", "sublabel": "记录 applied_at", "tag": "已实现", "width": 70 },
+    { "id": "retest", "lane": "execution", "col": 5, "type": "messagebus", "label": "手动回测", "sublabel": "同协议 delta", "tag": "已实现", "width": 70 },
+    { "id": "business_gap", "lane": "gaps", "col": 2, "type": "security", "label": "R5 业务数据", "sublabel": "GA4 / CRM / 转化定义缺失", "tag": "不能按收入排序", "width": 100 },
+    { "id": "execution_gap", "lane": "gaps", "col": 4, "type": "security", "label": "执行证据缺口", "sublabel": "无任务、负责人、URL / diff 验证", "tag": "applied ≠ deployed", "width": 94 },
+    { "id": "measurement_gap", "lane": "gaps", "col": 5, "type": "security", "label": "归因 / 节奏缺口", "sublabel": "AIO n=1；无自动复测", "tag": "因果仍不闭合", "width": 110 }
+  ],
+  "edges": [
+    { "from": "scope_input", "to": "create_run", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "create_run", "to": "collect_evidence", "variant": "emphasis" },
+    { "from": "collect_evidence", "to": "persist_contract", "variant": "emphasis" },
+    { "from": "persist_contract", "to": "findings", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "findings", "to": "human_gate", "variant": "security", "fromSide": "left", "toSide": "left", "route": "return-left" },
+    { "from": "human_gate", "to": "output_prompt", "variant": "emphasis", "fromSide": "right", "toSide": "top", "route": "outside-right" },
+    { "from": "output_prompt", "to": "apply", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "apply", "to": "retest", "variant": "dashed" },
+    { "from": "retest", "to": "create_run", "variant": "dashed", "role": "return", "fromSide": "bottom", "toSide": "bottom", "route": "bottom-channel" },
+    { "from": "findings", "to": "business_gap", "variant": "security", "role": "branch", "fromSide": "left", "toSide": "top", "route": "drop" },
+    { "from": "apply", "to": "execution_gap", "variant": "security", "role": "branch", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "retest", "to": "measurement_gap", "variant": "security", "role": "branch", "fromSide": "bottom", "toSide": "top", "route": "drop" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "已具备的可信主线",
+      "items": [
+        "采集把原始证据、hash 与数据源状态落库",
+        "finding 引证据；建议必须经人工确认才输出",
+        "回测会比较 finding、GSC、GEO 与 AIO 的可比指标"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "为什么尚未形成完整 SEO 增长闭环",
+      "items": [
+        "没有 GA4 / CRM 聚合，R5 与收入优先级无法成立",
+        "“已执行”是人工标记，无法证明改动已上线或覆盖目标 URL",
+        "SERP / AIO 仍是有限样本，且回测需人工发起"
+      ]
+    }
+  ]
+}

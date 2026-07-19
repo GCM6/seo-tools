@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { aggregateProbeSummary } from './summary'
+import { aggregateProbeSummary, normalizeProjectDomain } from './summary'
 
 const prompts = [
   { id: 'p1', text: '推荐工具？', priority: 0 },
@@ -15,6 +15,16 @@ function result(promptId: string, over: Partial<{ brandPresent: boolean; competi
     evidenceId: over.evidenceId ?? 'ev_x',
   }
 }
+
+describe('normalizeProjectDomain', () => {
+  it('带协议/www 的完整 URL → 裸 host（去协议、去 www）', () => {
+    expect(normalizeProjectDomain('https://www.example.com')).toBe('example.com')
+    expect(normalizeProjectDomain('http://example.com/path')).toBe('example.com')
+  })
+  it('已是裸 host（非法 URL，缺协议）→ 原样返回，不抛错', () => {
+    expect(normalizeProjectDomain('example.com')).toBe('example.com')
+  })
+})
 
 describe('aggregateProbeSummary', () => {
   it('returns null when there are no probe results（无数据不出 0/20 假实测）', () => {
@@ -345,5 +355,145 @@ describe('aggregateProbeSummary — citationRate (D4)', () => {
       brand: 'metadocu', competitors: [],
     })!
     expect(s.citationRate).toBe(0)
+  })
+})
+
+// ⑤：被引用域名分布——citedDomains（域名→出现次数，标注 owned/third_party）。
+describe('aggregateProbeSummary — citedDomains (⑤ 引用来源归属分类)', () => {
+  it('counts cited-domain occurrences and classifies owned vs third_party when domain is provided', () => {
+    const s = aggregateProbeSummary({
+      prompts: [{ id: 'p1', text: 'x', priority: 0 }],
+      results: [
+        { promptId: 'p1', brandPresent: false, competitorsMentioned: [], evidenceId: 'e1', citedUrls: ['https://metadocu.com/about', 'https://notion.so/page'] },
+        { promptId: 'p1', brandPresent: false, competitorsMentioned: [], evidenceId: 'e2', citedUrls: ['https://docs.metadocu.com/guide'] },
+        { promptId: 'p1', brandPresent: false, competitorsMentioned: [], evidenceId: 'e3', citedUrls: ['https://notion.so/other'] },
+      ],
+      brand: 'metadocu', competitors: [], domain: 'metadocu.com',
+    })!
+    // metadocu.com 和 docs.metadocu.com 是同一自有域名的不同子域，按归一化 host 分列（不合并子域）；
+    // count 并列时按域名字典序排（'docs...' < 'metadocu...'）。
+    expect(s.citedDomains).toEqual([
+      { domain: 'notion.so', count: 2, origin: 'third_party', platform: 'other' },
+      { domain: 'docs.metadocu.com', count: 1, origin: 'owned', platform: 'other' },
+      { domain: 'metadocu.com', count: 1, origin: 'owned', platform: 'other' },
+    ])
+  })
+
+  it('normalizes www. and counts repeated citations of the same domain across samples', () => {
+    const s = aggregateProbeSummary({
+      prompts: [{ id: 'p1', text: 'x', priority: 0 }],
+      results: [
+        { promptId: 'p1', brandPresent: false, competitorsMentioned: [], evidenceId: 'e1', citedUrls: ['https://www.notion.so/a'] },
+        { promptId: 'p1', brandPresent: false, competitorsMentioned: [], evidenceId: 'e2', citedUrls: ['https://notion.so/b'] },
+      ],
+      brand: 'metadocu', competitors: [], domain: 'metadocu.com',
+    })!
+    expect(s.citedDomains).toEqual([{ domain: 'notion.so', count: 2, origin: 'third_party', platform: 'other' }])
+  })
+
+  it('ignores malformed cited URLs instead of producing an unsupported domain entry', () => {
+    const s = aggregateProbeSummary({
+      prompts: [{ id: 'p1', text: 'x', priority: 0 }],
+      results: [{ promptId: 'p1', brandPresent: false, competitorsMentioned: [], evidenceId: 'e1', citedUrls: ['not a url', 'https://notion.so/a'] }],
+      brand: 'metadocu', competitors: [], domain: 'metadocu.com',
+    })!
+    expect(s.citedDomains).toEqual([{ domain: 'notion.so', count: 1, origin: 'third_party', platform: 'other' }])
+  })
+
+  it('defaults every domain to third_party when the caller omits domain (cannot verify ownership, conservative)', () => {
+    const s = aggregateProbeSummary({
+      prompts: [{ id: 'p1', text: 'x', priority: 0 }],
+      results: [{ promptId: 'p1', brandPresent: false, competitorsMentioned: [], evidenceId: 'e1', citedUrls: ['https://metadocu.com/about'] }],
+      brand: 'metadocu', competitors: [],
+    })!
+    expect(s.citedDomains).toEqual([{ domain: 'metadocu.com', count: 1, origin: 'third_party', platform: 'other' }])
+  })
+
+  it('returns an empty array when no result carries a citedUrls entry', () => {
+    const s = aggregateProbeSummary({
+      prompts: [{ id: 'p1', text: 'x', priority: 0 }],
+      results: [{ promptId: 'p1', brandPresent: false, competitorsMentioned: [], evidenceId: 'e1', citedUrls: [] }],
+      brand: 'metadocu', competitors: [], domain: 'metadocu.com',
+    })!
+    expect(s.citedDomains).toEqual([])
+  })
+
+  it('classifies known community/reference platform domains via the platform field', () => {
+    const s = aggregateProbeSummary({
+      prompts: [{ id: 'p1', text: 'x', priority: 0 }],
+      results: [
+        { promptId: 'p1', brandPresent: false, competitorsMentioned: [], evidenceId: 'e1', citedUrls: ['https://www.reddit.com/r/seo', 'https://en.wikipedia.org/wiki/SEO'] },
+      ],
+      brand: 'metadocu', competitors: [], domain: 'metadocu.com',
+    })!
+    const byDomain = Object.fromEntries(s.citedDomains.map((d) => [d.domain, d]))
+    expect(byDomain['reddit.com'].platform).toBe('reddit')
+    expect(byDomain['en.wikipedia.org'].platform).toBe('wikipedia')
+  })
+})
+
+// 社区/UGC 引用占比（新增）：cited 引用条数中落在社区/UGC 平台的占比，口径限定 unbranded 子集。
+describe('aggregateProbeSummary — ugcCitationShare', () => {
+  it('returns null when the unbranded citedUrls denominator is zero (no citations, not measured 0%)', () => {
+    const s = aggregateProbeSummary({
+      prompts: [{ id: 'p1', text: 'x', priority: 0 }],
+      results: [{ promptId: 'p1', brandPresent: false, competitorsMentioned: [], evidenceId: 'e1', citedUrls: [] }],
+      brand: 'metadocu', competitors: [],
+    })!
+    expect(s.ugcCitationShare).toBeNull()
+  })
+
+  it('computes the fraction of unbranded citedUrls landing on a UGC platform (reddit/quora/youtube/linkedin)', () => {
+    const s = aggregateProbeSummary({
+      prompts: [{ id: 'p1', text: 'x', priority: 0 }],
+      results: [
+        {
+          promptId: 'p1',
+          brandPresent: false,
+          competitorsMentioned: [],
+          evidenceId: 'e1',
+          citedUrls: ['https://www.reddit.com/r/seo', 'https://metadocu.com/about', 'https://www.quora.com/x', 'https://notion.so/y'],
+        },
+      ],
+      brand: 'metadocu', competitors: [],
+    })!
+    // 2 条 UGC（reddit + quora） / 4 条全部 cited = 0.5
+    expect(s.ugcCitationShare).toBe(0.5)
+  })
+
+  it('returns 0 (not null) when there are unbranded citations but none land on a UGC platform', () => {
+    const s = aggregateProbeSummary({
+      prompts: [{ id: 'p1', text: 'x', priority: 0 }],
+      results: [{ promptId: 'p1', brandPresent: false, competitorsMentioned: [], evidenceId: 'e1', citedUrls: ['https://notion.so/a', 'https://en.wikipedia.org/wiki/SEO'] }],
+      brand: 'metadocu', competitors: [],
+    })!
+    expect(s.ugcCitationShare).toBe(0)
+  })
+
+  it('excludes citations from branded prompts (branded: true) from both numerator and denominator', () => {
+    const s = aggregateProbeSummary({
+      prompts: [
+        { id: 'p1', text: 'branded q', priority: 0, branded: true },
+        { id: 'p2', text: 'unbranded q', priority: 1, branded: false },
+      ],
+      results: [
+        // branded 题下的 reddit 引用不应计入——即使占比很高，也不该混进"自然讨论面"信号。
+        { promptId: 'p1', brandPresent: true, competitorsMentioned: [], evidenceId: 'e1', citedUrls: ['https://www.reddit.com/r/seo'] },
+        { promptId: 'p2', brandPresent: false, competitorsMentioned: [], evidenceId: 'e2', citedUrls: ['https://notion.so/a'] },
+      ],
+      brand: 'metadocu', competitors: [],
+    })!
+    // 分母只认 p2（unbranded）的 1 条引用，notion.so 非 UGC → 0/1 = 0，不是 1/2。
+    expect(s.ugcCitationShare).toBe(0)
+  })
+
+  it('ignores malformed URLs when computing the denominator (same rule as citedDomains)', () => {
+    const s = aggregateProbeSummary({
+      prompts: [{ id: 'p1', text: 'x', priority: 0 }],
+      results: [{ promptId: 'p1', brandPresent: false, competitorsMentioned: [], evidenceId: 'e1', citedUrls: ['not a url', 'https://www.reddit.com/r/seo'] }],
+      brand: 'metadocu', competitors: [],
+    })!
+    // 畸形 URL 被忽略：分母只剩 1 条（reddit），占比 = 1/1 = 1。
+    expect(s.ugcCitationShare).toBe(1)
   })
 })

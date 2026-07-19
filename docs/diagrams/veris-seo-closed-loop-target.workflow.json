@@ -1,0 +1,296 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Veris SEO / GEO 完整增长闭环（目标态）",
+    "subtitle": "业务目标 → 证据基线 → 诊断决策 → 任务执行 → 上线证明 → 同协议回测 → 业务结果反馈",
+    "output": "docs/diagrams/veris-seo-closed-loop-target.html",
+    "viewBox": [720, 960]
+  },
+  "lanes": [
+    { "id": "business", "label": "业务负责人 / 客户" },
+    { "id": "sources", "label": "网站与外部数据源" },
+    { "id": "evidence", "label": "Veris 证据与诊断" },
+    { "id": "action", "label": "执行、上线与审计" },
+    { "id": "validation", "label": "复测、归因与学习" },
+    { "id": "exceptions", "label": "降级与阻断", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "define", "label": "01 目标", "fromCol": 0, "toCol": 0 },
+    { "id": "measure", "label": "02 采集 / 基线", "fromCol": 1, "toCol": 2, "variant": "emphasis" },
+    { "id": "decide", "label": "03 诊断 / 决策", "fromCol": 3, "toCol": 3, "variant": "emphasis" },
+    { "id": "execute", "label": "04 执行 / 上线", "fromCol": 4, "toCol": 4, "variant": "security" },
+    { "id": "learn", "label": "05 复测 / 反馈", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "source_contract", "label": "搜索 + GEO + 业务结果", "lane": "sources", "fromCol": 0, "toCol": 2, "variant": "dashed" },
+    { "id": "decision_contract", "label": "证据驱动优先级", "lane": "evidence", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "execution_contract", "label": "每条建议必须可审计", "lane": "action", "fromCol": 4, "toCol": 5, "variant": "security" },
+    { "id": "retest_contract", "label": "可比才输出变化结论", "lane": "validation", "fromCol": 4, "toCol": 5, "variant": "dashed" },
+    { "id": "degrade_contract", "label": "不制造完整增长故事", "lane": "exceptions", "fromCol": 2, "toCol": 5, "variant": "security" }
+  ],
+  "mainPath": [
+    "business_goal",
+    "collect",
+    "baseline",
+    "diagnose",
+    "approve",
+    "action_task",
+    "deployment_proof",
+    "scheduled_retest",
+    "business_outcome"
+  ],
+  "nodes": [
+    {
+      "id": "business_goal",
+      "lane": "business",
+      "col": 0,
+      "type": "external",
+      "label": "业务目标合同",
+      "sublabel": "ICP / 转化 / 市场 / 关键页",
+      "tag": "新增 P0",
+      "width": 92
+    },
+    {
+      "id": "approve",
+      "lane": "business",
+      "col": 3,
+      "type": "security",
+      "label": "人工批准",
+      "sublabel": "优先级 / owner / 预算",
+      "tag": "复用并强化",
+      "width": 82
+    },
+    {
+      "id": "business_outcome",
+      "lane": "business",
+      "col": 5,
+      "type": "backend",
+      "label": "效果判定",
+      "sublabel": "SEO / GEO / 转化 / 收入",
+      "tag": "反馈下一轮",
+      "width": 90
+    },
+    {
+      "id": "all_sources",
+      "lane": "sources",
+      "col": 1,
+      "type": "cloud",
+      "label": "全量数据源",
+      "sublabel": "站点 / GSC / SERP / AI",
+      "tag": "+ GA4 / CRM",
+      "width": 92
+    },
+    {
+      "id": "collect",
+      "lane": "evidence",
+      "col": 1,
+      "type": "messagebus",
+      "label": "采集",
+      "sublabel": "协议化 evidence",
+      "tag": "现有复用",
+      "width": 48
+    },
+    {
+      "id": "baseline",
+      "lane": "evidence",
+      "col": 2,
+      "type": "database",
+      "label": "基线",
+      "sublabel": "SEO / GEO / 业务快照",
+      "tag": "增强",
+      "width": 48
+    },
+    {
+      "id": "diagnose",
+      "lane": "evidence",
+      "col": 3,
+      "type": "backend",
+      "label": "诊断",
+      "sublabel": "findings + 业务优先级",
+      "tag": "现有复用",
+      "width": 48
+    },
+    {
+      "id": "action_task",
+      "lane": "action",
+      "col": 4,
+      "type": "frontend",
+      "label": "任务",
+      "sublabel": "owner / deadline / target",
+      "tag": "新增 P0",
+      "width": 48
+    },
+    {
+      "id": "deployment_proof",
+      "lane": "action",
+      "col": 5,
+      "type": "database",
+      "label": "上线证据",
+      "sublabel": "URL / PR / CMS / hash",
+      "tag": "新增 P0",
+      "width": 82
+    },
+    {
+      "id": "scheduled_retest",
+      "lane": "validation",
+      "col": 5,
+      "type": "messagebus",
+      "label": "自动复测",
+      "sublabel": "到期调度 + 协议可比",
+      "tag": "新增 P1",
+      "width": 86
+    },
+    {
+      "id": "insufficient",
+      "lane": "exceptions",
+      "col": 2,
+      "type": "security",
+      "label": "证据不足",
+      "sublabel": "补数据后重新诊断",
+      "tag": "不输出优先级",
+      "width": 82
+    },
+    {
+      "id": "not_deployed",
+      "lane": "exceptions",
+      "col": 4,
+      "type": "security",
+      "label": "未证明上线",
+      "sublabel": "任务退回执行队列",
+      "tag": "禁止进入效果归因",
+      "width": 92
+    },
+    {
+      "id": "incomparable",
+      "lane": "exceptions",
+      "col": 5,
+      "type": "security",
+      "label": "回测不可比",
+      "sublabel": "协议漂移 / 数据缺失",
+      "tag": "只报告差异原因",
+      "width": 92
+    }
+  ],
+  "edges": [
+    {
+      "from": "business_goal",
+      "to": "collect",
+      "variant": "emphasis",
+      "fromSide": "left",
+      "toSide": "left",
+      "route": "return-left"
+    },
+    {
+      "from": "all_sources",
+      "to": "collect",
+      "variant": "dashed",
+      "role": "async",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "drop"
+    },
+    { "from": "collect", "to": "baseline", "variant": "emphasis" },
+    { "from": "baseline", "to": "diagnose", "variant": "emphasis" },
+    {
+      "from": "diagnose",
+      "to": "approve",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "route": "up-channel"
+    },
+    {
+      "from": "approve",
+      "to": "action_task",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "drop"
+    },
+    { "from": "action_task", "to": "deployment_proof", "variant": "emphasis" },
+    {
+      "from": "deployment_proof",
+      "to": "scheduled_retest",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "drop"
+    },
+    {
+      "from": "scheduled_retest",
+      "to": "business_outcome",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "right",
+      "route": "outside-right"
+    },
+    {
+      "from": "business_outcome",
+      "to": "business_goal",
+      "label": "下一轮目标 / 预算",
+      "variant": "dashed",
+      "role": "return",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "route": "bottom-channel",
+      "labelSegment": 1
+    },
+    {
+      "from": "baseline",
+      "to": "insufficient",
+      "variant": "security",
+      "role": "error",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "drop"
+    },
+    {
+      "from": "action_task",
+      "to": "not_deployed",
+      "variant": "security",
+      "role": "error",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "drop"
+    },
+    {
+      "from": "scheduled_retest",
+      "to": "incomparable",
+      "variant": "security",
+      "role": "error",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "drop"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "现有能力继续复用",
+      "items": [
+        "Inngest 采集编排、evidence artifact 与数据源状态",
+        "规则 findings、建议、人审闸门、prompt 与报告",
+        "baseline / retest、finding delta 与 SEO / GEO 指标比较"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "必须新增的真源对象",
+      "items": [
+        "DiagnosticProfile + BusinessMetricSnapshot",
+        "ActionTask + DeploymentEvidence",
+        "RetestProtocol + OutcomeAttribution"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "闭环验收公式",
+      "items": [
+        "Recommendation → BusinessGoal → Evidence",
+        "→ ActionTask → DeploymentEvidence",
+        "→ RetestSnapshot → Outcome → Next Cycle"
+      ]
+    }
+  ]
+}

@@ -28,6 +28,8 @@ const labels = {
   retestLabel: '回测:',
   latestStatusLabel: '最近诊断状态',
   findingsDetectedLabel: '已检测缺陷',
+  gscConnected: 'GSC 已接入',
+  gscPending: '待接入 GSC',
 }
 const statusLabels = { output: '已完成', diagnosing: '诊断中' }
 const runTypeLabels = { baseline: '基线', retest: '回测' }
@@ -37,6 +39,7 @@ const projects: ProjectSummaryItem[] = [
     id: 'proj_a',
     domain: 'a.com',
     market: 'US',
+    gscReady: true,
     nextRetestDueAt: '2026-08-01',
     latestRun: { id: 'run_a', runType: 'baseline', status: 'output', startedAt: '2026-07-01', findingCount: 12 },
     activeRun: null,
@@ -46,6 +49,7 @@ const projects: ProjectSummaryItem[] = [
     id: 'proj_b',
     domain: 'b.com',
     market: 'CN',
+    gscReady: false,
     nextRetestDueAt: null,
     latestRun: null,
     activeRun: null,
@@ -77,6 +81,12 @@ describe('ProjectList', () => {
     expect(screen.getByRole('link', { name: 'a.com' })).toHaveAttribute('href', '/zh/projects/proj_a')
   })
 
+  it('每个项目单独展示自己的 GSC 接入状态', () => {
+    renderList()
+    expect(screen.getByText('GSC 已接入')).toBeInTheDocument()
+    expect(screen.getByText('待接入 GSC')).toBeInTheDocument()
+  })
+
   it('有最近 run 显示类型·状态与发现数；无 run 显示未诊断', () => {
     renderList()
     expect(screen.getByText('基线 · 已完成')).toBeInTheDocument()
@@ -101,6 +111,7 @@ describe('ProjectList', () => {
           id: 'proj_running',
           domain: 'running.com',
           market: 'US',
+          gscReady: false,
           nextRetestDueAt: null,
           latestRun: null,
           activeRun: { id: 'run_active', status: 'diagnosing' },
@@ -118,6 +129,7 @@ describe('ProjectList', () => {
           id: 'proj_retestable',
           domain: 'retestable.com',
           market: 'US',
+          gscReady: false,
           nextRetestDueAt: null,
           latestRun: null,
           activeRun: null,
@@ -137,6 +149,7 @@ describe('ProjectList', () => {
           id: 'proj_unconfigured',
           domain: 'unconfigured.com',
           market: 'US',
+          gscReady: false,
           nextRetestDueAt: null,
           latestRun: null,
           activeRun: null,

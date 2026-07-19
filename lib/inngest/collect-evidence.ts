@@ -15,14 +15,18 @@ import { computeMainContentDelta } from '@/lib/collection/readability-risk'
 import { fetchPageSpeedInsights, isPsiConfigured } from '@/lib/collection/psi'
 import { collectUaProbe } from '@/lib/collection/ua-probe'
 import { checkThirdPartyPresence } from '@/lib/collection/third-party-presence'
-import { isGscConfigured, refreshAccessToken } from '@/lib/gsc/oauth'
+import { checkSocialPresence } from '@/lib/collection/social-presence'
+import { isGscPlatformConfigured, refreshAccessToken } from '@/lib/gsc/oauth'
 import { querySearchAnalytics, mapRowsToKeywordMetrics } from '@/lib/gsc/search-analytics'
 import { impressionWeightedAvgPosition } from '@/lib/gsc/avg-position'
 import { createDataforseoProviderFromEnv, isDataforseoConfigured } from '@/lib/dataforseo'
 import { collectDataforseoStage, type DataforseoStageArgs } from '@/lib/dataforseo/collect-stage'
 import type { DataforseoProvider } from '@/lib/dataforseo/types'
 import { gatherSeedKeywords } from '@/lib/diagnosis/seed-keywords'
-import { brandFromDomain } from '@/lib/probes/prompt-set'
+import { createAioSerpProviderFromEnv, createAioSerpProvider, type AioSerpProvider } from '@/lib/serp/dataforseo'
+import { resolveAioLocation } from '@/lib/serp/locations'
+import { parseAioResult, AIO_PARSER_VERSION } from '@/lib/serp/aio-parse'
+import { brandFromDomain, buildPromptSetV2 } from '@/lib/probes/prompt-set'
 import { sha256Hex } from '@/lib/collection/hash'
 import { normalizeUrl } from '@/lib/crawl/url'
 import { discoverSitemaps } from '@/lib/crawl/sitemap'
@@ -35,7 +39,7 @@ import { selectRenderProvider } from '@/lib/render/provider-selection'
 import { createGoogleCseSearchVisibilityProvider, type SearchVisibilityProvider } from '@/lib/search/search-visibility-provider'
 import { collectProbesStage } from '@/lib/probes/run-probes'
 import { buildProbeProviders } from '@/lib/probes/providers'
-import { resolveCredentials } from '@/lib/credentials/store'
+import { resolveCredential, resolveCredentials } from '@/lib/credentials/store'
 import { PROBE_CREDENTIAL_KEYS } from '@/lib/credentials/keys'
 import { readGscToken } from '@/lib/gsc/token-crypto'
 import {
@@ -45,6 +49,7 @@ import {
   getProjectSettings,
   createPrompts,
   createAiProbeResult,
+  createSerpAioResult,
   upsertSitePages,
   getSitePages,
   updateInboundCounts,
@@ -83,9 +88,12 @@ interface CollectDeps {
   // GEO 深化采集（Phase D）：AI 爬虫可达性/llms.txt（G02/G08）+ 第三方语料（G07）。免 key，best-effort。
   collectUaProbe: typeof collectUaProbe
   checkThirdPartyPresence: typeof checkThirdPartyPresence
+  // 社交/评价站前台存在度（YouTube/G2/Trustpilot/Capterra）。复用同一 CSE 通道
+  // （searchVisibilityProvider），门控与 serp_snapshot 一致：未配置则跳过，不单独要 key。
+  checkSocialPresence: typeof checkSocialPresence
   // GSC 关键词采集（K 组证据源）。仅在项目已连接 OAuth 时触发；失败降级不阻断。
   refreshGscAccessToken: (refreshToken: string) => Promise<{ accessToken: string }>
-  isGscConfigured: typeof isGscConfigured
+  isGscPlatformConfigured: () => Promise<boolean>
   querySearchAnalytics: typeof querySearchAnalytics
   upsertKeyword: typeof upsertKeyword
   createKeywordMetrics: typeof createKeywordMetrics
@@ -93,6 +101,12 @@ interface CollectDeps {
   isDataforseoConfigured: typeof isDataforseoConfigured
   dataforseoProvider: DataforseoProvider
   runDataforseo: (args: DataforseoStageArgs) => Promise<void>
+  // AIO（Google AI Overviews）实测采集：凭据走 resolveCredential（DB>env），与
+  // dataforseoProvider 的纯 env 读取分开——见 lib/serp/dataforseo.ts 顶部注释。
+  // aioProvider 是 env 兜底同步构造；resolveAioProvider 可选注入 DB 优先解析（同 resolveRenderProvider 先例）。
+  aioProvider: AioSerpProvider
+  resolveAioProvider?: () => Promise<AioSerpProvider>
+  createSerpAioResult: typeof createSerpAioResult
   getRunPrompts: typeof getRunPrompts
   getProject: typeof getProject
   createEvidenceArtifact: typeof createEvidenceArtifact
@@ -152,14 +166,25 @@ function defaultDeps(): CollectDeps {
     isPsiConfigured,
     collectUaProbe,
     checkThirdPartyPresence,
+    checkSocialPresence,
     refreshGscAccessToken: (refreshToken) => refreshAccessToken(refreshToken),
-    isGscConfigured,
+    isGscPlatformConfigured: async () => isGscPlatformConfigured(),
     querySearchAnalytics,
     upsertKeyword,
     createKeywordMetrics,
     isDataforseoConfigured,
     dataforseoProvider: createDataforseoProviderFromEnv(),
     runDataforseo: (args) => collectDataforseoStage(args, { createEvidenceArtifact, upsertCompetitor }),
+    aioProvider: createAioSerpProviderFromEnv(),
+    resolveAioProvider: async () => {
+      // AIO 凭据 DB>env 解析（BYOK 设置页录入优先于环境变量），与探针 key 同一模式。
+      const [login, password] = await Promise.all([
+        resolveCredential('DATAFORSEO_LOGIN'),
+        resolveCredential('DATAFORSEO_PASSWORD'),
+      ])
+      return createAioSerpProvider({ login: login ?? '', password: password ?? '' })
+    },
+    createSerpAioResult,
     getRunPrompts,
     getProject,
     createEvidenceArtifact,
@@ -482,7 +507,7 @@ export async function collectEvidenceHandler(
   // —— GSC 关键词采集（K 组）——：已连接 OAuth 的项目拉 query 维 + page×query 交叉维，
   // 落 gsc 证据（供规则）+ keyword_metrics（供关键词现状 tab 与回测）。未连接则整块跳过，K 组 no-op。
   const refreshToken = readGscToken(settings?.gscRefreshToken)
-  const gscAppConfigured = deps.isGscConfigured()
+  const gscAppConfigured = await deps.isGscPlatformConfigured()
   const gscProjectAuthorized = Boolean(settings?.gscConnected && refreshToken && settings.gscSiteUrl)
   if (gscAppConfigured && gscProjectAuthorized && refreshToken && settings?.gscSiteUrl) {
     const siteUrl = settings.gscSiteUrl
@@ -730,6 +755,108 @@ export async function collectEvidenceHandler(
     await writeDss({ sourceKey: 'dataforseo', configured: false, authorized: false, attempted: false, status: 'not_configured' })
   }
 
+  // —— Google AI Overviews 实测采集（AIO，分引擎双口径的实测半边）——
+  // BYOK（DATAFORSEO_LOGIN/PASSWORD，走 resolveAioProvider DB>env）+ run 勾选 'Google AI
+  // Overviews' 时才执行；否则整块跳过，不抛错（lib/probes/run-probes.ts:8-9 的边界延伸到这
+  // 里——AIO 走独立采集 stage，不伪装成 AiProbeProvider，也不依赖 collectProbesStage 是否已
+  // 建 prompts 行，见下方 buildPromptSetV2 直接构造查询词）。
+  // 查询集：复用同一份确定性 30 条 prompt 文本（buildPromptSetV2）作为搜索 keyword，保证与
+  // AI 探针同协议、可回测；每 run 每查询 1 次（n=1，V0 先测通，重复采样留待下轮）。
+  // market 映射不到 location/language 时明确跳过（不猜一个默认国家），见 lib/serp/locations.ts。
+  const aioProvider = deps.resolveAioProvider ? await deps.resolveAioProvider() : deps.aioProvider
+  const aioEngineSelected = (settings?.defaultModels ?? []).includes('Google AI Overviews')
+  if (aioProvider.isConfigured() && aioEngineSelected) {
+    const { aioQueries, market } = await step.run('aio-gather-queries', async () => {
+      // brandAliases 复用外层已取的 settings（load-crawl-settings 那次调用），不重复查询项目设置。
+      const project = await deps.getProject(projectId)
+      const queries = project
+        ? buildPromptSetV2({
+            domain: project.domain,
+            industry: project.industry,
+            market: project.market,
+            language: project.language || 'zh',
+            competitors: project.competitors ?? [],
+            aliases: settings?.brandAliases ?? [],
+          }).map((p) => p.text)
+        : []
+      return { aioQueries: queries, market: project?.market ?? '' }
+    })
+    const loc = resolveAioLocation(market)
+    if (!loc) {
+      // 市场未在 AIO 显式映射表命中（如"东南亚"横跨多国）：不猜默认国家，整块标记未尝试。
+      await writeDss({
+        sourceKey: 'aio', configured: true, authorized: true, attempted: false, status: 'not_attempted',
+        protocolSnapshot: { reason: 'market_not_mapped', market },
+      })
+    } else {
+      let succeeded = 0
+      for (const [i, keyword] of aioQueries.entries()) {
+        try {
+          const outcome = await step.run(`aio-query:${i}`, async () => {
+            const runAt = new Date().toISOString()
+            try {
+              const raw = await aioProvider.fetchAioForKeyword(keyword, loc)
+              const parsed = parseAioResult({ aioPresent: raw.aioPresent, references: raw.references, domain })
+              const rawText = JSON.stringify(raw)
+              const rawHash = sha256Hex(rawText)
+              const evidenceId = `ev_${crypto.randomUUID()}`
+              await deps.createEvidenceArtifact({
+                id: evidenceId, projectId, runId, type: 'serp_aio', claimLevel: 'L3', source: 'dataforseo',
+                request: {
+                  keyword, locationCode: loc.locationCode, languageCode: loc.languageCode,
+                  endpoint: '/v3/serp/google/organic/live/advanced', params: { load_async_ai_overview: true },
+                  runAt, requestHash: sha256Hex(`${keyword}|${loc.locationCode}|${loc.languageCode}`),
+                },
+                payload: raw,
+                rawText, rawHash,
+              })
+              await deps.createSerpAioResult({
+                id: `saio_${crypto.randomUUID()}`, runId, evidenceId, keyword,
+                locationCode: loc.locationCode, languageCode: loc.languageCode,
+                aioPresent: parsed.aioPresent, targetDomainCited: parsed.targetDomainCited, citedUrls: parsed.citedUrls,
+                rawAnswerHash: rawHash, parserVersion: AIO_PARSER_VERSION,
+              })
+              return { ok: true }
+            } catch (err) {
+              // 单查询失败留协议现场（error_code），不写 serp_aio_results；不阻断其余查询。
+              const message = errorReason(err)
+              await deps.createEvidenceArtifact({
+                id: `ev_${crypto.randomUUID()}`, projectId, runId, type: 'serp_aio', claimLevel: 'L3', source: 'dataforseo',
+                request: {
+                  keyword, locationCode: loc.locationCode, languageCode: loc.languageCode,
+                  endpoint: '/v3/serp/google/organic/live/advanced', params: { load_async_ai_overview: true },
+                  runAt, error_code: message,
+                },
+                payload: null,
+                rawText: '', rawHash: sha256Hex(''),
+              })
+              return { ok: false }
+            }
+          })
+          if (outcome.ok) succeeded++
+        } catch {
+          // step 自身抛出（重试耗尽）：跳过该查询，其余继续。
+        }
+        await emit({ type: 'evidence_created', evidenceType: 'serp_aio' })
+      }
+      await writeDss({
+        sourceKey: 'aio', configured: true, authorized: true, attempted: true,
+        status: succeeded === 0 ? 'failed' : succeeded < aioQueries.length ? 'partial' : 'collected',
+        capturedEvidenceCount: succeeded,
+        failureReason: succeeded === 0 ? 'no_valid_aio_results' : null,
+        protocolSnapshot: { market, locationCode: loc.locationCode, languageCode: loc.languageCode, queryCount: aioQueries.length, succeeded },
+      })
+    }
+  } else {
+    await writeDss({
+      sourceKey: 'aio',
+      configured: aioProvider.isConfigured(),
+      authorized: aioProvider.isConfigured(),
+      attempted: false,
+      status: aioProvider.isConfigured() ? 'not_attempted' : 'not_configured',
+    })
+  }
+
   // —— GEO 深化采集（Phase D）——：AI 爬虫可达性 + llms.txt（G02/G08）+ 第三方语料（G07）。
   // 免 key、best-effort：各自 try/catch 降级，单点失败不阻断诊断触发；缺证据时对应规则 no-op。
   try {
@@ -779,6 +906,38 @@ export async function collectEvidenceHandler(
   } catch {
     // 第三方语料检测失败仅降级，G07 no-op。
     await writeDss({ sourceKey: 'third_party', configured: true, authorized: true, attempted: true, status: 'failed', failureReason: 'third_party_check_failed' })
+  }
+
+  // 社交/评价站前台存在度（YouTube/G2/Trustpilot/Capterra）：复用同一 Google CSE 通道，
+  // 门控与 serp_snapshot 一致——未配置则跳过；已配置但采集失败仅降级，不阻断整轮。
+  if (cseConfigured) {
+    try {
+      const brand = brandFromDomain(domain)
+      const socialPresence = await step.run('social-presence', () =>
+        deps.checkSocialPresence({ brand }, (query) => deps.searchVisibilityProvider.search(query)),
+      )
+      const spRaw = JSON.stringify(socialPresence)
+      await step.run('persist-social-presence', () =>
+        deps.createEvidenceArtifact({
+          id: `ev_${crypto.randomUUID()}`,
+          projectId,
+          runId,
+          type: 'social_presence',
+          // CSE 前台可见性口径，对齐 serp_snapshot 判例——L2。
+          claimLevel: 'L2',
+          source: brand,
+          payload: socialPresence,
+          rawText: spRaw,
+          rawHash: sha256Hex(spRaw),
+        }),
+      )
+      await emit({ type: 'evidence_created', evidenceType: 'social_presence' })
+      await writeDss({ sourceKey: 'social_presence', configured: true, authorized: true, attempted: true, status: 'collected', capturedEvidenceCount: 1 })
+    } catch (err) {
+      await writeDss({ sourceKey: 'social_presence', configured: true, authorized: true, attempted: true, status: 'failed', failureReason: errorReason(err) })
+    }
+  } else {
+    await writeDss({ sourceKey: 'social_presence', configured: false, authorized: false, attempted: false, status: 'not_configured' })
   }
 
   await emit({ type: 'progress', pct: 90 })

@@ -3,7 +3,7 @@ import { templates, genericTemplate, GLOBAL_CONTENT_BLOCKERS, TEMPLATE_COUNT } f
 
 describe('recommendation templates', () => {
   it('covers the Phase A rule set', () => {
-    for (const id of ['T01', 'T03', 'T04', 'T05', 'T07', 'T10', 'T11', 'T12', 'C01', 'C02', 'C03', 'C04', 'C05a', 'C05b', 'C05c', 'C05d', 'C06', 'C09', 'C10', 'C11', 'E01', 'G01', 'G03']) {
+    for (const id of ['T01', 'T03', 'T04', 'T05', 'T07', 'T10', 'T11', 'T12', 'C01', 'C02', 'C03', 'C04', 'C05a', 'C05b', 'C05c', 'C05d', 'C06', 'C09', 'C10', 'C11', 'TR04', 'TR05', 'E01', 'G01', 'G03']) {
       expect(templates[id], `missing template ${id}`).toBeDefined()
     }
     expect(TEMPLATE_COUNT).toBeGreaterThanOrEqual(20)

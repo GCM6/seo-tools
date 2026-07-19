@@ -21,6 +21,7 @@ const baseCtx = (): RuleContext => ({
   keywordGaps: [],
   uaProbe: null,
   thirdParty: null,
+  socialPresence: null,
 })
 
 type Backlink = RuleContext['dataforseo']['backlinks'][number]

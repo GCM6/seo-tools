@@ -7,7 +7,7 @@ import { evaluateRules } from '@/lib/diagnosis/engine'
 import type { DiagnosisEvidenceRow, Rule, RuleContext, RuleHit } from '@/lib/diagnosis/types'
 import { buildFindingRows, buildRecommendationRows, type RecommendationDraft } from '@/lib/diagnosis/finding-rows'
 import { computeKeywordGaps } from '@/lib/diagnosis/keyword-gap'
-import { aggregateProbeSummary } from '@/lib/probes/summary'
+import { aggregateProbeSummary, normalizeProjectDomain } from '@/lib/probes/summary'
 import { brandFromDomain } from '@/lib/probes/prompt-set'
 import type { SeedSerpEntry, LabsKeywordDatum } from '@/lib/dataforseo/types'
 import type { EvidenceLevel, EvidenceType } from '@/lib/types'
@@ -213,6 +213,10 @@ export async function reevaluateCompetitorsHandler(
       })),
       brand: brandFromDomain(project.domain),
       competitors,
+      // 第三波修复：与 lib/inngest/generate-findings.ts 同一缺口——此前未传 domain，
+      // probe.citedDomains 的 owned 判定在竞品再评估路径也恒为 third_party。归一化实现
+      // 复用 lib/probes/summary.ts 的 normalizeProjectDomain（两个 inngest 函数共享同一份）。
+      domain: normalizeProjectDomain(project.domain),
     })
 
     const ctx = deps.buildRuleContext({

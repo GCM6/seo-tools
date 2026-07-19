@@ -6,7 +6,7 @@ export type StatCardKey = 'indexVisibility' | 'aiVisibility' | 'avgRank' | 'craw
 
 // pending 的原因用「数据源 / 状态」而非 sprint 号（sprint 是内部排期概念，不该进用户文案，
 // 也不该把「已建成但本轮未采到」误标成「待接入」）：
-//   search_provider / ai_probe / gsc  —— 该数据源尚未接入（搜索可见性 / 真实探针 / GSC OAuth 未实现）
+//   search_provider / ai_probe / gsc  —— 当前项目或环境尚未就绪（搜索可见性 / 真实探针 / GSC OAuth）
 //   render_fallback —— 浏览器级渲染未配置，已降级为基础 HTML 抓取；不能据此虚构 JS 渲染差异
 //   uncollected     —— 数据源已就绪，只是本轮尚未采集到该证据
 export type PendingReason = 'search_provider' | 'ai_probe' | 'gsc' | 'render_fallback' | 'uncollected'

@@ -7,8 +7,8 @@ import { geoRules } from './geo'
 // 缺陷4：G05/G06 语义已变 + 新增 G10，规则库版本必须随之升版，否则跨版本回测检测
 // （lib/diagnosis/rule-proposals.ts 的 rulesVersionDelta）永远收不到旧协议 run 的告警。
 describe('RULES_VERSION', () => {
-  it('已随本次 GEO 规则语义变更升版为 rules_v2', () => {
-    expect(RULES_VERSION).toBe('rules_v2')
+  it('已随新增 G11/SP01/SP02 升版为 rules_v4', () => {
+    expect(RULES_VERSION).toBe('rules_v4')
   })
 })
 
@@ -31,6 +31,7 @@ const baseCtx = (): RuleContext => ({
   keywordGaps: [],
   uaProbe: null,
   thirdParty: null,
+  socialPresence: null,
 })
 
 // G05 helper：直接构造 unbranded 层（present/total），wilsonLow 用真实公式算，避免断言脱离真实实现。
@@ -53,7 +54,7 @@ function unbrandedProbe(present: number, total: number): ProbeSummary {
     sampleEvidenceId: 'ev',
     unbranded: { present, total, wilsonLow },
     branded: { perEngine: [] },
-    citationRate: 0,
+    citationRate: 0, citedDomains: [], ugcCitationShare: null,
   }
 }
 
@@ -94,7 +95,7 @@ function engineProbe(
         undetermined: 0,
       })),
     },
-    citationRate: 0,
+    citationRate: 0, citedDomains: [], ugcCitationShare: null,
   }
 }
 
@@ -121,7 +122,7 @@ function brandedProbe(counts: { grounded?: number; speculative?: number; unknown
         undetermined: c.undetermined ?? 0,
       })),
     },
-    citationRate: 0,
+    citationRate: 0, citedDomains: [], ugcCitationShare: null,
   }
 }
 
@@ -186,7 +187,7 @@ describe('G05 low AI visibility (D5：改用 unbranded 层口径)', () => {
       sampleEvidenceId: 'ev',
       unbranded: { present: 0, total: 0, wilsonLow: 0 },
       branded: { perEngine: [] },
-      citationRate: 0,
+      citationRate: 0, citedDomains: [], ugcCitationShare: null,
     }
     ctx.probeEvidenceId = 'pe1'
     const hit = rule('G05').evaluate(ctx) as RuleHitDraft
@@ -282,7 +283,7 @@ describe('G06 zero citation (D5：只评估 webSearchEnabled=true 的检索型�
           { provider: 'openai', webSearchEnabled: true, grounded: 0, speculative: 0, unknown: 0, unverified: 0, undetermined: 0 },
         ],
       },
-      citationRate: 0,
+      citationRate: 0, citedDomains: [], ugcCitationShare: null,
     }
     ctx.probeEvidenceId = 'pe1'
     const hit = rule('G06').evaluate(ctx) as RuleHitDraft
@@ -352,6 +353,60 @@ describe('G10 AI 疑似在编造品牌事实', () => {
     ctx2.probe = null
     ctx2.probeEvidenceId = 'pe1'
     expect(rule('G10').evaluate(ctx2)).toBeNull()
+  })
+})
+
+// G11 helper：只需 ugcCitationShare + citedDomains，其余字段沿用 unbrandedProbe 的中性默认。
+function ugcProbe(
+  ugcCitationShare: number | null,
+  citedDomains: { domain: string; count: number; origin: 'owned' | 'third_party'; platform: 'reddit' | 'youtube' | 'linkedin' | 'quora' | 'wikipedia' | 'github' | 'other' }[],
+): ProbeSummary {
+  const base = unbrandedProbe(0, 0)
+  return { ...base, citedDomains, ugcCitationShare }
+}
+
+describe('G11 UGC/社区引用占比过高且未引用本站', () => {
+  it('warning when ugcCitationShare >= 0.25 and no owned citation', () => {
+    const ctx = baseCtx()
+    ctx.probe = ugcProbe(0.4, [
+      { domain: 'reddit.com', count: 2, origin: 'third_party', platform: 'reddit' },
+      { domain: 'youtube.com', count: 1, origin: 'third_party', platform: 'youtube' },
+    ])
+    ctx.probeEvidenceId = 'pe1'
+    const hit = rule('G11').evaluate(ctx) as RuleHitDraft
+    expect(hit).not.toBeNull()
+    expect(hit.evidenceRefs).toEqual(['pe1'])
+    expect(rule('G11').claimType).toBe('measured_sample')
+    expect(hit.detail!.ugcCitationShare).toBe(0.4)
+    expect(hit.description).toContain('40%')
+    expect(hit.description).toMatch(/reddit|youtube/)
+  })
+  it('null when ugcCitationShare below threshold', () => {
+    const ctx = baseCtx()
+    ctx.probe = ugcProbe(0.1, [{ domain: 'reddit.com', count: 1, origin: 'third_party', platform: 'reddit' }])
+    ctx.probeEvidenceId = 'pe1'
+    expect(rule('G11').evaluate(ctx)).toBeNull()
+  })
+  it('null when an owned citation exists even if ugcCitationShare is high', () => {
+    const ctx = baseCtx()
+    ctx.probe = ugcProbe(0.6, [
+      { domain: 'reddit.com', count: 2, origin: 'third_party', platform: 'reddit' },
+      { domain: 'example.com', count: 1, origin: 'owned', platform: 'other' },
+    ])
+    ctx.probeEvidenceId = 'pe1'
+    expect(rule('G11').evaluate(ctx)).toBeNull()
+  })
+  it('null when ugcCitationShare is null (no cited sample)', () => {
+    const ctx = baseCtx()
+    ctx.probe = ugcProbe(null, [])
+    ctx.probeEvidenceId = 'pe1'
+    expect(rule('G11').evaluate(ctx)).toBeNull()
+  })
+  it('null when no probe or no probeEvidenceId', () => {
+    const ctx = baseCtx()
+    ctx.probe = ugcProbe(0.5, [{ domain: 'reddit.com', count: 1, origin: 'third_party', platform: 'reddit' }])
+    ctx.probeEvidenceId = null
+    expect(rule('G11').evaluate(ctx)).toBeNull()
   })
 })
 
@@ -572,7 +627,7 @@ const probeSentiment = (s: Partial<ProbeSummary['sentiment']>): ProbeSummary => 
   // D4（GEO branded/unbranded 重设计）：新增必填字段，G09 情感分布测试与这三项无关，给中性默认值。
   unbranded: { present: 0, total: 0, wilsonLow: 0 },
   branded: { perEngine: [] },
-  citationRate: 0,
+  citationRate: 0, citedDomains: [], ugcCitationShare: null,
 })
 
 describe('G09 negative citation sentiment', () => {

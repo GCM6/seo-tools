@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import type { ValidationSpec } from './validation-spec'
 import type { ProbeSummary } from '@/lib/probes/summary'
+import type { AioExposureSummary } from '@/lib/serp/aio-summary'
 import {
   extractMetricTarget,
   extractRunMetric,
   buildMetricPair,
   buildProbeMetricRows,
+  buildAioMetricRows,
   checkUnbrandedComparability,
   type RunMetrics,
 } from './retest-metrics'
@@ -18,15 +20,20 @@ const probe = (o: Partial<ProbeSummary>): ProbeSummary => ({
   sentiment: { positive: 0, neutral: 0, negative: 0, comparison: 0, total: 0 }, sampleEvidenceId: null,
   // D5（Wave 2-A）：brand_presence 已切到 unbranded 层口径，测试按用例显式传 unbranded；
   // 不传时给中性默认值（present/total 均 0，代表「未标注 unbranded 分母」）。
-  unbranded: { present: 0, total: 0, wilsonLow: 0 }, branded: { perEngine: [] }, citationRate: 0, ...o,
+  unbranded: { present: 0, total: 0, wilsonLow: 0 }, branded: { perEngine: [] }, citationRate: 0, citedDomains: [], ugcCitationShare: null, ...o,
 })
-// 缺省 brandedPromptCount/parserVersions 给中性默认值（两轮一致 → 不触发缺陷1 口径不可比守卫）。
+// 缺省 brandedPromptCount/parserVersions 给中性默认值（两轮一致 → 不触发缺陷1 口径不可比守卫）；
+// aio 缺省 null——代表「本轮未采集 AIO」（旧 run / 未配置 DataForSEO 的常见状态）。
 const run = (o: Partial<RunMetrics>): RunMetrics => ({
   probe: null,
   gscKeywords: [],
   brandedPromptCount: 0,
   parserVersions: ['v4'],
+  aio: null,
   ...o,
+})
+const aioSummary = (o: Partial<AioExposureSummary>): AioExposureSummary => ({
+  totalQueries: 0, measuredQueries: 0, aioPresentCount: 0, ownedCitedCount: 0, citedDomains: [], perQuery: [], ...o,
 })
 
 describe('extractMetricTarget', () => {
@@ -186,6 +193,85 @@ describe('buildProbeMetricRows', () => {
     const rows = buildProbeMetricRows(b, r)
     const byName = Object.fromEntries(rows.map((x) => [x.metricName, x]))
     expect(byName['probe.brand_presence'].interpretation).toContain('上升')
+  })
+
+  // —— GEO 新口径扩展：probe.cited_owned_share（被引用域名中自有站点占比）——
+  // 不受 unbranded 口径守卫约束——即使基线口径不可比（缺陷1场景），该行仍应正常产出涨跌。
+  describe('probe.cited_owned_share', () => {
+    it('两侧都有引用数据 → 正常涨跌，不受 unbranded 口径不可比守卫影响', () => {
+      const b = run({
+        brandedPromptCount: 0,
+        probe: probe({ citedDomains: [{ domain: 'example.com', count: 1, origin: 'owned', platform: 'other' }, { domain: 'other.com', count: 3, origin: 'third_party', platform: 'other' }] }),
+      })
+      const r = run({
+        brandedPromptCount: 7, // 触发缺陷1守卫的信号 A → sov/presence 会不可比，但本指标应不受影响
+        probe: probe({ citedDomains: [{ domain: 'example.com', count: 3, origin: 'owned', platform: 'other' }, { domain: 'other.com', count: 1, origin: 'third_party', platform: 'other' }] }),
+      })
+      const rows = buildProbeMetricRows(b, r)
+      const byName = Object.fromEntries(rows.map((x) => [x.metricName, x]))
+      // baseline: 1/4=25%；retest: 3/4=75%
+      expect(byName['probe.cited_owned_share']).toMatchObject({ baselineValue: '25%', retestValue: '75%', delta: '+50' })
+      expect(byName['probe.cited_owned_share'].interpretation).toContain('上升')
+    })
+
+    it('仅一侧有引用数据（另一侧 citedDomains 为空）→ 只展示已知侧，delta 不可比', () => {
+      const b = run({ probe: probe({ citedDomains: [] }) })
+      const r = run({ probe: probe({ citedDomains: [{ domain: 'example.com', count: 2, origin: 'owned', platform: 'other' }] }) })
+      const rows = buildProbeMetricRows(b, r)
+      const byName = Object.fromEntries(rows.map((x) => [x.metricName, x]))
+      expect(byName['probe.cited_owned_share']).toMatchObject({ baselineValue: '—', retestValue: '100%', delta: '—' })
+      expect(byName['probe.cited_owned_share'].interpretation).not.toMatch(/上升|下降/)
+    })
+
+    it('两侧 citedDomains 均为空 → 不产出该行（旧 run 无引用证据时静默跳过，不当作 0%）', () => {
+      const b = run({ probe: probe({ citedDomains: [] }) })
+      const r = run({ probe: probe({ citedDomains: [] }) })
+      const rows = buildProbeMetricRows(b, r)
+      expect(rows.map((x) => x.metricName)).not.toContain('probe.cited_owned_share')
+    })
+  })
+})
+
+describe('buildAioMetricRows', () => {
+  it('两轮都有实测数据 → present_rate / owned_cited_rate 正常涨跌，措辞标「实测」', () => {
+    const b = run({ aio: aioSummary({ measuredQueries: 4, aioPresentCount: 1, ownedCitedCount: 0 }) })
+    const r = run({ aio: aioSummary({ measuredQueries: 4, aioPresentCount: 4, ownedCitedCount: 2 }) })
+    const rows = buildAioMetricRows(b, r)
+    const byName = Object.fromEntries(rows.map((x) => [x.metricName, x]))
+    // present_rate：1/4=25% → 4/4=100%
+    expect(byName['aio.present_rate']).toMatchObject({ baselineValue: '25%', retestValue: '100%', delta: '+75' })
+    expect(byName['aio.present_rate'].interpretation).toContain('实测')
+    expect(byName['aio.present_rate'].interpretation).toContain('上升')
+    // owned_cited_rate：0/1=0% → 2/4=50%（分母是 aioPresentCount，与 AioExposureCard 展示口径一致）
+    expect(byName['aio.owned_cited_rate']).toMatchObject({ baselineValue: '0%', retestValue: '50%', delta: '+50' })
+  })
+
+  it('baseline 无数据（run.aio 为 null，旧 run/未配置 DataForSEO）、retest 有 → 只展示当前值，不给涨跌结论', () => {
+    const b = run({ aio: null })
+    const r = run({ aio: aioSummary({ measuredQueries: 2, aioPresentCount: 2, ownedCitedCount: 1 }) })
+    const rows = buildAioMetricRows(b, r)
+    const byName = Object.fromEntries(rows.map((x) => [x.metricName, x]))
+    expect(byName['aio.present_rate']).toMatchObject({ baselineValue: '—', retestValue: '100%', delta: '—' })
+    expect(byName['aio.present_rate'].interpretation).not.toMatch(/上升|下降/)
+    expect(byName['aio.owned_cited_rate']).toMatchObject({ baselineValue: '—', retestValue: '50%', delta: '—' })
+  })
+
+  it('两轮都无数据（aio 为 null 或 measuredQueries===0）→ 不产出任何 aio.* 行', () => {
+    const b = run({ aio: null })
+    const r = run({ aio: aioSummary({ measuredQueries: 0, aioPresentCount: 0, ownedCitedCount: 0 }) })
+    const rows = buildAioMetricRows(b, r)
+    expect(rows).toEqual([])
+  })
+
+  it('aioPresentCount===0 时 owned_cited_rate 判 null（分母为 0，不是"真实测得 0%"）', () => {
+    const b = run({ aio: aioSummary({ measuredQueries: 5, aioPresentCount: 0, ownedCitedCount: 0 }) })
+    const r = run({ aio: aioSummary({ measuredQueries: 5, aioPresentCount: 3, ownedCitedCount: 1 }) })
+    const rows = buildAioMetricRows(b, r)
+    const byName = Object.fromEntries(rows.map((x) => [x.metricName, x]))
+    // present_rate 两侧都有数据 → 正常涨跌
+    expect(byName['aio.present_rate'].delta).toBe('+60')
+    // owned_cited_rate baseline 侧 aioPresentCount=0 → null → 视为仅一侧有数据
+    expect(byName['aio.owned_cited_rate']).toMatchObject({ baselineValue: '—', retestValue: '33%' })
   })
 })
 

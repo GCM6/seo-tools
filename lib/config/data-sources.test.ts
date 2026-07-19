@@ -12,6 +12,17 @@ describe('dataSourceStatus', () => {
     })
   })
 
+  it('reports GSC as available only when the platform OAuth service is complete', () => {
+    const base = {
+      GOOGLE_OAUTH_CLIENT_ID: 'client-id',
+      GOOGLE_OAUTH_CLIENT_SECRET: 'client-secret',
+      GOOGLE_OAUTH_REDIRECT_URI: 'https://veris.example/api/gsc/callback',
+      CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64'),
+    }
+    expect(dataSourceStatus(base).gsc).toBe(true)
+    expect(dataSourceStatus({ ...base, GOOGLE_OAUTH_REDIRECT_URI: '' }).gsc).toBe(false)
+  })
+
   it('requires BOTH cse key and cx for the search provider', () => {
     expect(dataSourceStatus({ GOOGLE_CSE_API_KEY: 'k' }).searchProvider).toBe(false)
     expect(dataSourceStatus({ GOOGLE_CSE_API_KEY: 'k', GOOGLE_CSE_CX: 'c' }).searchProvider).toBe(true)

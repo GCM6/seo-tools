@@ -14,7 +14,8 @@
     "db:push": "drizzle-kit push",
     "db:seed": "tsx db/seed.ts",
     "db:migrate-gsc": "tsx db/migrate-gsc-tokens.ts",
-    "reparse-probes": "tsx scripts/reparse-probes.ts"
+    "reparse-probes": "tsx scripts/reparse-probes.ts",
+    "replay-citation-split": "tsx scripts/replay-citation-split.ts"
   },
   "dependencies": {
     "@inngest/realtime": "^0.4.6",

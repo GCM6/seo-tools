@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `projects_owner_domain` ON `projects` (`owner_id`,`domain`);

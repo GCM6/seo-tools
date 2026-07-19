@@ -8,10 +8,12 @@ import { RunProgress } from '@/components/RunProgress'
 import { RetestBanner } from '@/components/RetestBanner'
 import { PresenceMap, type PresencePrompt } from '@/components/PresenceMap'
 import { SovBar } from '@/components/SovBar'
+import { CitedDomainsCard } from '@/components/CitedDomainsCard'
+import { AioExposureCard } from '@/components/AioExposureCard'
 import { EmptyStateCTA } from '@/components/EmptyStateCTA'
 import { resolveWebSearchEnabled } from '@/components/probeEngineCapability'
 import { loadDataSourceStatuses } from '@/lib/settings/load-statuses'
-import { summarizeDataSourceHealth } from '@/lib/settings/data-source-health'
+import { summarizeProjectDataSourceHealth } from '@/lib/settings/data-source-health'
 import {
   getRun,
   getProject,
@@ -20,14 +22,17 @@ import {
   getRunEvidence,
   getRunPrompts,
   getRunProbeResults,
+  getRunSerpAioResults,
   getRecommendations,
 } from '@/lib/repositories'
 import { provenanceForClaim } from '@/lib/evidence'
 import { deriveStatCards } from '@/lib/diagnostics'
 import { aggregateProbeSummary } from '@/lib/probes/summary'
+import { aggregateAioExposure } from '@/lib/serp/aio-summary'
 import { brandFromDomain } from '@/lib/probes/prompt-set'
 import { dataSourceStatus } from '@/lib/config/data-sources'
 import type { ClaimType, RunStatus } from '@/lib/types'
+import type { CitationPlatform } from '@/lib/probes/citation-platform'
 
 // Screen 2 — diagnosis dashboard. Server Component (Next 16): await params,
 // pin the request locale, fetch the run + evidence + findings from the repo.
@@ -44,7 +49,7 @@ export default async function RunDiagnosisPage({
   setRequestLocale(locale)
 
   // 都只依赖 id，并行取；project 依赖 run.projectId，随后单独取。
-  const [t, run, findings, evidenceRows, promptRows, probeRows, recommendations] = await Promise.all([
+  const [t, run, findings, evidenceRows, promptRows, probeRows, recommendations, aioResultRows] = await Promise.all([
     getTranslations(),
     getRun(id),
     getFindings(id),
@@ -52,9 +57,11 @@ export default async function RunDiagnosisPage({
     getRunPrompts(id),
     getRunProbeResults(id),
     getRecommendations(id),
+    getRunSerpAioResults(id),
   ])
   const project = run ? await getProject(run.projectId) : undefined
   const pendingRecommendationCount = recommendations.filter((recommendation) => recommendation.status === 'draft').length
+  const showReviewHandoff = run?.status === 'reviewing' && pendingRecommendationCount > 0
 
   // 回测排期（spec §5.1-6）：nextRetestDueAt ≤ 今天即到期，顶部横幅一键同协议重跑；
   // 在未来则显示次要「下次回测」提示。为空表示尚无 applied 建议触发排期。
@@ -71,6 +78,18 @@ export default async function RunDiagnosisPage({
   const webSearchByEvidence = new Map(
     evidenceRows.map((e) => [e.id, (e.request as { web_search_enabled?: boolean } | null)?.web_search_enabled]),
   )
+  // ⑤（引用来源归属分类）：归一化域名（去协议、去 www），与 run-probes.ts 探针期同一口径，
+  // 供 summary.ts 的 citedDomains 判定 owned/third_party。解析失败时退回原始字符串——
+  // 分类会保守落到 third_party，不会因此抛错阻断整页渲染。
+  const normalizedProjectDomain = project
+    ? (() => {
+        try {
+          return new URL(project.domain).hostname.replace(/^www\./, '')
+        } catch {
+          return project.domain
+        }
+      })()
+    : undefined
   const probeSummary = project
     ? aggregateProbeSummary({
         prompts: promptRows,
@@ -91,8 +110,26 @@ export default async function RunDiagnosisPage({
         })),
         brand: brandFromDomain(project.domain),
         competitors: project.competitors ?? [],
+        domain: normalizedProjectDomain,
       })
     : null
+
+  // AIO（Google AI Overviews）曝光聚合：分引擎双口径的实测半边。UI 卡片组件尚未落地
+  // （并行任务负责），本页只把数据 props 备好——totalQueries 取本 run 已落 serp_aio 证据的
+  // 条数（成功+失败，与 AI 探针 attemptedCount 同一语义），measuredQueries 取 aggregateAioExposure
+  // 内部由 results.length 派生。未采集/未配置/市场未映射时 aioTotalQueries 为 0，aioSummary 仍
+  // 返回一个全零的 summary（不特判为 null，方便未来卡片组件统一处理空态)。
+  const aioTotalQueries = evidenceRows.filter((e) => e.type === 'serp_aio').length
+  const aioSummary = aggregateAioExposure({
+    totalQueries: aioTotalQueries,
+    results: aioResultRows.map((r) => ({
+      keyword: r.keyword,
+      aioPresent: r.aioPresent,
+      targetDomainCited: r.targetDomainCited,
+      citedUrls: r.citedUrls,
+    })),
+    domain: normalizedProjectDomain ?? project?.domain ?? '',
+  })
 
   // PresenceMap 下区（品牌提问 · AI 认知质量）按回答粒度五态分色，但 probeSummary.perPrompt.answers
   // 只透传 {provider, answerText, evidenceId, present}（summary.ts 不可修改，见任务边界）。
@@ -120,11 +157,18 @@ export default async function RunDiagnosisPage({
   const totalSpeculative = probeSummary?.branded.perEngine.reduce((sum, e) => sum + e.speculative, 0) ?? 0
   const sources = dataSourceStatus()
 
-  // 数据源健康度：顶栏 pill 常驻 + 采集完成后的覆盖率横幅共用同一次汇总。（spec §SP-G2b-5/6）
-  const dataHealth = summarizeDataSourceHealth(await loadDataSourceStatuses(run?.projectId))
+  // 数据源健康度：当前项目的运行覆盖率必须纳入该项目的 GSC，而全局位置不会。
+  const dataSourceStatuses = await loadDataSourceStatuses(run?.projectId)
+  const dataHealth = summarizeProjectDataSourceHealth(dataSourceStatuses)
+  const gscConnected = dataSourceStatuses.find((source) => source.key === 'gsc')?.connected === true
+  const dataforseoConfigured = dataSourceStatuses.find((s) => s.key === 'dataforseo')?.configured ?? false
   const runCollected =
     run != null && (['collected', 'diagnosing', 'reviewing', 'output'] as RunStatus[]).includes(run.status as RunStatus)
   const showCoverage = runCollected && dataHealth.up < dataHealth.total
+  // GSC 缺失时，通用覆盖率 CTA 也必须落到本项目，而不能把用户带回全局设置。
+  const coverageConnectHref = !gscConnected && run
+    ? `/${locale}/projects/${encodeURIComponent(run.projectId)}#gsc`
+    : `/${locale}/settings`
   const probeAnchor = `/${locale}/settings#source-aiProbe`
 
   // 从当前 run 的真实证据派生指标卡；measured 卡可点开对应证据原文。
@@ -185,24 +229,18 @@ export default async function RunDiagnosisPage({
         {showCoverage ? (
           <div className="coverage-note">
             <span>{t('dataHealth.coverage', { up: dataHealth.up, total: dataHealth.total })}</span>
-            <Link href={`/${locale}/settings`} className="coverage-action">
+            <Link href={coverageConnectHref} className="coverage-action">
               {t('dataHealth.coverageAction')}
             </Link>
           </div>
         ) : null}
 
-        {run ? (
+        {/* 采集中的 run 需要实时状态；待审阅时先让用户理解诊断，确认入口放到问题清单之后。 */}
+        {run && run.status !== 'reviewing' ? (
           <RunProgress
             runId={id}
             initialStatus={run.status as RunStatus}
             initialFailureReason={run.failureReason ?? ''}
-            reviewGate={run.status === 'reviewing'
-              ? {
-                  pendingCount: pendingRecommendationCount,
-                  totalCount: recommendations.length,
-                  href: `/${locale}/runs/${id}/${pendingRecommendationCount > 0 || recommendations.length === 0 ? 'recommendations' : 'output'}`,
-                }
-              : undefined}
           />
         ) : null}
 
@@ -239,7 +277,7 @@ export default async function RunDiagnosisPage({
           <h2>{t('screen2.currentTitle')}</h2>
           <span className="meta">{t('screen2.currentMeta')}</span>
         </div>
-        <StatStrip cards={cards} evidenceById={evidenceById} locale={locale} />
+        <StatStrip cards={cards} evidenceById={evidenceById} locale={locale} projectId={run?.projectId} />
 
         <div className="sec-h">
           <h2>{t('screen2.mapTitle')}</h2>
@@ -286,6 +324,41 @@ export default async function RunDiagnosisPage({
             href={probeAnchor}
           />
         )}
+
+        {/* ⑤：被引用域名 Top 列表（owned 高亮）——只在有正文引用样本时展示 */}
+        {probeSummary && probeSummary.citedDomains.length > 0 && (
+          <>
+            <div className="sec-h">
+              <h2>{t('screen2.citedDomainsTitle')}</h2>
+              <span className="meta">{t('screen2.citedDomainsMeta')}</span>
+            </div>
+            <CitedDomainsCard
+              rows={probeSummary.citedDomains}
+              ownedLabel={t('screen2.citedDomainsOwned')}
+              thirdPartyLabel={t('screen2.citedDomainsThirdParty')}
+              platformLabels={{
+                reddit: t('screen2.citedDomainsPlatformReddit'),
+                youtube: t('screen2.citedDomainsPlatformYoutube'),
+                linkedin: t('screen2.citedDomainsPlatformLinkedin'),
+                quora: t('screen2.citedDomainsPlatformQuora'),
+                wikipedia: t('screen2.citedDomainsPlatformWikipedia'),
+                github: t('screen2.citedDomainsPlatformGithub'),
+              } satisfies Record<Exclude<CitationPlatform, 'other'>, string>}
+            />
+          </>
+        )}
+
+        {/* 双口径的实测半边：Google AI Overviews 真实 SERP 采样（唯一允许「实测曝光」字样的区块）。
+            summary 为 null = 已配置但本轮未采集；aioTotalQueries=0 且未配置 = 引导去设置页。 */}
+        <div className="sec-h">
+          <h2>{t('screen2.aioExposureSectionTitle')}</h2>
+          <span className="meta">{t('screen2.aioExposureSectionMeta')}</span>
+        </div>
+        <AioExposureCard
+          summary={aioTotalQueries > 0 ? aioSummary : null}
+          configured={dataforseoConfigured}
+          settingsHref={`/${locale}/settings#source-dataforseo`}
+        />
 
         {/* 分引擎 SoV（SP-A2 #6，引擎不可互推）——多于一个引擎才展示 */}
         {probeSummary && (probeSummary.sovByEngine?.length ?? 0) > 1 && (
@@ -372,6 +445,23 @@ export default async function RunDiagnosisPage({
         ) : (
           <div className="card pending-block">{t('screen2.emptyFindings')}</div>
         )}
+
+        {showReviewHandoff ? (
+          <section className="review-handoff" aria-labelledby="review-handoff-title">
+            <div className="review-handoff-copy">
+              <span>{t('screen2.reviewHandoff.eyebrow')}</span>
+              <h2 id="review-handoff-title">
+                {t('screen2.reviewHandoff.title', { count: pendingRecommendationCount })}
+              </h2>
+              <p>{t('screen2.reviewHandoff.body')}</p>
+            </div>
+            <Link href={`/${locale}/runs/${id}/recommendations`} className="review-handoff-action">
+              <strong>{t('screen2.reviewHandoff.action', { count: pendingRecommendationCount })}</strong>
+              <small>{t('screen2.reviewHandoff.actionDetail')}</small>
+              <span aria-hidden="true">→</span>
+            </Link>
+          </section>
+        ) : null}
 
         <div className="note">{t('screen2.note')}</div>
       </section>

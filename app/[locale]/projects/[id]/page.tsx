@@ -6,7 +6,7 @@ import { GscConnectCard } from '@/components/GscConnectCard'
 import { BrandAliasesCard } from '@/components/BrandAliasesCard'
 import { RetestButton } from '@/components/RetestButton'
 import { getProject, getProjectRuns, getProjectSettings, getFindings } from '@/lib/repositories'
-import { isGscConfigured } from '@/lib/gsc/oauth'
+import { isGscPlatformConfigured } from '@/lib/gsc/oauth'
 import { pickActiveRun, pickRetestAnchor } from '@/lib/projects/summary'
 
 // 项目详情页（SP-G1b）：诊断历史 + 该项目 GSC 连接。项目不存在 → 路由级 404。
@@ -25,7 +25,11 @@ export default async function ProjectDetailPage({
   const project = await getProject(id)
   if (!project) notFound()
 
-  const [runRows, settings] = await Promise.all([getProjectRuns(id), getProjectSettings(id)])
+  const [runRows, settings] = await Promise.all([
+    getProjectRuns(id),
+    getProjectSettings(id),
+  ])
+  const gscAppConfigured = isGscPlatformConfigured()
 
   // 页头三态操作组的判定（spec §2.1 修订）：与 listProjectsWithSummary 用同一对纯函数，
   // 直接吃已取的 runRows，不额外查库。
@@ -50,7 +54,7 @@ export default async function ProjectDetailPage({
       <div className="sec-h">
         <h1 className="project-detail-title">{project.domain}</h1>
         {activeRun ? (
-          <Link href={`/${locale}/runs/${activeRun.id}`} className="run-btn">
+          <Link href={`/${locale}/runs/${activeRun.id}`} className="run-btn !mt-0">
             {tp('actionRunning')}
           </Link>
         ) : retestAnchor ? (
@@ -58,6 +62,7 @@ export default async function ProjectDetailPage({
             <RetestButton
               locale={locale}
               baselineRunId={retestAnchor.id}
+              className="run-btn !mt-0"
               labels={{
                 cta: tp('actionRetest'),
                 starting: tr('starting'),
@@ -65,12 +70,12 @@ export default async function ProjectDetailPage({
                 inProgress: tr('inProgress'),
               }}
             />
-            <Link href={`/${locale}/new?projectId=${project.id}`} className="ghost-btn">
+            <Link href={`/${locale}/new?projectId=${project.id}`} className="ghost-btn !mt-0">
               {tp('actionReconfigure')}
             </Link>
           </span>
         ) : (
-          <Link href={`/${locale}/new?projectId=${project.id}`} className="run-btn">
+          <Link href={`/${locale}/new?projectId=${project.id}`} className="run-btn !mt-0">
             {tp('actionConfigure')}
           </Link>
         )}
@@ -79,6 +84,17 @@ export default async function ProjectDetailPage({
       {project.nextRetestDueAt ? (
         <p className="note">{t('retestDue', { date: project.nextRetestDueAt })}</p>
       ) : null}
+
+      <h2 className="project-detail-section-title">{t('dataAccessTitle')}</h2>
+      <div id="gsc" className="mt-3">
+        <GscConnectCard
+          projectId={project.id}
+          locale={locale}
+          gscConnected={settings?.gscConnected ?? false}
+          gscSiteUrl={settings?.gscSiteUrl ?? null}
+          gscAppConfigured={gscAppConfigured}
+        />
+      </div>
 
       <h2 className="project-detail-section-title">{t('runHistoryTitle')}</h2>
       <RunHistory
@@ -103,20 +119,11 @@ export default async function ProjectDetailPage({
         hasActiveRun={activeRun !== null}
       />
 
-      <h2 className="mt-6 text-sm font-medium">{t('gscTitle')}</h2>
-      <GscConnectCard
-        projectId={project.id}
-        projectDomain={project.domain}
-        locale={locale}
-        gscConnected={settings?.gscConnected ?? false}
-        gscSiteUrl={settings?.gscSiteUrl ?? null}
-        gscAppConfigured={isGscConfigured()}
-      />
-
-      {/* 品牌别名（D7）：project_settings.brandAliases 是 per-project 配置，随项目详情页维护
-          （不放全局设置页——SP-G1b 已把设置页明确收窄为不绑定单项目的 BYOK 凭据页）。 */}
-      <h2 className="mt-6 text-sm font-medium">{t('brandAliasesTitle')}</h2>
-      <BrandAliasesCard projectId={project.id} initialAliases={settings?.brandAliases ?? []} />
+      <div className="mt-6 flex flex-col gap-6">
+        {/* 品牌别名（D7）：project_settings.brandAliases 是 per-project 配置，随项目详情页维护
+            （不放全局设置页——SP-G1b 已把设置页明确收窄为不绑定单项目的 BYOK 凭据页）。 */}
+        <BrandAliasesCard projectId={project.id} initialAliases={settings?.brandAliases ?? []} />
+      </div>
     </section>
   )
 }

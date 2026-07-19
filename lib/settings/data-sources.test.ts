@@ -31,6 +31,11 @@ describe('buildDataSourceStatuses', () => {
     const rows = buildDataSourceStatuses({}, { gscAppConfigured: false, gscConnected: false, gscSiteUrl: null })
     expect(rows.find((r) => r.key === 'gsc')).toMatchObject({ configured: false, connected: false })
   })
+
+  it('GSC 仅完成 OAuth 授权但尚未选择 property 时，不算已连接可采集', () => {
+    const rows = buildDataSourceStatuses({}, { gscAppConfigured: true, gscConnected: true, gscSiteUrl: null })
+    expect(rows.find((row) => row.key === 'gsc')).toMatchObject({ configured: true, connected: false })
+  })
   it('没有 Cloudflare 时，Browserless token 也能启用浏览器级渲染', () => {
     const rows = buildDataSourceStatuses({ BROWSERLESS_API_TOKEN: 'token' }, gscConn)
     expect(rows.find((r) => r.key === 'render')).toMatchObject({ configured: true, detail: 'Browserless' })

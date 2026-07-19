@@ -35,8 +35,12 @@ export default async function KeywordsPage({
         {isEmpty ? (
           <p className="mt-4 text-sm">
             {t('empty')}{' '}
-            <Link href={`/${locale}/settings`} className="underline underline-offset-2">
-              {t('emptyCta')}
+            <Link href={`/${locale}/projects/${run.projectId}`} className="underline underline-offset-2">
+              {t('emptyGscCta')}
+            </Link>
+            <span>{t('emptyJoin')}</span>
+            <Link href={`/${locale}/settings#source-dataforseo`} className="underline underline-offset-2">
+              {t('emptyDataforseoCta')}
             </Link>
           </p>
         ) : (

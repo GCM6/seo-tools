@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { SiteHeaderView } from './SiteHeader'
 
-// LocaleSwitch / DataSourceHealth 是 client leaf（next-intl + next/navigation hooks），
+// LocaleSwitch / ThemeToggle 是 client leaf（next-intl + next/navigation hooks），
 // 惯例参照 LocaleSwitch.test.tsx：mock 掉底层 hook，不测其内部行为。
 vi.mock('next-intl', () => ({
   useLocale: () => 'zh',
@@ -23,21 +23,9 @@ const labels = {
   themeMode: '主题模式',
 }
 
-const dataHealth = {
-  up: 2,
-  total: 5,
-  items: [
-    { key: 'gsc' as const, up: true },
-    { key: 'googleCse' as const, up: false },
-    { key: 'aiProbe' as const, up: true },
-    { key: 'dataforseo' as const, up: false },
-    { key: 'render' as const, up: false },
-  ],
-}
-
 describe('SiteHeaderView', () => {
   it('renders the brand link and the four navigation entries', () => {
-    render(<SiteHeaderView locale="zh" labels={labels} dataHealth={dataHealth} />)
+    render(<SiteHeaderView locale="zh" labels={labels} />)
 
     // next/link 规整掉尾部斜杠：/${locale}/ → /${locale}（渲染层面等价，不影响根页智能重定向）。
     expect(screen.getByRole('link', { name: /Veris/i })).toHaveAttribute('href', '/zh')

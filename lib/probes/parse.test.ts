@@ -60,7 +60,7 @@ describe('parseProbeAnswer', () => {
   })
 
   it('exposes a parser version for protocol provenance', () => {
-    expect(PROBE_PARSER_VERSION).toBe('v5') // 代码审查修复：sentiment 传别名 + unknownAdmission 全文检测
+    expect(PROBE_PARSER_VERSION).toBe('v6') // 引用口径拆分修复：citedUrls 只认正文引用，不再混入 retrievedUrls
   })
 
   it('competitorsInText 复用同一匹配口径（拉丁词边界 / CJK 子串 / 空集）', () => {
@@ -238,6 +238,50 @@ describe('parseProbeAnswer — hedged / unknownAdmission (D2)', () => {
 
   // v5 升版留痕：解析结果需能标注当前解析协议版本，保证跨版本回填脚本可比对（协议留痕）。
   it('缺陷2/1修复伴随 PROBE_PARSER_VERSION 升版（v4→v5），解析结果的版本号与常量一致', () => {
-    expect(PROBE_PARSER_VERSION).toBe('v5')
+    expect(PROBE_PARSER_VERSION).toBe('v6')
+  })
+
+  // v6：引用口径拆分——retrievedUrls 是独立的弱一档信号，不进 citedUrls/targetDomainCited。
+  it('retrievedUrls 默认为空数组（旧调用方不传时不影响既有行为）', () => {
+    const r = parseProbeAnswer({ ...base, answerText: 'no brand mention', citedUrls: [] })
+    expect(r.retrievedUrls).toEqual([])
+    expect(r.targetDomainRetrieved).toBe(false)
+  })
+
+  it('retrievedUrls 原样透传，且不计入 targetDomainCited（只有 citedUrls 才算"有依据"）', () => {
+    const r = parseProbeAnswer({
+      ...base,
+      answerText: 'no brand mention',
+      citedUrls: [],
+      retrievedUrls: ['https://docs.metadocu.com/guide', 'https://other.com/'],
+    })
+    expect(r.retrievedUrls).toEqual(['https://docs.metadocu.com/guide', 'https://other.com/'])
+    expect(r.targetDomainCited).toBe(false) // citedUrls 为空——即便 retrievedUrls 命中目标域，也不算"有依据"
+  })
+
+  it('flags targetDomainRetrieved when a retrieved-only URL is on the target domain (incl. subdomain)', () => {
+    const r = parseProbeAnswer({
+      ...base,
+      answerText: 'no brand mention',
+      citedUrls: [],
+      retrievedUrls: ['https://docs.metadocu.com/guide'],
+    })
+    expect(r.targetDomainRetrieved).toBe(true)
+  })
+
+  it('does not flag targetDomainRetrieved for lookalike domains', () => {
+    const r = parseProbeAnswer({ ...base, answerText: '', citedUrls: [], retrievedUrls: ['https://notmetadocu.com/'] })
+    expect(r.targetDomainRetrieved).toBe(false)
+  })
+
+  it('citedUrls 与 retrievedUrls 相互独立——citedUrls 命中目标域，targetDomainRetrieved 仍可为 false', () => {
+    const r = parseProbeAnswer({
+      ...base,
+      answerText: 'no brand mention',
+      citedUrls: ['https://docs.metadocu.com/guide'],
+      retrievedUrls: ['https://other.com/'],
+    })
+    expect(r.targetDomainCited).toBe(true)
+    expect(r.targetDomainRetrieved).toBe(false)
   })
 })

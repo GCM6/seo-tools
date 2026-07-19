@@ -20,6 +20,7 @@ function ctx(): RuleContext {
     keywordGaps: [],
     uaProbe: null,
     thirdParty: null,
+  socialPresence: null,
   }
 }
 

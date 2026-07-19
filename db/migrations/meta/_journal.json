@@ -64,6 +64,34 @@
       "when": 1783936617257,
       "tag": "0008_tiny_the_twelve",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1784017354294,
+      "tag": "0009_geo_citation_origin_split",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1784020043762,
+      "tag": "0010_perpetual_scarlet_witch",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1784088788121,
+      "tag": "0011_social_presence_evidence_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1784381965709,
+      "tag": "0012_dapper_mister_fear",
+      "breakpoints": true
     }
   ]
 }

@@ -5,13 +5,13 @@ export type DataSourceKey =
 export interface DataSourceStatus {
   key: DataSourceKey
   configured: boolean          // 环境/服务可用
-  connected?: boolean          // 本项目已授权（仅 GSC）
+  connected?: boolean          // 本项目可采集（仅 GSC：OAuth 已授权且已选择 property）
   detail?: string              // 附加信息（GSC 站点 URL / 已配探针数）
 }
 
 export interface GscConnection {
-  gscAppConfigured: boolean    // isGscConfigured()——OAuth app 环境级
-  gscConnected: boolean        // 本项目 settings.gscConnected
+  gscAppConfigured: boolean    // isGscPlatformConfigured()——平台 OAuth 环境级
+  gscConnected: boolean        // 本项目 OAuth 已授权（原始状态）
   gscSiteUrl: string | null
 }
 
@@ -28,7 +28,13 @@ export function buildDataSourceStatuses(
   const cloudflareReady = has('CLOUDFLARE_ACCOUNT_ID') && has('CLOUDFLARE_API_TOKEN')
   const browserlessReady = has('BROWSERLESS_API_TOKEN')
   return [
-    { key: 'gsc', configured: gsc.gscAppConfigured, connected: gsc.gscConnected, detail: gsc.gscSiteUrl ?? undefined },
+    {
+      key: 'gsc',
+      configured: gsc.gscAppConfigured,
+      // token 仅代表 Google 账号已经授权；未选 property 时采集器仍会跳过，不能在健康度中冒充已就绪。
+      connected: gsc.gscConnected && Boolean(gsc.gscSiteUrl),
+      detail: gsc.gscSiteUrl ?? undefined,
+    },
     { key: 'googleCse', configured: has('GOOGLE_CSE_API_KEY') && has('GOOGLE_CSE_CX') },
     { key: 'aiProbe', configured: aiCount > 0, detail: `${aiCount}/4` },
     { key: 'dataforseo', configured: has('DATAFORSEO_LOGIN') && has('DATAFORSEO_PASSWORD') },

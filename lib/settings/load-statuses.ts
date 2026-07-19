@@ -1,17 +1,19 @@
 import { getProjectSettings, getConfiguredCredentialKeys } from '@/lib/repositories'
-import { isGscConfigured } from '@/lib/gsc/oauth'
+import { isGscPlatformConfigured } from '@/lib/gsc/oauth'
 import { buildDataSourceStatuses, type DataSourceStatus } from './data-sources'
 
-// 服务端：拼装数据源状态矩阵。传 projectId 时含该项目真实 GSC 连接态（项目详情 / run 页用）；
-// 省略时为全局视角（settings 页 BYOK 矩阵），GSC 一律未连接——连接按项目在项目详情页操作。
-// 其余源按 env/DB 凭据判定，与项目无关。（spec §SP-G1b / §SP-G2b-2）
+// 服务端：拼装数据源状态矩阵。传 projectId 时含该项目真实 GSC 可采集态；
+// 省略 projectId 时不读取任何项目的 GSC 状态——全局页只使用其中的共享服务项。
+// 凭据与 property 始终只归属各自项目，不能被“任一项目已连接”提升为全局状态。
 export async function loadDataSourceStatuses(projectId?: string): Promise<DataSourceStatus[]> {
-  const settings = projectId ? await getProjectSettings(projectId) : null
-  const dbKeys = await getConfiguredCredentialKeys()
+  const [settings, dbKeys] = await Promise.all([
+    projectId ? getProjectSettings(projectId) : Promise.resolve(null),
+    getConfiguredCredentialKeys(),
+  ])
   return buildDataSourceStatuses(
     process.env,
     {
-      gscAppConfigured: isGscConfigured(),
+      gscAppConfigured: isGscPlatformConfigured(),
       gscConnected: settings?.gscConnected ?? false,
       gscSiteUrl: settings?.gscSiteUrl ?? null,
     },

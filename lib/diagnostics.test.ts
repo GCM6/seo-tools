@@ -93,7 +93,7 @@ describe('deriveStatCards', () => {
         // 头条指标应严格等于这里的 unbranded 子集，而非上面的全集 promptsPresent/promptsTotal。
         unbranded: { present: 6, total: 23, wilsonLow: 0.18 },
         branded: { perEngine: [] },
-        citationRate: 0,
+        citationRate: 0, citedDomains: [], ugcCitationShare: null,
       },
     })
     expect(card(cards, 'aiVisibility')).toEqual({
@@ -120,7 +120,7 @@ describe('deriveStatCards', () => {
         sampleEvidenceId: 'ev_probe_hit',
         unbranded: { present: 0, total: 0, wilsonLow: 0 },
         branded: { perEngine: [] },
-        citationRate: 0,
+        citationRate: 0, citedDomains: [], ugcCitationShare: null,
       },
     })
     expect(card(cards, 'aiVisibility')).toEqual({

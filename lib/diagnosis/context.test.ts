@@ -66,6 +66,47 @@ describe('buildRuleContext — GSC parsing', () => {
   })
 })
 
+describe('buildRuleContext — social_presence 解析（G11/SP01/SP02）', () => {
+  it('maps a social_presence evidence row into ctx.socialPresence', () => {
+    const ctx = build([
+      ev({
+        id: 'sp1', type: 'social_presence',
+        payload: {
+          brand: 'Acme',
+          platforms: [
+            { platform: 'youtube', query: 'Acme review', resultCount: 0, topResults: [] },
+            { platform: 'g2', query: 'Acme', resultCount: 2, topResults: [{ title: 'Acme on G2', url: 'https://g2.com/acme' }] },
+          ],
+          checkedAt: '2026-07-15T00:00:00.000Z',
+        },
+      }),
+    ])
+    expect(ctx.socialPresence).not.toBeNull()
+    expect(ctx.socialPresence!.evidenceId).toBe('sp1')
+    expect(ctx.socialPresence!.brand).toBe('Acme')
+    expect(ctx.socialPresence!.platforms).toHaveLength(2)
+    expect(ctx.socialPresence!.platforms[0]).toMatchObject({ platform: 'youtube', query: 'Acme review', resultCount: 0 })
+    expect(ctx.socialPresence!.platforms[1].topResults).toEqual([{ title: 'Acme on G2', url: 'https://g2.com/acme' }])
+  })
+  it('defensively drops platform entries with an unrecognized platform value', () => {
+    const ctx = build([
+      ev({
+        id: 'sp1', type: 'social_presence',
+        payload: { brand: 'Acme', platforms: [{ platform: 'tiktok', query: 'Acme', resultCount: 5, topResults: [] }], checkedAt: '' },
+      }),
+    ])
+    expect(ctx.socialPresence!.platforms).toHaveLength(0)
+  })
+  it('defaults missing fields defensively (no throw)', () => {
+    const ctx = build([ev({ id: 'sp1', type: 'social_presence', payload: {} })])
+    expect(ctx.socialPresence).toEqual({ brand: '', platforms: [], checkedAt: '', evidenceId: 'sp1' })
+  })
+  it('is null when no social_presence evidence present', () => {
+    const ctx = build([])
+    expect(ctx.socialPresence).toBeNull()
+  })
+})
+
 describe('parseGscKeywordMetrics', () => {
   const ev = (id: string, dimension: string, rows: unknown[]) => ({
     id, type: 'gsc' as const, claimLevel: 'L4' as const, source: 'gsc', sitePageId: null, rawText: '',

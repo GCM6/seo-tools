@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
-import Script from 'next/script'
 import { Geist, Geist_Mono, Noto_Sans_SC } from 'next/font/google'
 import { NextIntlClientProvider, hasLocale } from 'next-intl'
 import { setRequestLocale } from 'next-intl/server'
@@ -65,9 +64,10 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} className={fontVariables}>
       <head>
-        <Script
+        {/* 原生 <script>（非 next/script）：beforeInteractive 内联脚本在动态段根布局会被
+            客户端重复渲染并触发 React "script tag" 警告；服务端布局的原生标签只随 SSR 输出。 */}
+        <script
           id="theme-init"
-          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
@@ -85,7 +85,7 @@ export default async function LocaleLayout({
         />
       </head>
       <body>
-        {/* SiteHeader 内含 client 组件（LocaleSwitch/DataSourceHealth），必须在 Provider 内渲染
+        {/* SiteHeader 内含 client 组件（LocaleSwitch/ThemeToggle），必须在 Provider 内渲染
             （design spec §1.3）。全站导航/footer 从"每页自包 Shell"改为 layout 统一渲染，
             孤岛问题（如曾漏包 Shell 的 /rules）从机制上消除。 */}
         <NextIntlClientProvider>

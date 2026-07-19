@@ -65,6 +65,7 @@ const baseCtx = (): RuleContext => ({
   keywordGaps: [],
   uaProbe: null,
   thirdParty: null,
+  socialPresence: null,
 })
 
 const withEntry = (html: string): RuleContext => {

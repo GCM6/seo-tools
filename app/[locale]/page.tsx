@@ -24,7 +24,6 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
 
   // 数据源多语言对应字典
   const sourceNames: Record<string, string> = {
-    gsc: tSettings('source.gsc'),
     googleCse: tSettings('source.googleCse'),
     aiProbe: tSettings('source.aiProbe'),
     dataforseo: tSettings('source.dataforseo'),

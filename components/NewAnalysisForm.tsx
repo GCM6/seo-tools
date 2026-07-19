@@ -6,8 +6,10 @@ import { useState } from 'react'
 import { guessMarketLanguage } from '@/lib/analysis/locale-guess'
 import { estimateRun } from '@/lib/analysis/estimate'
 
-// 探测引擎是专有名词（品牌名），不翻译。ChatGPT/Perplexity/Gemini/DeepSeek 默认开，
-// Google AI Overviews 默认关（沿用原型 STEP1）。
+// 探测引擎是专有名词（品牌名），不翻译。ChatGPT/Perplexity/Gemini/DeepSeek 默认开，都走开发者
+// API 采样（代理指标口径）。Google AI Overviews 默认关：它是 DataForSEO 实测曝光口径（消费者
+// 搜索 surface 真实抓取，非探针 provider 代理指标），只有 DataForSEO 凭据已配置（dataforseoConfigured）
+// 才可勾选；未配置时仍渲染禁用态（见下方 chips 渲染的 comingSoon 分支）。
 const ENGINES = ['ChatGPT', 'Perplexity', 'Gemini', 'DeepSeek', 'Google AI Overviews'] as const
 const DEFAULT_ENGINES: Record<string, boolean> = {
   ChatGPT: true,
@@ -38,20 +40,44 @@ export interface WizardProject {
   competitors: string[]
 }
 
+interface ProjectSettingsSnapshot {
+  gscConnected?: boolean
+  gscSiteUrl?: string | null
+  defaultModels?: string[]
+}
+
+interface ProjectUpsertResponse extends Partial<WizardProject> {
+  id: string
+  settings?: ProjectSettingsSnapshot | null
+  reused?: boolean
+}
+
+function enginesFromSavedModels(savedEngines: string[] | null | undefined): Record<string, boolean> {
+  if (!savedEngines?.length) return { ...DEFAULT_ENGINES }
+  const saved = new Set(savedEngines)
+  return Object.fromEntries(ENGINES.map((name) => [name, saved.has(name)])) as Record<string, boolean>
+}
+
 export function NewAnalysisForm({
   locale,
   project = null,
   gscConnected = false,
+  gscSiteUrl = null,
   gscAppConfigured = true,
   aiProbeConfigured = false,
+  dataforseoConfigured = false,
   initialStep = 1,
   savedEngines = null,
 }: {
   locale: string
   project?: WizardProject | null
   gscConnected?: boolean
+  gscSiteUrl?: string | null
   gscAppConfigured?: boolean
   aiProbeConfigured?: boolean
+  // Google AI Overviews 的实测曝光口径依赖 DataForSEO BYOK 凭据；已配置时该 chip 才可勾选
+  // （见下方 chips 渲染的 comingSoon 分支——判断条件从"恒真"改为"未配置时才禁用"）。
+  dataforseoConfigured?: boolean
   initialStep?: 1 | 2 | 3
   savedEngines?: string[] | null
 }) {
@@ -72,13 +98,9 @@ export function NewAnalysisForm({
     return i >= 0 ? i : 0
   })
   const [competitors, setCompetitors] = useState((project?.competitors ?? []).join(', '))
-  const [engines, setEngines] = useState<Record<string, boolean>>(() => {
-    if (savedEngines && savedEngines.length > 0) {
-      const saved = new Set(savedEngines)
-      return Object.fromEntries(ENGINES.map((name) => [name, saved.has(name)])) as Record<string, boolean>
-    }
-    return DEFAULT_ENGINES
-  })
+  const [engines, setEngines] = useState<Record<string, boolean>>(() => enginesFromSavedModels(savedEngines))
+  const [activeGscConnected, setActiveGscConnected] = useState(gscConnected)
+  const [activeGscSiteUrl, setActiveGscSiteUrl] = useState<string | null>(gscSiteUrl)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -87,7 +109,7 @@ export function NewAnalysisForm({
     engineCount: selectedEngines.length,
     promptCount: PROMPT_COUNT,
     n: PROBE_N,
-    gsc: gscConnected,
+    gsc: Boolean(activeGscConnected && activeGscSiteUrl),
     render: true,
   })
 
@@ -119,6 +141,26 @@ export function NewAnalysisForm({
 
   const jsonHeaders = { 'content-type': 'application/json' }
 
+  function syncExistingProject(response: ProjectUpsertResponse) {
+    // 复用同域名项目时，恢复已有项目的状态，而不是用本次草稿的空值覆盖 UI。
+    // GSC/OAuth 资源、默认引擎和项目字段都随该项目长期保存。
+    if (!response.reused) return
+    const settings = response.settings
+    setActiveGscConnected(settings?.gscConnected === true)
+    setActiveGscSiteUrl(settings?.gscSiteUrl ?? null)
+    setEngines(enginesFromSavedModels(settings?.defaultModels))
+    if (response.domain) setDomain(response.domain)
+    if (typeof response.industry === 'string') {
+      const index = industryOptions.indexOf(response.industry)
+      if (index >= 0) setIndustryIndex(index)
+    }
+    if (typeof response.market === 'string') {
+      const index = marketOptions.indexOf(response.market)
+      if (index >= 0) setMarketIndex(index)
+    }
+    if (Array.isArray(response.competitors)) setCompetitors(response.competitors.join(', '))
+  }
+
   async function upsertProject(): Promise<string | null> {
     const shared = {
       domain,
@@ -132,14 +174,15 @@ export function NewAnalysisForm({
       : await fetch('/api/projects', {
           method: 'POST',
           headers: jsonHeaders,
-          body: JSON.stringify({ ...shared, gscConnected, defaultModels: selectedEngines }),
+          body: JSON.stringify({ ...shared, gscConnected: activeGscConnected, defaultModels: selectedEngines }),
         })
     if (!res.ok) {
       setError(await toErrorMessage(res))
       return null
     }
-    const p = (await res.json()) as { id: string }
+    const p = (await res.json()) as ProjectUpsertResponse
     setProjectId(p.id)
+    syncExistingProject(p)
     return p.id
   }
 
@@ -194,11 +237,31 @@ export function NewAnalysisForm({
     [2, t('stepConnect')],
     [3, t('stepConfirm')],
   ]
-  const dataSummary = gscConnected ? t('briefGscOn') : t('briefGscOff')
+  const gscReady = Boolean(activeGscConnected && activeGscSiteUrl)
+  const dataSummary = gscReady ? t('briefGscOn') : t('briefGscOff')
 
   return (
     <section className="screen show">
       <p className="intro">{t('intro')}</p>
+
+      {/* GSC 是项目级而非全局凭据：在建项目尚未生成前只说明收益；第 2 步创建项目后才给出授权入口。 */}
+      {!gscReady && (
+        <aside
+          className="mb-5 flex items-start gap-3 rounded-xl border border-primary/20 bg-primary-muted/45 px-4 py-3 text-sm"
+          aria-label={t('gscRecommendationTitle')}
+        >
+          <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary" aria-hidden="true">
+            +
+          </span>
+          <div className="min-w-0">
+            <p className="font-semibold text-ink">{t('gscRecommendationTitle')}</p>
+            <p className="mt-0.5 leading-relaxed text-body">{t('gscRecommendationDetail')}</p>
+          </div>
+          <span className="ml-auto shrink-0 rounded-full border border-primary/20 bg-surface-1 px-2 py-0.5 text-xs font-medium text-primary">
+            {t('gscRecommendationScope')}
+          </span>
+        </aside>
+      )}
 
       <ol className="wizard-steps" aria-label={t('stepConfirm')}>
         {steps.map(([n, label]) => (
@@ -305,20 +368,24 @@ export function NewAnalysisForm({
               <h2 className="wizard-h">{t('stepConnect')}</h2>
               <p className="wizard-sub">{t('step2Sub')}</p>
 
-              <div className={`connect-card${gscConnected ? ' connected' : ''}`}>
+              <div className={`connect-card${gscReady ? ' connected' : ''}`}>
                 <div className="cc-body">
                   <div className="cc-title">{t('gscTitle')}</div>
-                  <div className="cc-desc">{gscConnected ? t('gscDesc') : t('gscImpact')}</div>
+                  <div className="cc-desc">{gscReady ? t('gscDesc') : activeGscConnected ? t('gscPropertyRequired') : t('gscImpact')}</div>
                 </div>
-                {gscConnected ? (
+                {gscReady ? (
                   <span className="cc-state ok">{t('stateConnected')}</span>
+                ) : activeGscConnected && projectId ? (
+                  <a className="cc-action" href={`/${locale}/projects/${projectId}#gsc`}>
+                    {t('gscSelectPropertyCta')}
+                  </a>
                 ) : (
                   <button type="button" className="cc-action" onClick={connectGsc} disabled={!gscAppConfigured}>
                     {t('gscConnectCta')}
                   </button>
                 )}
               </div>
-              {!gscConnected && !gscAppConfigured && <p className="wizard-hint">{t('gscNotConfiguredHint')}</p>}
+              {!activeGscConnected && !gscAppConfigured && <p className="wizard-hint">{t('gscNotConfiguredHint')}</p>}
 
               <div className={`connect-card${aiProbeConfigured ? ' connected' : ''}`}>
                 <div className="cc-body">
@@ -337,12 +404,31 @@ export function NewAnalysisForm({
               <div className="field">
                 <label>{t('enginesLabel')}</label>
                 <div className="chips">
-                  {ENGINES.map((name) => (
-                    <label key={name} className={`chip${engines[name] ? ' on' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={engines[name]} aria-label={name} onChange={() => toggleEngine(name)} />
-                      <span>{ENGINE_ICONS[name]} {name}</span>
-                    </label>
-                  ))}
+                  {ENGINES.map((name) => {
+                    // Google AI Overviews：DataForSEO 实测曝光口径，不接任何探针 provider（见
+                    // lib/probes/run-probes.ts:8-9 注释）。未配置 DataForSEO 凭据时禁用态展示，
+                    // 已配置后与其余引擎一样可勾选（沿用 aiProbeConfigured 的配置检测模式）。
+                    const comingSoon = name === 'Google AI Overviews' && !dataforseoConfigured
+                    return (
+                      <label
+                        key={name}
+                        className={`chip${engines[name] ? ' on' : ''}${comingSoon ? ' disabled' : ''}`}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: comingSoon ? 'not-allowed' : 'pointer' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={engines[name]}
+                          aria-label={name}
+                          disabled={comingSoon}
+                          onChange={() => toggleEngine(name)}
+                        />
+                        <span>
+                          {ENGINE_ICONS[name]} {name}
+                          {comingSoon ? <em className="chip-note"> · {t('engineNeedsDataforseo')}</em> : null}
+                        </span>
+                      </label>
+                    )
+                  })}
                 </div>
               </div>
 

@@ -37,7 +37,7 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     })),
     // GSC 默认不连接（getProjectSettings 返回 undefined），GSC 采集块整体跳过；专门用例里再启用。
     refreshGscAccessToken: vi.fn(async () => ({ accessToken: 'access_tok' })),
-    isGscConfigured: vi.fn(() => false),
+    isGscPlatformConfigured: vi.fn(() => false),
     querySearchAnalytics: vi.fn(async () => [{ keys: ['buy widgets'], clicks: 10, impressions: 500, ctr: 0.02, position: 8 }]),
     upsertKeyword: vi.fn(async (row: unknown) => {
       void row
@@ -78,13 +78,17 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     ]),
     getRunProbeResults: vi.fn(async () => []),
     // GEO 采集器（Phase D）默认在基线用例里降级（抛错→block try/catch no-op），保持既有证据计数；
-    // 专门用例里提供可用 fake 断言 ua_probe / third_party_presence 证据。
+    // 专门用例里提供可用 fake 断言 ua_probe / third_party_presence / social_presence 证据。
     collectUaProbe: vi.fn(async () => { throw new Error('ua-probe disabled in baseline') }),
     checkThirdPartyPresence: vi.fn(async () => { throw new Error('third-party disabled in baseline') }),
+    checkSocialPresence: vi.fn(async () => { throw new Error('social-presence disabled in baseline') }),
     // DataForSEO 默认未配置，采集块整体跳过；专门用例里再启用。
     isDataforseoConfigured: vi.fn(() => false),
     dataforseoProvider: { isConfigured: vi.fn(() => false) },
     runDataforseo: vi.fn(async () => undefined),
+    // AIO（Google AI Overviews）默认未配置，采集块整体跳过；专门用例里再启用。
+    aioProvider: { isConfigured: vi.fn(() => false), fetchAioForKeyword: vi.fn() },
+    createSerpAioResult: vi.fn(async () => undefined),
     getRunPrompts: vi.fn(async () => []),
     getProject: vi.fn(async () => ({ id: 'proj_1', domain: 'example.com', industry: '', market: 'US', language: 'en', competitors: [] })),
     sendDiagnose: vi.fn(async () => undefined),
@@ -238,7 +242,7 @@ describe('collectEvidenceHandler', () => {
         gscConnected: true, gscRefreshToken: 'refresh_tok', gscSiteUrl: 'sc-domain:example.com',
         crawlEnabled: false, // 隔离：跳过全站爬取，聚焦 GSC 断言
       })),
-      isGscConfigured: vi.fn(() => true),
+      isGscPlatformConfigured: vi.fn(() => true),
     })
     const { args, published } = makeArgs()
 
@@ -453,11 +457,216 @@ describe('collectEvidenceHandler', () => {
     expect(tp![0].claimLevel).toBe('L3')
   })
 
+  // —— 社交/评价站前台存在度（social_presence）：复用同一 Google CSE 通道 ——
+  describe('social_presence 采集段', () => {
+    function socialDeps(overrides: Record<string, unknown> = {}) {
+      return makeDeps({
+        searchVisibilityProvider: {
+          isConfigured: vi.fn(() => true),
+          checkSite: vi.fn(),
+          search: vi.fn(async (query: string) => ({
+            query,
+            totalResults: 1,
+            resultCount: 1,
+            results: [{ title: 't', link: 'https://youtube.com/x', snippet: 's' }],
+            checkedAt: '2026-07-01T00:00:00.000Z',
+          })),
+        },
+        ...overrides,
+      })
+    }
+
+    it('CSE 已配置：落 social_presence(L2) 证据，source 为品牌名', async () => {
+      const checkSocialPresence = vi.fn(async () => ({
+        brand: 'example',
+        platforms: [
+          { platform: 'youtube', query: 'site:youtube.com "example"', resultCount: 1, topResults: [{ title: 't', url: 'https://youtube.com/x' }] },
+        ],
+        checkedAt: '2026-07-01T00:00:00.000Z',
+      }))
+      const deps = socialDeps({ checkSocialPresence })
+      const { args } = makeArgs()
+
+      await collectEvidenceHandler(args, asCollectDeps(deps))
+
+      expect(checkSocialPresence).toHaveBeenCalledOnce()
+      const sp = deps.createEvidenceArtifact.mock.calls.find((c) => c[0].type === 'social_presence')
+      expect(sp).toBeTruthy()
+      expect(sp![0]).toMatchObject({ claimLevel: 'L2', source: 'example' })
+      expect(deps.writeDataSourceStatus).toHaveBeenCalledWith(expect.objectContaining({
+        sourceKey: 'social_presence', configured: true, authorized: true, attempted: true, status: 'collected', capturedEvidenceCount: 1,
+      }))
+    })
+
+    it('CSE 未配置：跳过采集，不落证据，dss 记 not_configured', async () => {
+      const checkSocialPresence = vi.fn(async () => { throw new Error('should not be called') })
+      const deps = makeDeps({ checkSocialPresence }) // 默认 searchVisibilityProvider.isConfigured() === false
+      const { args } = makeArgs()
+
+      await collectEvidenceHandler(args, asCollectDeps(deps))
+
+      expect(checkSocialPresence).not.toHaveBeenCalled()
+      expect(deps.createEvidenceArtifact.mock.calls.some((c) => c[0].type === 'social_presence')).toBe(false)
+      expect(deps.writeDataSourceStatus).toHaveBeenCalledWith(expect.objectContaining({
+        sourceKey: 'social_presence', configured: false, authorized: false, attempted: false, status: 'not_configured',
+      }))
+    })
+
+    it('采集抛错：dss 记 failed，不落证据，且不阻断整轮采集', async () => {
+      const checkSocialPresence = vi.fn(async () => { throw new Error('social_presence_boom') })
+      const deps = socialDeps({ checkSocialPresence })
+      const { args } = makeArgs()
+
+      const result = await collectEvidenceHandler(args, asCollectDeps(deps))
+
+      expect(result).toEqual({ status: 'collected' })
+      expect(deps.createEvidenceArtifact.mock.calls.some((c) => c[0].type === 'social_presence')).toBe(false)
+      expect(deps.writeDataSourceStatus).toHaveBeenCalledWith(expect.objectContaining({
+        sourceKey: 'social_presence', configured: true, authorized: true, attempted: true, status: 'failed', failureReason: 'social_presence_boom',
+      }))
+      expect(deps.markRunStatus).toHaveBeenCalledWith('run_1', 'collected', expect.anything())
+      expect(deps.sendDiagnose).toHaveBeenCalled()
+    })
+  })
+
   it('DataForSEO 未配置：跳过，不调用 runDataforseo', async () => {
     const runDataforseo = vi.fn(async () => undefined)
     const deps = makeDeps({ isDataforseoConfigured: vi.fn(() => false), runDataforseo })
     const { args } = makeArgs()
     await collectEvidenceHandler(args, asCollectDeps(deps))
     expect(runDataforseo).not.toHaveBeenCalled()
+  })
+
+  // —— AIO（Google AI Overviews）实测采集：分引擎双口径的实测半边 ——
+  describe('AIO 采集阶段', () => {
+    function aioDeps(overrides: Record<string, unknown> = {}) {
+      return makeDeps({
+        getProjectSettings: vi.fn(async () => ({
+          crawlEnabled: false, // 隔离：跳过全站爬取，聚焦 AIO 断言
+          defaultModels: ['Google AI Overviews'],
+          brandAliases: [],
+        })),
+        getProject: vi.fn(async () => ({
+          id: 'proj_1', domain: 'example.com', industry: 'saas', market: 'English · Global', language: 'en', competitors: [],
+        })),
+        aioProvider: {
+          isConfigured: vi.fn(() => true),
+          fetchAioForKeyword: vi.fn(async (keyword: string) => ({
+            keyword,
+            aioPresent: true,
+            asynchronous: false,
+            answerMarkdown: '## summary',
+            references: [{ domain: 'example.com', url: 'https://example.com/page', title: 't', source: 's', text: 'x' }],
+          })),
+        },
+        createSerpAioResult: vi.fn(async () => undefined),
+        ...overrides,
+      })
+    }
+
+    function aioStatusCalls(deps: ReturnType<typeof aioDeps>) {
+      return (deps.writeDataSourceStatus as ReturnType<typeof vi.fn>).mock.calls
+        .map((c) => c[0] as { sourceKey: string })
+        .filter((c) => c.sourceKey === 'aio')
+    }
+
+    it('凭据未配置：整段跳过，不发起任何查询，不抛错', async () => {
+      const deps = aioDeps({ aioProvider: { isConfigured: vi.fn(() => false), fetchAioForKeyword: vi.fn() } })
+      const { args } = makeArgs()
+      await expect(collectEvidenceHandler(args, asCollectDeps(deps))).resolves.toBeTruthy()
+      expect((deps.aioProvider as { fetchAioForKeyword: ReturnType<typeof vi.fn> }).fetchAioForKeyword).not.toHaveBeenCalled()
+      expect(deps.createEvidenceArtifact.mock.calls.some((c) => c[0].type === 'serp_aio')).toBe(false)
+      expect(aioStatusCalls(deps)).toEqual([
+        expect.objectContaining({ sourceKey: 'aio', configured: false, status: 'not_configured' }),
+      ])
+    })
+
+    it('凭据已配置但 run 未勾选 Google AI Overviews：跳过', async () => {
+      const deps = aioDeps({
+        getProjectSettings: vi.fn(async () => ({ crawlEnabled: false, defaultModels: ['ChatGPT'], brandAliases: [] })),
+      })
+      const { args } = makeArgs()
+      await collectEvidenceHandler(args, asCollectDeps(deps))
+      expect((deps.aioProvider as { fetchAioForKeyword: ReturnType<typeof vi.fn> }).fetchAioForKeyword).not.toHaveBeenCalled()
+      expect(aioStatusCalls(deps)).toEqual([
+        expect.objectContaining({ sourceKey: 'aio', configured: true, status: 'not_attempted' }),
+      ])
+    })
+
+    it('市场未映射（如"东南亚"）：不猜默认国家，整块标记未尝试', async () => {
+      const deps = aioDeps({
+        getProject: vi.fn(async () => ({
+          id: 'proj_1', domain: 'example.com', industry: 'saas', market: '东南亚', language: 'en', competitors: [],
+        })),
+      })
+      const { args } = makeArgs()
+      await collectEvidenceHandler(args, asCollectDeps(deps))
+      expect((deps.aioProvider as { fetchAioForKeyword: ReturnType<typeof vi.fn> }).fetchAioForKeyword).not.toHaveBeenCalled()
+      const calls = aioStatusCalls(deps)
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toMatchObject({ status: 'not_attempted' })
+      expect((calls[0] as { protocolSnapshot?: { reason?: string } }).protocolSnapshot).toMatchObject({ reason: 'market_not_mapped', market: '东南亚' })
+    })
+
+    it('已配置 + 已勾选 + 市场已映射：对 30 条确定性查询逐一采集，落 evidence + serp_aio_results', async () => {
+      const deps = aioDeps()
+      const { args } = makeArgs()
+      await collectEvidenceHandler(args, asCollectDeps(deps))
+
+      const fetchMock = (deps.aioProvider as { fetchAioForKeyword: ReturnType<typeof vi.fn> }).fetchAioForKeyword
+      expect(fetchMock).toHaveBeenCalledTimes(30)
+      // location/language 映射：English · Global → en-US（2840/en）
+      expect(fetchMock.mock.calls[0][1]).toEqual({ locationCode: 2840, languageCode: 'en' })
+
+      const aioEvidence = deps.createEvidenceArtifact.mock.calls.filter((c) => c[0].type === 'serp_aio')
+      expect(aioEvidence).toHaveLength(30)
+      aioEvidence.forEach((c) => expect(c[0].claimLevel).toBe('L3'))
+
+      expect(deps.createSerpAioResult).toHaveBeenCalledTimes(30)
+      const firstResultRow = (deps.createSerpAioResult as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+        aioPresent: boolean; targetDomainCited: boolean; citedUrls: string[]; locationCode: number; languageCode: string
+      }
+      expect(firstResultRow.aioPresent).toBe(true)
+      expect(firstResultRow.targetDomainCited).toBe(true) // references 命中 example.com（自有域名）
+      expect(firstResultRow.citedUrls).toEqual(['https://example.com/page'])
+      expect(firstResultRow.locationCode).toBe(2840)
+      expect(firstResultRow.languageCode).toBe('en')
+
+      const calls = aioStatusCalls(deps)
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toMatchObject({ status: 'collected', capturedEvidenceCount: 30 })
+    })
+
+    it('单条查询失败不阻断其余查询：失败留证据现场，不写 serp_aio_results', async () => {
+      let call = 0
+      const deps = aioDeps({
+        aioProvider: {
+          isConfigured: vi.fn(() => true),
+          fetchAioForKeyword: vi.fn(async (keyword: string) => {
+            call++
+            if (call === 2) throw new Error('dataforseo_error_40001')
+            return {
+              keyword,
+              aioPresent: false,
+              asynchronous: false,
+              answerMarkdown: null,
+              references: [],
+            }
+          }),
+        },
+      })
+      const { args } = makeArgs()
+      await collectEvidenceHandler(args, asCollectDeps(deps))
+
+      const aioEvidence = deps.createEvidenceArtifact.mock.calls.filter((c) => c[0].type === 'serp_aio')
+      expect(aioEvidence).toHaveLength(30) // 29 成功 + 1 失败，均落证据现场
+      const failedEvidence = aioEvidence.find((c) => (c[0].request as { error_code?: string })?.error_code)
+      expect(failedEvidence).toBeTruthy()
+      expect(failedEvidence![0].payload).toBeNull()
+
+      expect(deps.createSerpAioResult).toHaveBeenCalledTimes(29) // 失败那条不写结果表
+      const calls = aioStatusCalls(deps)
+      expect(calls[0]).toMatchObject({ status: 'partial', capturedEvidenceCount: 29 })
+    })
   })
 })

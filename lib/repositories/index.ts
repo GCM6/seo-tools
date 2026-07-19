@@ -1,6 +1,6 @@
 import { eq, asc, desc, and, isNull, isNotNull, inArray, ne, or, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
-import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals, providerCredentials, reportShares, dataSourceStatuses } from '@/db/schema'
+import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, serpAioResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals, providerCredentials, reportShares, dataSourceStatuses } from '@/db/schema'
 import type { DataSourceStatus } from '@/db/schema'
 import { hasValidEvidence, computeArtifactUpdate, assertReleasableVersion } from '@/lib/diagnosis/rule-proposals'
 import type { EvidenceType, EvidenceLevel, RunStatus, ClaimType } from '@/lib/types'
@@ -15,6 +15,8 @@ import { isShareExpired } from '@/lib/share/expiry'
 
 export const getRun = (id: string) => db.query.runs.findFirst({ where: eq(runs.id, id) })
 export const getProject = (id: string) => db.query.projects.findFirst({ where: eq(projects.id, id) })
+export const getProjectByDomain = (domain: string) =>
+  db.query.projects.findFirst({ where: and(eq(projects.ownerId, 'local'), eq(projects.domain, domain)) })
 export const getFindings = (runId: string) => db.select().from(findings).where(eq(findings.runId, runId))
 export const getFinding = (id: string) => db.query.findings.findFirst({ where: eq(findings.id, id) })
 export const getRecommendations = (runId: string) => db.select().from(recommendations).where(eq(recommendations.runId, runId))
@@ -79,6 +81,10 @@ export const getRunPrompts = (runId: string) =>
   db.select().from(prompts).where(eq(prompts.runId, runId)).orderBy(asc(prompts.priority))
 export const getRunProbeResults = (runId: string) =>
   db.select().from(aiProbeResults).where(eq(aiProbeResults.runId, runId))
+// AIO（Google AI Overviews）实测结果：风格对齐 createAiProbeResult/getRunProbeResults。
+export const createSerpAioResult = (row: typeof serpAioResults.$inferInsert) => db.insert(serpAioResults).values(row)
+export const getRunSerpAioResults = (runId: string) =>
+  db.select().from(serpAioResults).where(eq(serpAioResults.runId, runId))
 // retest_snapshots 以 baseline run 为锚点：屏4 之后回测同协议时按此拉 delta。
 export const getRetestSnapshots = (baselineRunId: string) =>
   db.select().from(retestSnapshots).where(eq(retestSnapshots.baselineRunId, baselineRunId))
@@ -274,7 +280,10 @@ export const listProjectsWithSummary = async () => {
   const projectRows = await db.select().from(projects).orderBy(desc(projects.createdAt))
   return Promise.all(
     projectRows.map(async (p) => {
-      const runRows = await db.select().from(runs).where(eq(runs.projectId, p.id))
+      const [runRows, settings] = await Promise.all([
+        db.select().from(runs).where(eq(runs.projectId, p.id)),
+        getProjectSettings(p.id),
+      ])
       const latest = pickLatestRun(runRows)
       const activeRun = pickActiveRun(runRows)
       const retestAnchor = pickRetestAnchor(runRows)
@@ -285,6 +294,7 @@ export const listProjectsWithSummary = async () => {
         id: p.id,
         domain: p.domain,
         market: p.market,
+        gscReady: Boolean(settings?.gscConnected && settings.gscSiteUrl),
         nextRetestDueAt: p.nextRetestDueAt,
         latestRun: latest
           ? { id: latest.id, runType: latest.runType, status: latest.status, startedAt: latest.startedAt, findingCount }

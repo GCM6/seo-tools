@@ -58,6 +58,8 @@ export function createOpenAiProbeProvider({ apiKey, model, fetchImpl = fetch }: 
       return {
         answerText: textParts.join(''),
         citedUrls,
+        // OpenAI Responses API 只暴露行内 url_citation 标注，无法区分"仅检索到未引用"的 URL。
+        retrievedUrls: [],
         rawResponse: raw,
         webSearchEnabled: true,
         temperature: null,

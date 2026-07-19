@@ -145,6 +145,13 @@ interface ThirdPartyPayload {
   wikipedia?: { exists?: boolean; title?: string | null; url?: string | null }
   reddit?: { mentions?: number; windowDays?: number }
 }
+// 社媒/第三方评价站前台存在度（G11/SP01/SP02）：evidence type 'social_presence'（L2，前台检索
+// 结果，非平台 API 全量数据）。防御性解析——字段缺失一律给空/0，不猜测。
+interface SocialPresencePayload {
+  brand?: string
+  platforms?: { platform?: 'youtube' | 'g2' | 'trustpilot' | 'capterra'; query?: string; resultCount?: number; topResults?: { title?: string; url?: string }[] }[]
+  checkedAt?: string
+}
 
 function buildUaProbe(evidence: DiagnosisEvidenceRow[]): RuleContext['uaProbe'] {
   const e = evidence.find((ev) => ev.type === 'ua_probe')
@@ -170,6 +177,29 @@ function buildThirdParty(evidence: DiagnosisEvidenceRow[]): RuleContext['thirdPa
   return {
     wikipedia: { exists: !!p.wikipedia?.exists, title: p.wikipedia?.title ?? null, url: p.wikipedia?.url ?? null },
     reddit: { mentions: num(p.reddit?.mentions), windowDays: num(p.reddit?.windowDays) },
+    evidenceId: e.id,
+  }
+}
+
+// 社媒/第三方评价站前台存在度（G11/SP01/SP02）——同 buildThirdParty 模式：无证据时返回 null，
+// 消费方（reputation.ts 规则组）整组 no-op。
+function buildSocialPresence(evidence: DiagnosisEvidenceRow[]): RuleContext['socialPresence'] {
+  const e = evidence.find((ev) => ev.type === 'social_presence')
+  if (!e) return null
+  const p = (e.payload ?? {}) as SocialPresencePayload
+  return {
+    brand: p.brand ?? '',
+    platforms: (p.platforms ?? [])
+      .filter((pl): pl is NonNullable<typeof pl> & { platform: 'youtube' | 'g2' | 'trustpilot' | 'capterra' } =>
+        pl?.platform === 'youtube' || pl?.platform === 'g2' || pl?.platform === 'trustpilot' || pl?.platform === 'capterra',
+      )
+      .map((pl) => ({
+        platform: pl.platform,
+        query: pl.query ?? '',
+        resultCount: num(pl.resultCount),
+        topResults: (pl.topResults ?? []).map((r) => ({ title: r?.title ?? '', url: r?.url ?? '' })),
+      })),
+    checkedAt: p.checkedAt ?? '',
     evidenceId: e.id,
   }
 }
@@ -300,5 +330,6 @@ export function buildRuleContext(input: {
     keywordGaps: input.keywordGaps ?? [],
     uaProbe: buildUaProbe(evidence),
     thirdParty: buildThirdParty(evidence),
+    socialPresence: buildSocialPresence(evidence),
   }
 }

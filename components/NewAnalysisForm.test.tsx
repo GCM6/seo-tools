@@ -19,7 +19,7 @@ function renderForm(props: Partial<Parameters<typeof NewAnalysisForm>[0]> = {}) 
 async function advanceToConnect() {
   fireEvent.change(screen.getByLabelText('网址'), { target: { value: 'https://example.com' } })
   fireEvent.click(screen.getByRole('button', { name: '下一步' }))
-  await screen.findByText('连接 GSC')
+  await screen.findByRole('heading', { name: '连接数据' })
 }
 
 describe('NewAnalysisForm 向导可见性', () => {
@@ -32,6 +32,13 @@ describe('NewAnalysisForm 向导可见性', () => {
     renderForm()
     expect(screen.getByLabelText('网址')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '你的网站' })).toBeInTheDocument()
+  })
+
+  it('未接入 GSC 时，在创建项目之前先说明其能补齐的实测数据', () => {
+    renderForm()
+    expect(screen.getByText('建议连接 GSC，补齐实测搜索数据')).toBeInTheDocument()
+    expect(screen.getByText(/点击、曝光、CTR 和平均排名/)).toBeInTheDocument()
+    expect(screen.getByText('项目级')).toBeInTheDocument()
   })
 })
 
@@ -75,6 +82,32 @@ describe('NewAnalysisForm 第 2 步引擎多选预填（savedEngines 回填，sp
   })
 })
 
+describe('NewAnalysisForm Google AI Overviews chip（DataForSEO 实测曝光口径）', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ id: 'proj_x' }), { status: 201 })))
+  })
+
+  it('DataForSEO 未配置：chip 禁用，展示"需先配置"提示', async () => {
+    renderForm({ dataforseoConfigured: false })
+    await advanceToConnect()
+    const checkbox = screen.getByRole('checkbox', { name: 'Google AI Overviews' })
+    expect(checkbox).toBeDisabled()
+    expect(screen.getByText(/需先在设置页配置 DataForSEO/)).toBeInTheDocument()
+  })
+
+  it('DataForSEO 已配置：chip 可勾选，无禁用提示', async () => {
+    renderForm({ dataforseoConfigured: true })
+    await advanceToConnect()
+    const checkbox = screen.getByRole('checkbox', { name: 'Google AI Overviews' })
+    expect(checkbox).not.toBeDisabled()
+    expect(screen.queryByText(/需先在设置页配置 DataForSEO/)).not.toBeInTheDocument()
+
+    // 已配置后仍可正常勾选/取消
+    fireEvent.click(checkbox)
+    expect(checkbox).toBeChecked()
+  })
+})
+
 describe('NewAnalysisForm 第 2 步数据连接三态', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ id: 'proj_x' }), { status: 201 })))
@@ -94,15 +127,55 @@ describe('NewAnalysisForm 第 2 步数据连接三态', () => {
     expect(screen.queryByRole('link', { name: '去配置' })).not.toBeInTheDocument()
   })
 
-  it('GSC 已连接显示「已连接 ✓」而非连接按钮', async () => {
-    renderForm({ gscConnected: true })
+  it('GSC 已授权且已选择资源时显示「已连接 ✓」而非连接按钮', async () => {
+    renderForm({ gscConnected: true, gscSiteUrl: 'sc-domain:example.com' })
     fireEvent.change(screen.getByLabelText('网址'), { target: { value: 'https://example.com' } })
     fireEvent.click(screen.getByRole('button', { name: '下一步' }))
     await screen.findByText('已连接 ✓')
     expect(screen.queryByRole('button', { name: '连接 GSC' })).not.toBeInTheDocument()
   })
 
-  it('gscAppConfigured=false：连接按钮禁用、显示环境变量提示、点击不跳转', async () => {
+  it('GSC 已授权但尚未选择资源时，引导回当前项目详情页完成选择', async () => {
+    renderForm({
+      project: { id: 'proj_x', domain: 'https://example.com', industry: '', market: '', language: '', competitors: [] },
+      gscConnected: true,
+      gscSiteUrl: null,
+      initialStep: 2,
+    })
+    expect(screen.getByText(/还需在项目详情页选择一个已授权 GSC 资源/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '选择 GSC 资源' })).toHaveAttribute('href', '/zh/projects/proj_x#gsc')
+    expect(screen.queryByText('已连接 ✓')).not.toBeInTheDocument()
+  })
+
+  it('输入已存在域名时，同步该项目的 GSC 资源与默认探针配置', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({
+        id: 'proj_existing',
+        domain: 'https://example.com/',
+        industry: '跨境电商',
+        market: 'English · Global',
+        competitors: ['competitor.example'],
+        reused: true,
+        settings: {
+          gscConnected: true,
+          gscSiteUrl: 'sc-domain:example.com',
+          defaultModels: ['Perplexity'],
+        },
+      }), { status: 200 })),
+    )
+    renderForm()
+    await advanceToConnect()
+
+    await screen.findByText('已连接 ✓')
+    expect(screen.getByRole('checkbox', { name: 'ChatGPT' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Perplexity' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Gemini' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'DeepSeek' })).not.toBeChecked()
+    expect(screen.queryByRole('button', { name: '连接 GSC' })).not.toBeInTheDocument()
+  })
+
+  it('gscAppConfigured=false：连接按钮禁用、显示平台未就绪提示、点击不跳转', async () => {
     const original = window.location
     Object.defineProperty(window, 'location', { value: { ...original, href: 'about:blank' }, writable: true })
     renderForm({ gscAppConfigured: false })
@@ -111,7 +184,7 @@ describe('NewAnalysisForm 第 2 步数据连接三态', () => {
     const button = screen.getByRole('button', { name: '连接 GSC' })
     expect(button).toBeDisabled()
     expect(
-      screen.getByText(/未配置 Google OAuth.*GOOGLE_OAUTH_CLIENT_ID.*GOOGLE_OAUTH_CLIENT_SECRET.*GOOGLE_OAUTH_REDIRECT_URI/),
+      screen.getByText(/平台连接服务暂未就绪/),
     ).toBeInTheDocument()
 
     fireEvent.click(button)

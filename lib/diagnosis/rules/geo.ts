@@ -2,6 +2,7 @@ import type { Rule, RuleHitDraft } from '../types'
 import { isRenderDependent } from './technical'
 import { parseRobotsAllowed } from '@/lib/collection/robots'
 import { isWebSearchEnabledEngine } from '@/lib/probes/engine-capability'
+import { isUgcPlatform } from '@/lib/probes/citation-platform'
 
 // P5 GEO 规则组：AI 抓取可见性与探针可见度。
 // —— 阈值为启发式经验值，随 RULES_VERSION 版本化 ——
@@ -14,6 +15,10 @@ const SENTIMENT_NEGATIVE_MIN_RATIO = 0.3
 const AI_FABRICATION_MIN_RATIO = 0.3
 // G10：branded 回答总数（跨引擎合计）低于此值视为样本太薄，不出结论。
 const AI_FABRICATION_MIN_SAMPLES = 3
+// G11：unbranded 子集下社区/UGC 平台（reddit/quora/youtube/linkedin）引用占比达到此阈值，视为
+// 「品类答案显著由社区内容驱动」。依据：行业追踪显示 AI 回答中社媒来源占比 20%+ 为普遍水位，
+// 超过 1/4 视为品类答案显著由社区内容驱动（经验阈值，随 RULES_VERSION 固化，可调）。
+const UGC_SHARE_THRESHOLD = 0.25
 
 // GEO 规则组内的引擎联网能力判定（D6）：真源已收口到 lib/probes/engine-capability.ts 的
 // isWebSearchEnabledEngine（Wave 3 消除 summary.ts / geo.ts / components 三份复制）。
@@ -376,4 +381,41 @@ const G10: Rule = {
   },
 }
 
-export const geoRules: Rule[] = [G03, G05, G06, G01, E01, G02, G07, G08, G09, G10]
+// G11：品类回答的引用大量来自社区/UGC 平台，且未引用本站——只陈述可测事实（占比 + 涉及平台），
+// 归因（该不该投入社区运营）与行动放建议模板（templates.ts），不在 finding 里下结论。
+// 触发要求「同时」满足两条：① unbranded 子集下社区/UGC 引用占比达标（ugcCitationShare，见
+// summary.ts 口径注释）；② citedDomains 中不存在 owned 归属条目——即便社区占比高，只要本站
+// 自身也被引用就不算「品类答案被社区取代」，避免与「已有一定引用」的站点重复报噪音。
+const G11: Rule = {
+  id: 'G11',
+  pillar: 'P5',
+  side: 'geo',
+  severity: 'warning',
+  claimType: 'measured_sample',
+  evaluate(ctx): RuleHitDraft | null {
+    const { probe, probeEvidenceId } = ctx
+    if (!probe || !probeEvidenceId) return null
+    const { ugcCitationShare, citedDomains } = probe
+    if (ugcCitationShare === null || ugcCitationShare < UGC_SHARE_THRESHOLD) return null
+    const hasOwnedCitation = citedDomains.some((d) => d.origin === 'owned')
+    if (hasOwnedCitation) return null
+    // 涉及平台：从 citedDomains 取社区/UGC 平台分类（platform !== 'other' 且 isUgcPlatform），
+    // 去重后截前几个供文案列举，不逐域名罗列。
+    const ugcPlatforms = [...new Set(citedDomains.filter((d) => isUgcPlatform(d.platform)).map((d) => d.platform))].slice(0, 4)
+    return {
+      title: '品类回答的引用大量来自社区/UGC 平台，且未引用你的站点',
+      description: `无品牌提问的 AI 答案中，被引用来源里社区/UGC 平台（如${ugcPlatforms.join('、') || '社区讨论型平台'}）占比达 ${(ugcCitationShare * 100).toFixed(0)}%（高于 ${(UGC_SHARE_THRESHOLD * 100).toFixed(0)}%），而目标域名未出现在任何被引用来源中。当前 n=5 为方向性样本。`,
+      evidenceRefs: [probeEvidenceId],
+      scope: 'geo:ugc-citation',
+      detail: {
+        ugcCitationShare,
+        threshold: UGC_SHARE_THRESHOLD,
+        ugcPlatforms,
+        citedDomainsCount: citedDomains.length,
+        directional: true,
+      },
+    }
+  },
+}
+
+export const geoRules: Rule[] = [G03, G05, G06, G01, E01, G02, G07, G08, G09, G10, G11]

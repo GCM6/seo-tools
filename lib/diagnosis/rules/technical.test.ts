@@ -22,6 +22,7 @@ const baseCtx = (): RuleContext => ({
   keywordGaps: [],
   uaProbe: null,
   thirdParty: null,
+  socialPresence: null,
 })
 
 const page = (p: Partial<SiteAuditPage>): SiteAuditPage => ({

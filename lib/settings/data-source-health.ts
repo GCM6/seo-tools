@@ -1,10 +1,10 @@
 import type { DataSourceStatus } from './data-sources'
 
-// 数据源健康度汇总（顶栏常驻 pill / 覆盖率横幅）。纯函数：状态矩阵 → up/total。
-// 只统计「需要配置且会真出数」的 5 个源；psi/publicCorpora 恒可用、无需连接，不计入
-// （计入会让分母永远垫底 2 格，弱化「你还差几个」的紧迫感）。（spec §SP-G2b-1）
-export const HEALTH_KEYS = ['gsc', 'googleCse', 'aiProbe', 'dataforseo', 'render'] as const
-export type HealthKey = (typeof HEALTH_KEYS)[number]
+// 共享服务只统计全局凭据；GSC 的 OAuth token 与 property 严格属于单个项目，不能混入。
+// psi/publicCorpora 恒可用且无需接入，同样不计入任何健康度分母。
+export const GLOBAL_HEALTH_KEYS = ['googleCse', 'aiProbe', 'dataforseo', 'render'] as const
+export const PROJECT_HEALTH_KEYS = ['gsc', ...GLOBAL_HEALTH_KEYS] as const
+export type HealthKey = (typeof PROJECT_HEALTH_KEYS)[number]
 
 export interface HealthItem {
   key: HealthKey
@@ -17,13 +17,20 @@ export interface DataSourceHealth {
   items: HealthItem[]
 }
 
-export function summarizeDataSourceHealth(statuses: DataSourceStatus[]): DataSourceHealth {
+function summarize(statuses: DataSourceStatus[], keys: readonly HealthKey[]): DataSourceHealth {
   const byKey = new Map(statuses.map((s) => [s.key, s]))
-  const items: HealthItem[] = HEALTH_KEYS.map((key) => {
+  const items: HealthItem[] = keys.map((key) => {
     const s = byKey.get(key)
-    // GSC 授权到本项目（connected）才算真出数；其余源看环境/DB 是否配置。
     const up = key === 'gsc' ? s?.connected === true : s?.configured === true
     return { key, up }
   })
-  return { up: items.filter((i) => i.up).length, total: HEALTH_KEYS.length, items }
+  return { up: items.filter((i) => i.up).length, total: keys.length, items }
 }
+
+// 设置页、首页等全局位置只展示共享服务的就绪度。
+export const summarizeDataSourceHealth = (statuses: DataSourceStatus[]) =>
+  summarize(statuses, GLOBAL_HEALTH_KEYS)
+
+// 当前项目的运行页才将 GSC 纳入数据覆盖率。
+export const summarizeProjectDataSourceHealth = (statuses: DataSourceStatus[]) =>
+  summarize(statuses, PROJECT_HEALTH_KEYS)

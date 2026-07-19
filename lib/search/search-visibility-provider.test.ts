@@ -40,4 +40,32 @@ describe('createGoogleCseSearchVisibilityProvider', () => {
       firstResultUrl: 'https://example.com/',
     })
   })
+
+  it('search() 用任意查询串复用同一 CSE 通道，不带 domain 语义', async () => {
+    const fetchImpl = vi.fn(async (url: URL) => {
+      expect(url.searchParams.get('q')).toBe('site:youtube.com "Acme"')
+      return new Response(
+        JSON.stringify({
+          searchInformation: { totalResults: '3' },
+          items: [{ title: 'Acme channel', link: 'https://youtube.com/acme', snippet: 's' }],
+        }),
+      )
+    })
+    const provider = createGoogleCseSearchVisibilityProvider({ apiKey: 'key', cx: 'cx', fetchImpl: fetchImpl as never })
+
+    const result = await provider.search('site:youtube.com "Acme"')
+
+    expect(result).toEqual({
+      query: 'site:youtube.com "Acme"',
+      totalResults: 3,
+      resultCount: 1,
+      results: [{ title: 'Acme channel', link: 'https://youtube.com/acme', snippet: 's' }],
+      checkedAt: expect.any(String),
+    })
+  })
+
+  it('search() 未配置时抛出', async () => {
+    const provider = createGoogleCseSearchVisibilityProvider({ apiKey: '', cx: '' })
+    await expect(provider.search('anything')).rejects.toThrow('google_custom_search_not_configured')
+  })
 })

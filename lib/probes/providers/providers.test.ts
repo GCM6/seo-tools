@@ -46,6 +46,7 @@ describe('OpenAI probe provider', () => {
 
     expect(answer.answerText).toBe('Metadocu is a docs tool.')
     expect(answer.citedUrls).toEqual(['https://metadocu.com/'])
+    expect(answer.retrievedUrls).toEqual([])
     expect(answer.webSearchEnabled).toBe(true)
     expect(answer.rawResponse).toEqual(openaiBody)
   })
@@ -57,7 +58,7 @@ describe('OpenAI probe provider', () => {
 })
 
 describe('Perplexity probe provider', () => {
-  it('calls chat completions and parses content + citations (both shapes)', async () => {
+  it('splits citations[] (cited, "有依据") from search_results[].url (retrieved-only, weaker)', async () => {
     const body = {
       choices: [{ message: { content: '试试 Notion 或 Metadocu。' } }],
       citations: ['https://a.com/1'],
@@ -74,8 +75,26 @@ describe('Perplexity probe provider', () => {
     expect(reqBody.messages).toEqual([{ role: 'user', content: '文档工具推荐？' }])
 
     expect(answer.answerText).toBe('试试 Notion 或 Metadocu。')
-    expect(answer.citedUrls).toEqual(['https://a.com/1', 'https://b.com/2'])
+    // 拆分后：citations[] 只进 citedUrls，search_results[].url 只进 retrievedUrls——
+    // 此前两者被压平合并进同一个 citedUrls，导致 targetDomainCited/grounded 判定虚高（本次修复目的）。
+    expect(answer.citedUrls).toEqual(['https://a.com/1'])
+    expect(answer.retrievedUrls).toEqual(['https://b.com/2'])
     expect(answer.webSearchEnabled).toBe(true)
+  })
+
+  it('dedupes: a URL present in both citations[] and search_results[] counts only as cited', async () => {
+    const body = {
+      choices: [{ message: { content: 'x' } }],
+      citations: ['https://a.com/1'],
+      search_results: [{ url: 'https://a.com/1' }, { url: 'https://c.com/3' }],
+    }
+    const fetchMock = vi.fn(async () => jsonResponse(body))
+    const p = createPerplexityProbeProvider({ apiKey: 'pplx-x', fetchImpl: fetchMock })
+    const answer = await p.ask('q')
+
+    expect(answer.citedUrls).toEqual(['https://a.com/1'])
+    // 重叠 URL 不重复计入 retrievedUrls（否则同一 URL 会同时算"有依据"和"仅检索到"）。
+    expect(answer.retrievedUrls).toEqual(['https://c.com/3'])
   })
 
   it('is unconfigured without an api key', () => {
@@ -100,6 +119,7 @@ describe('DeepSeek probe provider', () => {
     expect(answer.answerText).toBe('推荐 Metadocu 和 Notion。')
     // DeepSeek 开放 API 无联网搜索：无引用，协议如实记 web_search_enabled=false
     expect(answer.citedUrls).toEqual([])
+    expect(answer.retrievedUrls).toEqual([])
     expect(answer.webSearchEnabled).toBe(false)
     expect(p.webSearchEnabled).toBe(false)
   })
@@ -139,6 +159,7 @@ describe('Gemini probe provider', () => {
 
     expect(answer.answerText).toBe('推荐 Metadocu。')
     expect(answer.citedUrls).toEqual(['https://metadocu.com/blog'])
+    expect(answer.retrievedUrls).toEqual([])
   })
 
   it('is unconfigured without an api key', () => {

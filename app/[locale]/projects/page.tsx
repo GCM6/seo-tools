@@ -47,6 +47,8 @@ export default async function ProjectsPage({ params }: { params: Promise<{ local
           retestLabel: t('retestLabel'),
           latestStatusLabel: t('latestStatusLabel'),
           findingsDetectedLabel: t('findingsDetectedLabel'),
+          gscConnected: t('gscConnected'),
+          gscPending: t('gscPending'),
         }}
         statusLabels={t.raw('status') as Record<string, string>}
         runTypeLabels={t.raw('runType') as Record<string, string>}

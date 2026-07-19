@@ -47,6 +47,8 @@ export function createGeminiProbeProvider({ apiKey, model, fetchImpl = fetch }: 
         citedUrls: (candidate?.groundingMetadata?.groundingChunks ?? [])
           .map((c) => c.web?.uri)
           .filter((u): u is string => Boolean(u)),
+        // groundingChunks 本身就是"回答依据的来源"，Gemini 不单独暴露仅检索未引用的 URL。
+        retrievedUrls: [],
         rawResponse: raw,
         webSearchEnabled: true,
         temperature: null,

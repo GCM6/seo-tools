@@ -40,6 +40,7 @@ export function createDeepseekProbeProvider({ apiKey, model, fetchImpl = fetch }
       return {
         answerText: raw.choices?.[0]?.message?.content ?? '',
         citedUrls: [],
+        retrievedUrls: [],
         rawResponse: raw,
         webSearchEnabled: false,
         temperature: null,

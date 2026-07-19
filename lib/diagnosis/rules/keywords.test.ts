@@ -21,6 +21,7 @@ const baseCtx = (): RuleContext => ({
   keywordGaps: [],
   uaProbe: null,
   thirdParty: null,
+  socialPresence: null,
 })
 
 const km = (o: Partial<RuleContext['keywordMetrics'][number]>): RuleContext['keywordMetrics'][number] => ({

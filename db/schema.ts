@@ -14,7 +14,10 @@ export const projects = sqliteTable('projects', {
   nextRetestDueAt: text('next_retest_due_at'),
   createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
   updatedAt: text('updated_at').notNull().default(sql`(current_timestamp)`),
-})
+}, (t) => [
+  // 同一用户对同一规范化域名只保留一个项目，避免诊断证据与 GSC 绑定分散。
+  uniqueIndex('projects_owner_domain').on(t.ownerId, t.domain),
+])
 
 export const projectSettings = sqliteTable('project_settings', {
   projectId: text('project_id').primaryKey().references(() => projects.id, { onDelete: 'cascade' }),
@@ -76,7 +79,7 @@ export const dataSourceStatuses = sqliteTable('data_source_statuses', {
   id: text('id').primaryKey(),
   runId: text('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
   // 数据源标识，与 evidence_artifacts.type 不完全一致——这里按「功能模块」粒度：
-  // google_cse / gsc / crawl / render / psi / ai_probe / dataforseo / ua_probe / third_party
+  // google_cse / gsc / crawl / render / psi / ai_probe / dataforseo / ua_probe / third_party / social_presence
   sourceKey: text('source_key').notNull(),
   // 是否已配置（env / BYOK key 存在）
   configured: integer('configured', { mode: 'boolean' }).notNull().default(false),
@@ -180,7 +183,7 @@ export const evidenceArtifacts = sqliteTable('evidence_artifacts', {
   // 深检证据挂到具体站点页面；历史行与站点无关的证据留空。
   sitePageId: text('site_page_id').references(() => sitePages.id, { onDelete: 'set null' }),
 }, (t) => [
-  check('evidence_type', sql`${t.type} in ('gsc','ai_answer','page_fetch','render_check','schema','serp_snapshot','manual','sitemap','site_audit','dataforseo_serp','dataforseo_labs','dataforseo_backlinks','psi','ua_probe','third_party_presence')`),
+  check('evidence_type', sql`${t.type} in ('gsc','ai_answer','page_fetch','render_check','schema','serp_snapshot','manual','sitemap','site_audit','dataforseo_serp','dataforseo_labs','dataforseo_backlinks','psi','ua_probe','third_party_presence','serp_aio','social_presence')`),
   check('evidence_level', sql`${t.claimLevel} in ('L1','L2','L3','L4')`),
 ])
 
@@ -196,12 +199,35 @@ export const aiProbeResults = sqliteTable('ai_probe_results', {
   targetDomainCited: integer('target_domain_cited', { mode: 'boolean' }).notNull().default(false),
   competitorsMentioned: text('competitors_mentioned', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
   citedUrls: text('cited_urls', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  // 引用口径拆分修复（parse.ts v6）：仅被引擎联网检索到、未在正文标注引用的 URL（弱一档信号，
+  // 不参与 targetDomainCited / grounded 判定）。
+  retrievedUrls: text('retrieved_urls', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  targetDomainRetrieved: integer('target_domain_retrieved', { mode: 'boolean' }).notNull().default(false),
   sentiment: text('sentiment').notNull().default('neutral'),
   // D2：确定性词表检测——猜测标记 / 承认不知道，零 LLM。判定语义随 PROBE_PARSER_VERSION（lib/probes/parse.ts）演进。
   hedged: integer('hedged', { mode: 'boolean' }).notNull().default(false),
   unknownAdmission: integer('unknown_admission', { mode: 'boolean' }).notNull().default(false),
   rawAnswerHash: text('raw_answer_hash').notNull(),
   parserVersion: text('parser_version').notNull().default('v0'),
+})
+
+// Google AI Overviews 实测曝光（分引擎双口径的实测半边，见 lib/serp/dataforseo.ts）。
+// 复用现有 30 条确定性 prompt 文本作查询词（keyword 直接存问题文本，不建 promptId 外键——
+// AIO 是独立采集 stage，不依赖 collectProbesStage 是否已把 prompt 落进 prompts 表，
+// 见 lib/inngest/collect-evidence.ts AIO 阶段注释）。风格对齐 ai_probe_results。
+export const serpAioResults = sqliteTable('serp_aio_results', {
+  id: text('id').primaryKey(),
+  runId: text('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
+  evidenceId: text('evidence_id').notNull().references(() => evidenceArtifacts.id, { onDelete: 'cascade' }),
+  keyword: text('keyword').notNull(),
+  locationCode: integer('location_code').notNull(),
+  languageCode: text('language_code').notNull(),
+  aioPresent: integer('aio_present', { mode: 'boolean' }).notNull().default(false),
+  targetDomainCited: integer('target_domain_cited', { mode: 'boolean' }).notNull().default(false),
+  citedUrls: text('cited_urls', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  rawAnswerHash: text('raw_answer_hash').notNull(),
+  parserVersion: text('parser_version').notNull().default('v0'),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
 })
 
 export const findings = sqliteTable('findings', {

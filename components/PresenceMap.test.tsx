@@ -71,9 +71,9 @@ describe('PresenceMap', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('渲染上下两区标题，说明测的是两件事', () => {
+  it('渲染无品牌提问结论与品牌提问认知质量两区', () => {
     renderMap([...unbrandedPrompts, ...brandedPrompts], { present: 1, total: 2, wilsonLow: 0.15 })
-    expect(screen.getByText('无品牌提问 · 主动召回')).toBeInTheDocument()
+    expect(screen.getByText('本轮结论 · 无品牌提问')).toBeInTheDocument()
     expect(screen.getByText('品牌提问 · AI 认知质量')).toBeInTheDocument()
   })
 
@@ -83,7 +83,7 @@ describe('PresenceMap', () => {
     expect(screen.getByText('95% 置信下限 15%——n 小，单轮数字波动大，回测须两轮区间不重叠才可称「变化」')).toBeInTheDocument()
   })
 
-  it('D9：unbranded 0/Y 呈现为机会空间，不是故障态', () => {
+  it('将 0/Y 的主动召回结果前置为一句可理解的结论，并保留竞品对照入口', () => {
     renderMap(
       [
         { ...unbrandedPrompts[0], present: false, answers: [{ ...unbrandedPrompts[0].answers[0], present: false }] },
@@ -91,13 +91,14 @@ describe('PresenceMap', () => {
       ],
       { present: 0, total: 2, wilsonLow: 0 },
     )
-    expect(screen.getByText('机会空间，不是故障')).toBeInTheDocument()
-    expect(screen.getByText('查看竞品 SoV 对照 →')).toHaveAttribute('href', '#sov-section')
+    expect(screen.getByText('AI 尚未在无品牌提问中主动提到你的品牌')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: '主动召回 0/2' })).toBeInTheDocument()
+    expect(screen.getByText('查看竞品如何被提及 →')).toHaveAttribute('href', '#sov-section')
   })
 
-  it('present > 0 时不展示机会空间提示', () => {
+  it('present > 0 时给出部分召回的正向结论', () => {
     renderMap(unbrandedPrompts, { present: 1, total: 2, wilsonLow: 0.15 })
-    expect(screen.queryByText('机会空间，不是故障')).not.toBeInTheDocument()
+    expect(screen.getByText('AI 已在部分无品牌提问中主动提到你的品牌')).toBeInTheDocument()
   })
 
   it('下区没有品牌提问时展示空态文案', () => {

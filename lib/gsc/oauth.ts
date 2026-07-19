@@ -1,6 +1,8 @@
-// GSC OAuth2（read-only）纯函数层 —— 直接打 Google 端点，不引 googleapis 依赖。
-// Vercel serverless 友好：无长连接、无本地状态。未配 env 时 isGscConfigured() 为 false，
-// 上层路由据此降级返回 400，绝不崩溃。仅在服务端使用——client_secret / refresh_token 不得下发客户端。
+// GSC OAuth2（read-only）平台托管层 —— OAuth Client 是 Veris 的服务端配置，
+// 不属于任一用户或项目的 BYOK 凭据。项目仅保存用户同意后签发的 refresh_token。
+// 仅在服务端使用——client_secret / refresh_token 不得下发客户端。
+
+import { createHmac, timingSafeEqual } from 'node:crypto'
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth'
@@ -15,8 +17,17 @@ interface OAuthConfig {
   redirectUri: string
 }
 
-// 从 env 读三件套；缺任一即视为未配置。默认读 process.env，测试可注入。
-function readConfig(env: Env = process.env): OAuthConfig {
+interface OAuthStatePayload {
+  projectId: string
+  returnTo: string | null
+  expiresAt: number
+}
+
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000
+
+// 平台运营方在部署环境中配置唯一的 OAuth Client；不从 provider_credentials 读取，
+// 避免项目/普通用户设置页可以修改平台 client_secret。（平台托管 OAuth 架构）
+export function readGscPlatformConfig(env: Env = process.env): OAuthConfig {
   return {
     clientId: env.GOOGLE_OAUTH_CLIENT_ID ?? '',
     clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET ?? '',
@@ -24,15 +35,22 @@ function readConfig(env: Env = process.env): OAuthConfig {
   }
 }
 
-export function isGscConfigured(env: Env = process.env): boolean {
-  const c = readConfig(env)
-  return Boolean(c.clientId && c.clientSecret && c.redirectUri)
+function readStateKey(env: Env = process.env): Buffer | null {
+  const key = Buffer.from(env.CREDENTIALS_ENCRYPTION_KEY ?? '', 'base64')
+  return key.length === 32 ? key : null
 }
 
-// 构造同意页跳转 URL。state 承载 projectId，回调时原样带回做 CSRF/上下文校验。
+// 平台 OAuth 与项目 token 使用同一把服务端主密钥：它既签名短时 state，
+// 也加密项目 refresh token；缺任一项时入口统一保持不可用。
+export function isGscPlatformConfigured(env: Env = process.env): boolean {
+  const c = readGscPlatformConfig(env)
+  return Boolean(c.clientId && c.clientSecret && c.redirectUri && readStateKey(env))
+}
+
+// 构造同意页跳转 URL。
 // access_type=offline + prompt=consent 才能拿到可长期续期的 refresh_token。
 export function buildAuthUrl(state: string, env: Env = process.env): string {
-  const c = readConfig(env)
+  const c = readGscPlatformConfig(env)
   const params = new URLSearchParams({
     client_id: c.clientId,
     redirect_uri: c.redirectUri,
@@ -46,19 +64,53 @@ export function buildAuthUrl(state: string, env: Env = process.env): string {
   return `${AUTH_ENDPOINT}?${params.toString()}`
 }
 
-// OAuth state 编解码：把 projectId 与可选的向导返回路径塞进单个 state 里往返
-// （Google 只回传 state）。分隔符 `::`——projectId 是 `proj_<uuid>` 不含它。
-// 无 returnTo 时 state 就等于 projectId，设置页既有流程零改动。（spec §SP-G2a-4）
-const STATE_SEP = '::'
-
-export function encodeOAuthState(projectId: string, returnTo?: string | null): string {
-  return returnTo ? `${projectId}${STATE_SEP}${returnTo}` : projectId
+function signState(payload: string, key: Buffer): string {
+  return createHmac('sha256', key).update(payload).digest('base64url')
 }
 
-export function decodeOAuthState(state: string): { projectId: string; returnTo: string | null } {
-  const i = state.indexOf(STATE_SEP)
-  if (i === -1) return { projectId: state, returnTo: null }
-  return { projectId: state.slice(0, i), returnTo: state.slice(i + STATE_SEP.length) }
+// state 带项目上下文、站内返回路径与 10 分钟过期时间，并以服务端主密钥 HMAC 签名。
+// 这避免把可篡改的 projectId 直接交给 Google 往返，也拒绝过期重放。
+export function encodeOAuthState(
+  projectId: string,
+  returnTo: string | null = null,
+  env: Env = process.env,
+  now = Date.now(),
+): string {
+  const key = readStateKey(env)
+  if (!key) throw new Error('gsc_oauth_state_key_missing')
+  const body: OAuthStatePayload = {
+    projectId,
+    returnTo: sanitizeReturnTo(returnTo),
+    expiresAt: now + OAUTH_STATE_TTL_MS,
+  }
+  const payload = Buffer.from(JSON.stringify(body), 'utf8').toString('base64url')
+  return `${payload}.${signState(payload, key)}`
+}
+
+export function decodeOAuthState(
+  state: string,
+  env: Env = process.env,
+  now = Date.now(),
+): { projectId: string; returnTo: string | null } | null {
+  const key = readStateKey(env)
+  const [payload, signature, ...extra] = state.split('.')
+  if (!key || !payload || !signature || extra.length) return null
+  const expected = signState(payload, key)
+  const suppliedBytes = Buffer.from(signature, 'utf8')
+  const expectedBytes = Buffer.from(expected, 'utf8')
+  if (suppliedBytes.length !== expectedBytes.length || !timingSafeEqual(suppliedBytes, expectedBytes)) return null
+
+  try {
+    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Partial<OAuthStatePayload>
+    if (typeof parsed.projectId !== 'string' || !parsed.projectId || typeof parsed.expiresAt !== 'number' || parsed.expiresAt < now) {
+      return null
+    }
+    const returnTo = typeof parsed.returnTo === 'string' ? sanitizeReturnTo(parsed.returnTo) : null
+    if (parsed.returnTo !== null && parsed.returnTo !== undefined && returnTo === null) return null
+    return { projectId: parsed.projectId, returnTo }
+  } catch {
+    return null
+  }
 }
 
 // 只放行站内绝对路径（以单个 `/` 开头），挡掉开放重定向（协议相对 `//`、
@@ -90,7 +142,7 @@ export async function exchangeCodeForTokens(
   env: Env = process.env,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ExchangedTokens> {
-  const c = readConfig(env)
+  const c = readGscPlatformConfig(env)
   const res = await fetchImpl(TOKEN_ENDPOINT, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -129,7 +181,7 @@ export async function refreshAccessToken(
   env: Env = process.env,
   fetchImpl: typeof fetch = fetch,
 ): Promise<RefreshedToken> {
-  const c = readConfig(env)
+  const c = readGscPlatformConfig(env)
   const res = await fetchImpl(TOKEN_ENDPOINT, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },

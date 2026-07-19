@@ -56,7 +56,6 @@ export function PresenceMap({
 
   const unbrandedAbsentCount = unbrandedPrompts.filter((p) => p.answers.length > 0 && !p.present).length
   const unbrandedUnmeasuredCount = unbrandedPrompts.filter((p) => p.answers.length === 0).length
-  const unbrandedTotalAnswers = unbrandedPrompts.reduce((sum, p) => sum + p.answers.length, 0)
   const selectedUnbranded = unbrandedPrompts[selectedUnbrandedIndex]
 
   const stateCounts: Record<BrandedAnswerState, number> = {
@@ -72,69 +71,97 @@ export function PresenceMap({
   const wilsonPct = Math.round(unbranded.wilsonLow * 100)
   // D9：unbranded 0/Y 是小品牌常态，按"机会空间"框架呈现，不当故障态。
   const showOpportunity = unbranded.total > 0 && unbranded.present === 0
+  const hasUnbrandedMeasurement = unbranded.total > 0
+  const outcomeHeadlineKey = !hasUnbrandedMeasurement
+    ? 'mapOutcomeHeadlineUnmeasured'
+    : showOpportunity
+      ? 'mapOutcomeHeadlineMissing'
+      : 'mapOutcomeHeadlinePresent'
+  const outcomeSummaryKey = !hasUnbrandedMeasurement
+    ? 'mapOutcomeSummaryUnmeasured'
+    : showOpportunity
+      ? 'mapOutcomeSummaryMissing'
+      : 'mapOutcomeSummaryPresent'
 
   return (
     <div className="card map-wrap">
-      {/* ——— 上区：无品牌提问 · 主动召回 ——— */}
-      <div className="map-evidence-intro">
-        <div>
-          <span>{t('mapEvidenceEyebrow')}</span>
-          <strong>{t('mapEvidenceTitle')}</strong>
-        </div>
-        <p>{t('mapEvidenceDetail')}</p>
-        <div className="map-evidence-stats" aria-label={t('mapEvidenceStatsLabel')}>
-          <span>{t('mapEvidenceAnswers', { count: unbrandedTotalAnswers })}</span>
-          <span>{t('mapEvidencePrompts', { present: unbranded.present, total: unbranded.total })}</span>
-        </div>
-      </div>
-      <p className="map-wilson-note">{t('mapWilsonNote', { pct: wilsonPct })}</p>
+      {/* 口径约束：本卡全部数据来自开发者 API 采样（代理指标），不得表述为消费者界面的真实曝光。 */}
+      <p className="map-proxy-note">{t('mapProxyNote')}</p>
 
-      {showOpportunity ? (
-        <div className="map-opportunity">
-          <strong>{t('mapOpportunityTitle')}</strong>
-          <p>{t('mapOpportunityBody')}</p>
-          <a href="#sov-section">{t('mapOpportunityLink')}</a>
+      {/* ——— 上区：先给结论，再留可逐题核对的证据。 */}
+      <section className={`map-outcome${showOpportunity ? ' opportunity' : ''}${!hasUnbrandedMeasurement ? ' unmeasured' : ''}`}>
+        <div
+          className="map-outcome-score"
+          role="group"
+          aria-label={t('mapOutcomeMetricValue', { present: unbranded.present, total: unbranded.total })}
+        >
+          <div>
+            <strong>{unbranded.present}</strong>
+            <span>/{unbranded.total}</span>
+          </div>
+          <small>{t('mapOutcomeMetric')}</small>
         </div>
-      ) : null}
+        <div className="map-outcome-copy">
+          <span>{t('mapOutcomeEyebrow')}</span>
+          <h3>{t(outcomeHeadlineKey)}</h3>
+          <p>{t(outcomeSummaryKey)}</p>
+          <small>{t('mapOutcomeEvidence', { count: unbranded.total })}</small>
+        </div>
+        <a className="map-outcome-action" href="#sov-section">{t('mapOutcomeAction')}</a>
+      </section>
+
+      <details className="map-method">
+        <summary>{t('mapMethodSummary')}</summary>
+        <p>{t('mapEvidenceDetail')}</p>
+        <p className="map-wilson-note">{t('mapWilsonNote', { pct: wilsonPct })}</p>
+      </details>
 
       {unbrandedPrompts.length > 0 && selectedUnbranded ? (
-        <>
-          <div className="map" id="map" aria-label={t('mapEvidenceGridLabel')}>
-            {unbrandedPrompts.map((p, i) => (
-              <button
-                type="button"
-                key={i}
-                className={`cell${p.present ? ' on' : ''}${p.answers.length === 0 ? ' no-answer' : ''}${i === selectedUnbrandedIndex ? ' selected' : ''}`}
-                aria-label={t('mapEvidenceCell', {
-                  number: i + 1,
-                  status: p.answers.length === 0 ? t('mapEvidenceUnmeasured') : p.present ? t('mapEvidencePresent') : t('mapEvidenceAbsent'),
-                })}
-                aria-pressed={i === selectedUnbrandedIndex}
-                onClick={() => setSelectedUnbrandedIndex(i)}
-              >
-                <span>{i + 1}</span>
-              </button>
-            ))}
-          </div>
-          <div className="legend">
-            <span>
-              <span className="sw" style={{ background: 'var(--measured)' }} />
-              {t('legendPresent', { count: unbranded.present })}
-            </span>
-            <span>
-              <span
-                className="sw"
-                style={{ background: 'var(--ds-surface-2)', border: '1px solid var(--ds-border)' }}
-              />
-              {t('legendAbsent', { count: unbrandedAbsentCount })}
-            </span>
-            {unbrandedUnmeasuredCount > 0 ? (
+        <div className="map-evidence-workbench">
+          <div className="map-evidence-index">
+            <div className="map-evidence-index-head">
+              <div>
+                <strong>{t('mapEvidenceGridTitle')}</strong>
+                <span>{t('mapEvidenceGridHint')}</span>
+              </div>
+              <span>{t('mapEvidencePrompts', { present: unbranded.present, total: unbranded.total })}</span>
+            </div>
+            <div className="map" id="map" aria-label={t('mapEvidenceGridLabel')}>
+              {unbrandedPrompts.map((p, i) => (
+                <button
+                  type="button"
+                  key={i}
+                  className={`cell${p.present ? ' on' : ''}${p.answers.length === 0 ? ' no-answer' : ''}${i === selectedUnbrandedIndex ? ' selected' : ''}`}
+                  aria-label={t('mapEvidenceCell', {
+                    number: i + 1,
+                    status: p.answers.length === 0 ? t('mapEvidenceUnmeasured') : p.present ? t('mapEvidencePresent') : t('mapEvidenceAbsent'),
+                  })}
+                  aria-pressed={i === selectedUnbrandedIndex}
+                  onClick={() => setSelectedUnbrandedIndex(i)}
+                >
+                  <span>{i + 1}</span>
+                </button>
+              ))}
+            </div>
+            <div className="legend">
               <span>
-                <span className="sw" style={{ background: 'transparent', border: '1px dashed var(--ds-muted)' }} />
-                {t('legendUnmeasured', { count: unbrandedUnmeasuredCount })}
+                <span className="sw" style={{ background: 'var(--measured)' }} />
+                {t('legendPresent', { count: unbranded.present })}
               </span>
-            ) : null}
-            <span style={{ color: 'var(--ds-muted)' }}>{t('legendSelect')}</span>
+              <span>
+                <span
+                  className="sw"
+                  style={{ background: 'var(--ds-surface-2)', border: '1px solid var(--ds-border)' }}
+                />
+                {t('legendAbsent', { count: unbrandedAbsentCount })}
+              </span>
+              {unbrandedUnmeasuredCount > 0 ? (
+                <span>
+                  <span className="sw" style={{ background: 'transparent', border: '1px dashed var(--ds-muted)' }} />
+                  {t('legendUnmeasured', { count: unbrandedUnmeasuredCount })}
+                </span>
+              ) : null}
+            </div>
           </div>
 
           <section className="map-evidence-detail" aria-live="polite">
@@ -167,7 +194,7 @@ export function PresenceMap({
               )}
             </div>
           </section>
-        </>
+        </div>
       ) : null}
 
       {/* ——— 下区：品牌提问 · AI 认知质量 ——— */}

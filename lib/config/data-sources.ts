@@ -1,4 +1,5 @@
 import type { AiProbeProviderId } from '@/lib/probes/providers/types'
+import { isGscPlatformConfigured } from '@/lib/gsc/oauth'
 
 // 各真实数据源的配置状态（只看 env 是否给了 key，不发请求验证）。
 // 屏 2 的空态用它区分「数据源未接入（配 key）」与「本轮未采集（重新诊断）」，
@@ -11,8 +12,8 @@ export interface DataSourceStatus {
   // 但能让技术诊断继续进行，不能因此把整轮诊断阻断。
   renderStaticFallback: true
   aiProviders: AiProbeProviderId[]
-  // GSC OAuth 尚未实现（下一期），恒为 false
-  gsc: false
+  // 平台 OAuth 已就绪（项目是否已授权由 settings/data-sources.ts 单独表达）。
+  gsc: boolean
 }
 
 export function dataSourceStatus(env: Record<string, string | undefined> = process.env): DataSourceStatus {
@@ -28,6 +29,6 @@ export function dataSourceStatus(env: Record<string, string | undefined> = proce
     ),
     renderStaticFallback: true,
     aiProviders,
-    gsc: false,
+    gsc: isGscPlatformConfigured(env),
   }
 }

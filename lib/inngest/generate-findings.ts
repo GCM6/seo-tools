@@ -3,11 +3,19 @@ import { inngest } from './client'
 import { DIAGNOSE_REQUESTED_EVENT, type DiagnoseRequestedEventData } from './events'
 import { runProgressChannel, type RunProgressMessage } from './channels'
 import { buildRuleContext, parseGscKeywordMetrics } from '@/lib/diagnosis/context'
-import { buildMetricPair, buildProbeMetricRows, checkUnbrandedComparability, type RunMetrics, type MetricTarget } from '@/lib/diagnosis/retest-metrics'
+import {
+  buildMetricPair,
+  buildProbeMetricRows,
+  buildAioMetricRows,
+  checkUnbrandedComparability,
+  type RunMetrics,
+  type MetricTarget,
+} from '@/lib/diagnosis/retest-metrics'
 import { evaluateRules } from '@/lib/diagnosis/engine'
 import type { DiagnosisEvidenceRow, Rule, RuleHit } from '@/lib/diagnosis/types'
 import { buildFindingRows, buildRecommendationRows, type RecommendationDraft } from '@/lib/diagnosis/finding-rows'
-import { aggregateProbeSummary } from '@/lib/probes/summary'
+import { aggregateProbeSummary, normalizeProjectDomain } from '@/lib/probes/summary'
+import { aggregateAioExposure } from '@/lib/serp/aio-summary'
 import { brandFromDomain } from '@/lib/probes/prompt-set'
 import type { EvidenceLevel, EvidenceType } from '@/lib/types'
 import type { FindingSeverity, Pillar } from '@/lib/diagnosis/types'
@@ -25,6 +33,7 @@ import {
   getProject,
   getRunPrompts,
   getRunProbeResults,
+  getRunSerpAioResults,
   createFindings,
   createRecommendations,
   markRunStatus,
@@ -63,6 +72,9 @@ interface GenerateFindingsDeps {
   evaluateRules: typeof evaluateRules
   buildRuleContext: typeof buildRuleContext
   aggregateProbeSummary: typeof aggregateProbeSummary
+  // GEO 新口径回测扩展：AIO 实测曝光两轮对比所需（retest-metrics.ts buildAioMetricRows）。
+  getRunSerpAioResults: typeof getRunSerpAioResults
+  aggregateAioExposure: typeof aggregateAioExposure
   // 规则注册表与建议生成器由诊断模块（并行开发）提供。用 loader/wrapper 形态注入，
   // 使本文件在这两个模块尚未落地时也能被单测加载（fake 注入，永不走真实 import 路径）。
   allRules: () => Promise<Rule[]> | Rule[]
@@ -85,6 +97,7 @@ function defaultDeps(): GenerateFindingsDeps {
     getProject,
     getRunPrompts,
     getRunProbeResults,
+    getRunSerpAioResults,
     createFindings,
     createRecommendations,
     markRunStatus,
@@ -95,6 +108,7 @@ function defaultDeps(): GenerateFindingsDeps {
     evaluateRules,
     buildRuleContext,
     aggregateProbeSummary,
+    aggregateAioExposure,
     // 动态 import：规则集/建议生成器在最终集成时落地；此处按需加载，不在模块加载期解析。
     allRules: async () => (await import('@/lib/diagnosis/rules')).allRules,
     generateRecommendation: async (hit, opts) =>
@@ -162,6 +176,11 @@ export async function generateFindingsHandler(
       })),
       brand: brandFromDomain(project.domain),
       competitors,
+      // 遗留②修复（第二波任务）：此前未传 domain，ctx.probe.citedDomains 的 owned 判定在实时
+      // 诊断阶段恒为 third_party（保守兜底，见 lib/probes/summary.ts ProbeSummaryInput.domain
+      // 注释）。归一化复用 lib/probes/summary.ts 的 normalizeProjectDomain（第三波：与
+      // reevaluate-competitors.ts 共享同一实现，不再各写一份）。
+      domain: normalizeProjectDomain(project.domain),
     })
 
     const ctx = deps.buildRuleContext({
@@ -247,13 +266,18 @@ async function computeRetestDelta(
     deps.getRecommendations(baselineRunId),
   ])
 
-  // 为一轮 run 构建可比标量来源（probe 品牌级 + GSC query 维关键词）。
+  // 为一轮 run 构建可比标量来源（probe 品牌级 + GSC query 维关键词 + AIO 实测曝光）。
+  // 域名归一复用 lib/probes/summary.ts 的 normalizeProjectDomain（与 run-rules step 同一份逻辑）。
   const buildRunMetrics = async (rid: string): Promise<RunMetrics> => {
-    const [evidence, prompts, probeResults] = await Promise.all([
+    const [evidence, prompts, probeResults, aioResults, project] = await Promise.all([
       deps.getRunEvidence(rid),
       deps.getRunPrompts(rid),
       deps.getRunProbeResults(rid),
+      deps.getRunSerpAioResults(rid),
+      deps.getProject(projectId),
     ])
+    const rawDomain = project?.domain ?? ''
+    const domain = normalizeProjectDomain(rawDomain)
     const probe = deps.aggregateProbeSummary({
       // D5：回测标量（retest-metrics.ts 的 brand_presence）已切到 probe.unbranded.present/total，
       // 该字段依赖 prompts.branded 正确透传，否则会把所有 prompt 当 unbranded 处理，回测口径失真。
@@ -263,8 +287,12 @@ async function computeRetestDelta(
         evidenceId: r.evidenceId, provider: r.provider, sentiment: r.sentiment,
         citedUrls: r.citedUrls, hedged: r.hedged, unknownAdmission: r.unknownAdmission,
       })),
-      brand: brandFromDomain((await deps.getProject(projectId))?.domain ?? ''),
+      brand: brandFromDomain(rawDomain),
       competitors: [],
+      // GEO 新口径回测扩展：此前未传 domain，citedDomains 全部保守判 third_party，
+      // probe.cited_owned_share 永远算不出 owned——补齐后 owned/third_party 才能真正区分
+      // （见 lib/probes/summary.ts ProbeSummaryInput.domain 注释）。
+      domain,
     })
     const gscKeywords = parseGscKeywordMetrics(
       evidence.map((e) => ({ id: e.id, type: e.type as EvidenceType, claimLevel: e.claimLevel as EvidenceLevel, source: e.source, payload: e.payload, rawText: e.rawText, sitePageId: e.sitePageId })),
@@ -273,7 +301,22 @@ async function computeRetestDelta(
     // 探针解析器版本集合，供判定两轮 unbranded 口径是否可比（migration 0008 背景见 RunMetrics 注释）。
     const brandedPromptCount = prompts.filter((p) => p.branded).length
     const parserVersions = [...new Set(probeResults.map((r) => r.parserVersion))]
-    return { probe, gscKeywords, brandedPromptCount, parserVersions }
+    // AIO 实测曝光聚合：totalQueries 语义与 app/[locale]/runs/[id]/page.tsx 的 aioTotalQueries 一致
+    // （本 run 已落 serp_aio 证据的条数，成功+失败）；未配置/未采集时 aioResults 为空，
+    // aggregateAioExposure 仍返回一个全零 summary（不是 null）——由 retest-metrics.ts 的
+    // aioPresentRate/aioOwnedCitedRate 按 measuredQueries/aioPresentCount===0 判「无数据」。
+    const aioTotalQueries = evidence.filter((e) => e.type === 'serp_aio').length
+    const aio = deps.aggregateAioExposure({
+      totalQueries: aioTotalQueries,
+      results: aioResults.map((r) => ({
+        keyword: r.keyword,
+        aioPresent: r.aioPresent,
+        targetDomainCited: r.targetDomainCited,
+        citedUrls: r.citedUrls,
+      })),
+      domain,
+    })
+    return { probe, gscKeywords, brandedPromptCount, parserVersions, aio }
   }
 
   const [baselineMetrics, retestMetrics] = await Promise.all([buildRunMetrics(baselineRunId), buildRunMetrics(retestRunId)])
@@ -311,10 +354,11 @@ async function computeRetestDelta(
   const baseOverall = computeHealthScore({ findings: toHealthFindings(baselineRows), pillarsWithData }).overall
   const retestOverall = computeHealthScore({ findings: toHealthFindings(retestRows), pillarsWithData }).overall
 
-  // ④ 落 retest_snapshots：四态/健康分行 + probe 品牌指标行。
+  // ④ 落 retest_snapshots：四态/健康分行 + probe 品牌指标行 + AIO 实测曝光行。
   const snapshotRows = [
     ...buildRetestSnapshotRows(summary, { baseline: baseOverall, retest: retestOverall }),
     ...buildProbeMetricRows(baselineMetrics, retestMetrics),
+    ...buildAioMetricRows(baselineMetrics, retestMetrics),
   ]
   const rows = snapshotRows.map((row) => ({
     id: `rts_${crypto.randomUUID()}`,

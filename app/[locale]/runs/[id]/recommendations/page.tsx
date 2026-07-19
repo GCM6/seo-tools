@@ -48,10 +48,18 @@ export default async function RecommendationsPage({
           <span className="meta">{t('meta')}</span>
         </div>
         {recs.length ? (
-          <div className="rec-progress" aria-label={t('decisionSummary')}>
-            <span>{t('progress.total', { count: recs.length })}</span>
-            <span>{t('progress.pending', { count: pendingCount })}</span>
-            <strong>{t('progress.ready', { count: readyCount })}</strong>
+          <div className="rec-page-actions">
+            <div className="rec-progress" aria-label={t('decisionSummary')}>
+              <span>{t('progress.total', { count: recs.length })}</span>
+              <span>{t('progress.pending', { count: pendingCount })}</span>
+              <strong>{t('progress.ready', { count: readyCount })}</strong>
+            </div>
+            {pendingCount === 0 ? (
+              <Link href={`/${locale}/runs/${id}/output`} className="rec-output-link">
+                {t('outputAction')}
+                <span aria-hidden="true">→</span>
+              </Link>
+            ) : null}
           </div>
         ) : null}
       </div>

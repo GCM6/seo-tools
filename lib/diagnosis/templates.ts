@@ -289,6 +289,23 @@ export const templates: Record<string, RecommendationTemplate> = {
     validationMethod: '重新轻检确认段落长度/列表/表格等结构指标改善。',
     promptType: 'content',
   },
+  // ——— 交易可信度（只对检测到购买链路的电商站生效）———
+  TR04: {
+    what: '补充并在页脚或帮助中心显著链接配送说明页：写清发货地、订单处理时间、预计运输时效、物流跟踪方式，以及延误/丢件/损坏的处理流程。',
+    whyHint: '配送说明让买家在付款前能预判履约时间与异常处理路径，降低陌生站点的交易顾虑。',
+    effort: 'low',
+    validationMethod: '重新抓取确认配送说明页返回 200 且可从站内导航到达；人工核对条款覆盖发货、时效、跟踪和异常处理。',
+    promptType: 'content',
+    negativeConstraints: ['仅在实际具备相应履约能力时作出承诺，不得编造仓库地点、时效或赔付政策'],
+  },
+  TR05: {
+    what: '补充并在页脚或帮助中心显著链接退货退款说明页：写清退货期限、适用条件与例外、申请步骤、退货运费承担方、退货目的地及退款处理周期。',
+    whyHint: '清晰的退货退款路径让买家知道发生问题时由谁处理、成本和时限如何安排。',
+    effort: 'low',
+    validationMethod: '重新抓取确认退货退款说明页返回 200 且可从站内导航到达；人工核对条款覆盖期限、条件、运费和退款周期。',
+    promptType: 'content',
+    negativeConstraints: ['仅发布可实际执行的售后条款，不得编造退款期限、退货地址或免责条件'],
+  },
   // ——— P5 权威与实体（content）———
   E01: {
     what: '补齐 Organization sameAs：在结构化数据中关联官方社媒/维基/权威目录，强化实体识别。',
@@ -314,6 +331,14 @@ export const templates: Record<string, RecommendationTemplate> = {
     validationMethod: '渲染对比确认初始 HTML 正文占比达标；探针观察 AI 引用改善。',
     promptType: 'technical',
     fixSnippet: '// 关键正文服务端渲染，勿仅客户端注入（Next.js 16 Server Component 默认服务端产出 HTML）',
+  },
+  G11: {
+    what: '在被引用的社区平台建立真实第三方谈论面：真实参与相关社区讨论（以回答问题、提供价值为主，遵循 95/5 价值:提及比），并鼓励真实用户/客户在这些平台自发分享使用体验。',
+    whyHint: '品类回答的引用大量来自社区/UGC 平台却始终未引用本站，说明 AI 在该品类下更依赖社区语料而非官方站点。',
+    effort: 'high',
+    validationMethod: '下一轮探针复测 ugcCitationShare 与 citedDomains 中 owned 引用是否出现变化。',
+    promptType: 'content',
+    negativeConstraints: ['禁止刷量、使用马甲账号或批量发布带品牌关键词的推广帖——社区与 AI 都会识别并反噬此类操纵行为'],
   },
   G10: {
     what: '建立权威第三方语料与结构化品牌事实页：补充可核验的官方 About/Facts 页（创立时间、产品线、关键数据来源），并争取第三方权威源（Wikipedia/行业媒体/评测站）准确收录品牌信息，压缩 AI 在缺乏语料时对品牌名做字面联想式编造的空间（参考 G07 的第三方语料建设方向）。',
@@ -447,6 +472,22 @@ export const templates: Record<string, RecommendationTemplate> = {
     validationMethod: '复测 GSC 品牌词展示量与 DataForSEO 品牌词搜索量相对竞品的变化。',
     promptType: 'content',
     risk: '品牌提及与 AI 可见性为相关非因果，只做度量对比不下因果结论。',
+  },
+  // ——— P5 社媒/第三方谈论面（证据源 social_presence，前台检索口径 L2）———
+  SP01: {
+    what: '建立 YouTube 内容面：针对品类问题词制作 how-to/产品讲解视频，标题、描述与口播布局目标关键词，并加带关键词的章节时间戳（Google key moments 官方机制，利于搜索与 AI 引用）。',
+    whyHint: '前台检索未发现品牌相关 YouTube 内容，品类视频内容面缺失会削弱在偏好视频/口播来源的 AI 引擎中的可发现性。',
+    effort: 'high',
+    validationMethod: '下一轮 social_presence 复测 YouTube 结果，并观察探针引用中 youtube 平台的出现情况。',
+    promptType: 'content',
+  },
+  SP02: {
+    what: '在与品类匹配的评价站（G2/Trustpilot/Capterra）建立或认领品牌资料页，并邀请真实客户留下评价。',
+    whyHint: '前台检索未发现品牌在主流第三方评价站的收录，缺席评价站会削弱第三方信任信号与被引用概率。',
+    effort: 'mid',
+    validationMethod: '下一轮 social_presence 复测这三站的收录情况。',
+    promptType: 'content',
+    negativeConstraints: ['禁止伪造、购买或激励换取评价——必须是真实客户的真实使用体验'],
   },
   TA01: {
     what: '补足浅覆盖话题群的内容深度（围绕核心话题扩展子主题页），并在孤立话题群之间建立主题内链，形成话题网络。',

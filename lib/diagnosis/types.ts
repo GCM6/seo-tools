@@ -7,7 +7,11 @@ import type { GscDimension } from '@/lib/gsc/search-analytics'
 // 规则库版本：随规则/阈值变更单调递增，钉进 run 协议保证同协议回测可比（spec §11.3）。
 // v1 → v2：G05/G06 改为 unbranded 层口径 + 新增全 branded 降级 finding，新增 G10（GEO branded/
 // unbranded 重设计，见 docs/superpowers/specs/2026-07-13-geo-branded-unbranded-redesign.md）。
-export const RULES_VERSION = 'rules_v2'
+// v2 → v3：新增仅对明确电商购买链路生效的 TR04/TR05 配送/退货政策发现规则。
+// v3 → v4：新增社媒/第三方谈论面诊断规则 G11（品类回答引用大量来自社区/UGC 平台且未引用本站）、
+// SP01/SP02（YouTube 前台检索缺失 / 主流第三方评价站前台检索缺失），见 lib/diagnosis/rules/geo.ts
+// 与新增 lib/diagnosis/rules/reputation.ts。
+export const RULES_VERSION = 'rules_v4'
 
 export type Pillar = 'P1' | 'P2' | 'P3' | 'P4' | 'P5'
 // 规则域用 error|warning|notice（Ahrefs/Semrush 通用三级），落库时映射为 finding 的 high|mid|ok。
@@ -122,6 +126,14 @@ export interface RuleContext {
   thirdParty: {
     wikipedia: { exists: boolean; title: string | null; url: string | null }
     reddit: { mentions: number; windowDays: number }
+    evidenceId: string
+  } | null
+  // 社媒/第三方评价站前台存在度（G11/SP01/SP02）：由 context 从 social_presence 证据解析（L2，
+  // 前台检索结果，非平台 API 全量数据）。未采集时为 null，SP 规则组整组 no-op。
+  socialPresence: {
+    brand: string
+    platforms: { platform: 'youtube' | 'g2' | 'trustpilot' | 'capterra'; query: string; resultCount: number; topResults: { title: string; url: string }[] }[]
+    checkedAt: string
     evidenceId: string
   } | null
 }

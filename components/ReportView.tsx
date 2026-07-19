@@ -7,6 +7,7 @@ import { EvidenceLadder } from '@/components/EvidenceLadder'
 import { BlurText } from '@/components/fx/BlurText'
 import { PillarGroupCard } from '@/components/PillarGroupCard'
 import { ReportToc } from '@/components/ReportToc'
+import { CitedDomainsCard } from '@/components/CitedDomainsCard'
 import {
   getRun,
   getFindings,
@@ -22,6 +23,7 @@ import {
   getConfirmedCompetitors,
   getKeywords,
   getRetestSnapshots,
+  getRunSerpAioResults,
 } from '@/lib/repositories'
 import { buildReport, buildReportContractInput, type ReportFinding, type ReportRecommendation } from '@/lib/diagnosis/report'
 import { rulesVersionDelta } from '@/lib/diagnosis/rule-proposals'
@@ -32,6 +34,16 @@ import type { EvidenceType } from '@/lib/types'
 // 聚合逻辑仍是 lib/probes/summary.ts 这唯一数据来源（不改该文件，只读用它导出的纯函数）。
 import { aggregateProbeSummary } from '@/lib/probes/summary'
 import { brandFromDomain } from '@/lib/probes/prompt-set'
+// AIO 实测曝光补齐（本轮任务）：与 app/[locale]/runs/[id]/page.tsx 同一条数据链路
+// （aggregateAioExposure 唯一聚合函数 + loadDataSourceStatuses 判定 DataForSEO 是否已配置）。
+// 注意：不复用 components/AioExposureCard.tsx —— 它是 'use client' 且内部调用
+// useTranslations('screen2')，依赖 NextIntlClientProvider；report/page.tsx 在 [locale] 布局下有
+// provider，但 app/share/[token]/page.tsx（无登录态分享页）没有任何 provider 包裹，直接复用会在
+// 分享页运行时抛「No intl context found」。ReportView 本身及其消费的所有子组件走的是
+// i18n-free（CitedDomainsCard 同理）或纯 Server 渲染惯例，AIO 区块同样内联实现、走 report.geo.* keys。
+import { aggregateAioExposure } from '@/lib/serp/aio-summary'
+import { loadDataSourceStatuses } from '@/lib/settings/load-statuses'
+import type { CitationPlatform } from '@/lib/probes/citation-platform'
 
 const PILLARS: Pillar[] = ['P1', 'P2', 'P3', 'P4', 'P5']
 
@@ -61,6 +73,26 @@ function pillarsWithData(evidenceTypes: string[], findingPillars: (string | null
   }
   for (const p of findingPillars) if (p && (PILLARS as string[]).includes(p)) set.add(p as Pillar)
   return PILLARS.filter((p) => set.has(p))
+}
+
+// 回测表 metricName → i18n key 映射（第二波任务，spec 见编排者续派消息）。覆盖
+// lib/diagnosis/retest-delta.ts::buildRetestSnapshotRows 与 lib/diagnosis/retest-metrics.ts::
+// buildProbeMetricRows/buildAioMetricRows 产出的全部 metricName（已逐一枚举核对，无遗漏）。
+// 同 CLAIM_TAG 的写法：TS 侧先判定是否为已知 key，只有已知才调 t()，未知 metricName 直接原样
+// 返回——不依赖 next-intl 缺失 key 时的默认兜底行为（那会吐出 "namespace.key" 路径字符串，
+// 不是「显示原始 key」）。这样新 metricName 上线但忘记补文案时，UI 兜底显示裸 metricName，
+// 不会显示更难懂的 "report.retest.metric.xxx" 或直接崩溃。
+const RETEST_METRIC_KEYS: Record<string, string> = {
+  'findings.resolved': 'findingsResolved',
+  'findings.persistent': 'findingsPersistent',
+  'findings.new': 'findingsNew',
+  'findings.regressed': 'findingsRegressed',
+  'health.overall': 'healthOverall',
+  'probe.brand_sov': 'probeBrandSov',
+  'probe.brand_presence': 'probeBrandPresence',
+  'probe.cited_owned_share': 'probeCitedOwnedShare',
+  'aio.present_rate': 'aioPresentRate',
+  'aio.owned_cited_rate': 'aioOwnedCitedRate',
 }
 
 // claim_type → provenance tag（变体 + 中文标签）。铁律：实测仅 L3/L4；健康分/约束卡不走这里，恒「推断」。
@@ -100,6 +132,8 @@ export async function ReportView({ runId }: { runId: string }) {
     dataSourceStatuses,
     probeResults,
     promptRows,
+    aioResultRows,
+    byokStatuses,
   ] = await Promise.all([
     getFindings(runId),
     getRecommendations(runId),
@@ -114,6 +148,8 @@ export async function ReportView({ runId }: { runId: string }) {
     getRunDataSourceStatuses(runId),
     getRunProbeResults(runId),
     getRunPrompts(runId),
+    getRunSerpAioResults(runId),
+    loadDataSourceStatuses(run.projectId),
   ])
 
   // GEO 可见度补充（同 app/[locale]/runs/[id]/page.tsx 的接线方式）：ai_probe_results 已带
@@ -125,6 +161,18 @@ export async function ReportView({ runId }: { runId: string }) {
   const answerByEvidence = new Map(
     evidence.map((e) => [e.id, (e.payload as { answerText?: string } | null)?.answerText]),
   )
+  // ⑤（引用来源归属分类）：归一化域名（去协议、去 www），与 run-probes.ts 探针期同一口径，
+  // 供 summary.ts 的 citedDomains 判定 owned/third_party（同 app/[locale]/runs/[id]/page.tsx 写法）。
+  // 此前本文件调用 aggregateProbeSummary 缺 domain 参数——citedDomains 会全部退化为 third_party。
+  const normalizedProjectDomain = project
+    ? (() => {
+        try {
+          return new URL(project.domain).hostname.replace(/^www\./, '')
+        } catch {
+          return project.domain
+        }
+      })()
+    : undefined
   const probeSummary = project
     ? aggregateProbeSummary({
         prompts: promptRows,
@@ -143,8 +191,29 @@ export async function ReportView({ runId }: { runId: string }) {
         })),
         brand: brandFromDomain(project.domain),
         competitors: project.competitors ?? [],
+        domain: normalizedProjectDomain,
       })
     : null
+
+  // AIO（Google AI Overviews）实测曝光：分引擎双口径的实测半边（同 run 详情页接线）。
+  // dataforseoConfigured=false → 空态①（未配置，说清原因，报告页静态输出不放设置页链接）；
+  // aioTotalQueries=0（本轮未落 serp_aio 证据）→ 空态②（已配置但本轮未采集）；
+  // 否则渲染 aioSummary（哪怕 aioPresentCount=0 也如实展示，不当故障，即空态③走正常渲染路径）。
+  const dataforseoConfigured = byokStatuses.find((s) => s.key === 'dataforseo')?.configured ?? false
+  const aioTotalQueries = evidence.filter((e) => e.type === 'serp_aio').length
+  const aioSummary =
+    aioTotalQueries > 0
+      ? aggregateAioExposure({
+          totalQueries: aioTotalQueries,
+          results: aioResultRows.map((r) => ({
+            keyword: r.keyword,
+            aioPresent: r.aioPresent,
+            targetDomainCited: r.targetDomainCited,
+            citedUrls: r.citedUrls,
+          })),
+          domain: normalizedProjectDomain ?? project?.domain ?? '',
+        })
+      : null
 
   const findings: ReportFinding[] = findingRows.map((f) => ({
     id: f.id,
@@ -213,6 +282,11 @@ export async function ReportView({ runId }: { runId: string }) {
     const tag = CLAIM_TAG[ct]
     return tag ? t(`claim.${tag.key}`) : ct
   }
+  // 回测表指标名人类可读化；未登记的 metricName（新增遗漏 / 历史脏数据）原样兜底显示原始 key。
+  const metricLabel = (name: string) => {
+    const key = RETEST_METRIC_KEYS[name]
+    return key ? t(`retest.metric.${key}`) : name
+  }
 
   const matrixLabels = {
     quadrants: {
@@ -238,6 +312,16 @@ export async function ReportView({ runId }: { runId: string }) {
     desc: t(`evidenceLadder.${code}.desc`),
     tone: LADDER_TONE[code],
   }))
+
+  // 引用平台徽标文案（CitedDomainsCard 新增 prop，i18n-free 惯例：调用方 t() 解析好再传入）。
+  const citedDomainsPlatformLabels: Record<Exclude<CitationPlatform, 'other'>, string> = {
+    reddit: t('geo.citedDomainsPlatformReddit'),
+    youtube: t('geo.citedDomainsPlatformYoutube'),
+    linkedin: t('geo.citedDomainsPlatformLinkedin'),
+    quora: t('geo.citedDomainsPlatformQuora'),
+    wikipedia: t('geo.citedDomainsPlatformWikipedia'),
+    github: t('geo.citedDomainsPlatformGithub'),
+  }
 
   const toc: [string, string][] = [
     ['sec-summary', t('toc.summary')],
@@ -552,10 +636,106 @@ export async function ReportView({ runId }: { runId: string }) {
                     </table>
                   </div>
                 ) : null}
+                <p className="note">{t('geo.probeProxyNote')}</p>
               </div>
             ) : (
               <p className="note">{t('geo.empty')}</p>
             )}
+
+            {/* ⑤ 被引用域名 Top 列表（owned/third_party 归属，只认 citedUrls 不含 retrievedUrls，
+                口径同 components/CitedDomainsCard.tsx）——只在有正文引用样本时展示。 */}
+            {probeSummary && probeSummary.citedDomains.length > 0 ? (
+              <div className="card report-method">
+                <h4>{t('geo.citedDomainsTitle')}</h4>
+                <p className="note">{t('geo.citedDomainsMeta')}</p>
+                {/* 社区/UGC 来源占引用比（新增，unbranded 口径）：无样本时说明「未能计算」，
+                    不显示 0%——避免「无数据」被误读成「测得 0%」（见 summary.ts ugcCitationShare 注释）。 */}
+                <p className="note">
+                  <b>{t('geo.ugcCitationShareTitle')}</b>：
+                  {probeSummary.ugcCitationShare === null
+                    ? t('geo.ugcCitationShareUnavailable')
+                    : t('geo.ugcCitationShareValue', { pct: Math.round(probeSummary.ugcCitationShare * 100) })}
+                </p>
+                <p className="note">{t('geo.ugcCitationShareNote')}</p>
+                <CitedDomainsCard
+                  rows={probeSummary.citedDomains}
+                  ownedLabel={t('geo.citedDomainsOwned')}
+                  thirdPartyLabel={t('geo.citedDomainsThirdParty')}
+                  platformLabels={citedDomainsPlatformLabels}
+                />
+              </div>
+            ) : null}
+
+            {/* 双口径的实测半边：Google AI Overviews 真实 SERP 采样（唯一允许「实测」字样的区块，
+                spec 见 components/AioExposureCard.tsx 的口径注释）。不复用该 client 组件的原因见本文件
+                顶部 import 注释——分享页无 NextIntlClientProvider，这里内联走 report.geo.* i18n-free 渲染。
+                三种空态：①未配置 DataForSEO；②已配置但本轮未采集；③已采集且如实展示（含 0 命中）。 */}
+            <div className="card report-method">
+              <h4>{t('geo.aioSectionTitle')}</h4>
+              <p className="note">
+                <span className="tag m">
+                  <span className="dot" />
+                  {t('geo.aioMeasuredBadge')}
+                </span>{' '}
+                {t('geo.aioMeta')}
+              </p>
+              {!dataforseoConfigured ? (
+                <p className="note">{t('geo.aioEmptyNotConfigured')}</p>
+              ) : !aioSummary ? (
+                <p className="note">{t('geo.aioEmptyNotCollected')}</p>
+              ) : (
+                <>
+                  <div className="stats aio-exposure-stats">
+                    <div className="stat">
+                      <div className="k">{t('geo.aioPresentLabel')}</div>
+                      <div className="v">
+                        <b>{aioSummary.aioPresentCount}</b>
+                        <small>{t('geo.aioOf', { total: aioSummary.measuredQueries })}</small>
+                      </div>
+                    </div>
+                    <div className="stat">
+                      <div className="k">{t('geo.aioOwnedLabel')}</div>
+                      <div className="v">
+                        <b>{aioSummary.ownedCitedCount}</b>
+                        <small>{t('geo.aioOf', { total: aioSummary.aioPresentCount })}</small>
+                      </div>
+                    </div>
+                    <div className="stat">
+                      <div className="k">{t('geo.aioMeasuredLabel')}</div>
+                      <div className="v">
+                        <b>{aioSummary.measuredQueries}</b>
+                        <small>{t('geo.aioOf', { total: aioSummary.totalQueries })}</small>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="aio-exposure-block">
+                    <div className="fb-l">{t('geo.aioDomainsTitle')}</div>
+                    {aioSummary.citedDomains.length === 0 ? (
+                      <p className="note">{t('geo.aioNoDomains')}</p>
+                    ) : (
+                      <ul className="aio-exposure-domains">
+                        {aioSummary.citedDomains.map((d) => (
+                          <li
+                            key={d.domain}
+                            className={d.origin === 'owned' ? 'aio-exposure-domain owned' : 'aio-exposure-domain'}
+                          >
+                            <span className="aio-exposure-domain-name">{d.domain}</span>
+                            {d.origin === 'owned' ? (
+                              <span className="tag ok">
+                                <span className="dot" />
+                                {t('geo.aioOwnedBadge')}
+                              </span>
+                            ) : null}
+                            <span className="aio-exposure-domain-count">{t('geo.aioDomainCount', { count: d.count })}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </section>
 
           {/* ——— 5. 关键词现状与缺口 ——— */}
@@ -649,7 +829,7 @@ export async function ReportView({ runId }: { runId: string }) {
                     <tbody>
                       {retestSnapshots.map((s) => (
                         <tr key={s.id}>
-                          <td className="mono">{s.metricName}</td>
+                          <td>{metricLabel(s.metricName)}</td>
                           <td>{s.baselineValue || '—'}</td>
                           <td>{s.retestValue || '—'}</td>
                           <td>{s.delta || '—'}</td>

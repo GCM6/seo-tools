@@ -16,6 +16,7 @@ function fakeProvider(id: AiProbeProvider['id'], opts?: { configured?: boolean; 
       return {
         answerText: opts?.answer ?? `I recommend Metadocu. (asked: ${prompt})`,
         citedUrls: ['https://metadocu.com/'],
+        retrievedUrls: [],
         rawResponse: { echo: prompt },
         webSearchEnabled: true,
         temperature: null,
@@ -101,6 +102,45 @@ describe('collectProbesStage', () => {
     expect(result.brandPresent).toBe(true)
     expect(result.targetDomainCited).toBe(true)
     expect(result.runId).toBe('run_1')
+    // 引用口径拆分修复：provider.ask() 返回的 retrievedUrls 穿线到落库结果（此处 fakeProvider
+    // 恒返回空 retrievedUrls，targetDomainRetrieved 因此恒 false）。
+    expect(result.retrievedUrls).toEqual([])
+    expect(result.targetDomainRetrieved).toBe(false)
+  })
+
+  it('threads provider.retrievedUrls through parseProbeAnswer into the persisted probe result', async () => {
+    const providerWithRetrieved: AiProbeProvider = {
+      id: 'perplexity',
+      modelId: 'perplexity-model',
+      webSearchEnabled: true,
+      isConfigured: () => true,
+      ask: vi.fn(async () => ({
+        answerText: 'no brand mention here',
+        citedUrls: [],
+        retrievedUrls: ['https://metadocu.com/search-hit'],
+        rawResponse: {},
+        webSearchEnabled: true,
+        temperature: null,
+        topP: null,
+      })),
+    }
+    const { deps, created } = makeDeps({
+      getProjectSettings: async () => ({
+        projectId: 'proj_1',
+        gscConnected: false,
+        defaultModels: ['Perplexity'],
+        probeN: 1,
+        marketLocation: '',
+        cachePolicy: 'default',
+      }),
+      providers: [providerWithRetrieved],
+    })
+    await run(deps)
+    // citedUrls 为空——即便 retrievedUrls 命中目标域，targetDomainCited（"有依据"）仍是 false；
+    // targetDomainRetrieved 是独立的弱一档信号，才应为 true。
+    expect(created.results.every((r) => r.targetDomainCited === false)).toBe(true)
+    expect(created.results.every((r) => r.targetDomainRetrieved === true)).toBe(true)
+    expect(created.results.every((r) => (r.retrievedUrls as string[]).includes('https://metadocu.com/search-hit'))).toBe(true)
   })
 
   it('skips the whole stage when no selected provider has a key, persisting nothing', async () => {

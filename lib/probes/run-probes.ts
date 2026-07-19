@@ -60,6 +60,8 @@ export interface ProbeStageDeps {
     targetDomainCited: boolean
     competitorsMentioned: string[]
     citedUrls: string[]
+    retrievedUrls: string[]
+    targetDomainRetrieved: boolean
     sentiment: string
     hedged: boolean
     unknownAdmission: boolean
@@ -156,6 +158,7 @@ export async function collectProbesStage(
             const parsed = parseProbeAnswer({
               answerText: answer.answerText,
               citedUrls: answer.citedUrls,
+              retrievedUrls: answer.retrievedUrls,
               brand: config.brand,
               domain: config.domain,
               competitors: config.competitors,
@@ -200,6 +203,8 @@ export async function collectProbesStage(
               targetDomainCited: parsed.targetDomainCited,
               competitorsMentioned: parsed.competitorsMentioned,
               citedUrls: parsed.citedUrls,
+              retrievedUrls: parsed.retrievedUrls,
+              targetDomainRetrieved: parsed.targetDomainRetrieved,
               // G09 引用情感：测量层解析器分类（parser_version 版本化，可抽查原文），非 agent 生成
               sentiment: parsed.sentiment,
               // D2：确定性词表检测结果落库，供聚合层 D3 三态判定使用

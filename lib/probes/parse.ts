@@ -16,12 +16,22 @@ import { classifyProbeSentiment, type ProbeSentiment } from './sentiment'
 //     如"我没有找到相关信息，无法评价这家公司"——被误判为 unverified「断言式回答无依据」，
 //     方向恰好相反。spec D2/D3 对 unknownAdmission 只定义词表，未要求限定品牌句；hedged 保持
 //     限定品牌句不变，见下方 detectHedgeSignals 注释）。
+// v6（引用口径拆分修复）：
+//   - Perplexity provider 此前把「正文引用（citations[]）」与「仅被检索到（search_results[].url）」
+//     压平合并进同一个 citedUrls，导致 targetDomainCited 与五态 grounded 判定虚高——引擎检索到
+//     一个 URL 不等于正文真的依据了它。协议层（providers/*.ts）已拆成 citedUrls / retrievedUrls
+//     两个字段，本文件的 citesDomain 判定语义不变，但输入的 citedUrls 现在只含真正的正文引用，
+//     判定口径因此自动变严；新增 targetDomainRetrieved 对 retrievedUrls 独立判定，不参与
+//     grounded 五态（五态继续只看 citedUrls，见 engine-capability.ts）。
 // 升级词表本身（新增/删除/改判定范围）同样必须再升版本号（协议留痕，保证跨 run 可比）。
-export const PROBE_PARSER_VERSION = 'v5'
+export const PROBE_PARSER_VERSION = 'v6'
 
 export interface ParseInput {
   answerText: string
   citedUrls: string[]
+  // v6：仅被引擎联网检索到、未在正文标注引用的 URL（见 providers/perplexity.ts 注释）。
+  // 可选——旧调用方/测试不传即视为空数组，targetDomainRetrieved 恒 false，不影响既有行为。
+  retrievedUrls?: string[]
   brand: string
   domain: string
   competitors: string[]
@@ -35,6 +45,10 @@ export interface ParsedProbeAnswer {
   targetDomainCited: boolean
   competitorsMentioned: string[]
   citedUrls: string[]
+  // v6：仅检索到、未在正文引用的 URL，原样透传（供落库与来源归属分类消费）。
+  retrievedUrls: string[]
+  // v6：retrievedUrls 里是否命中目标域名——比 targetDomainCited 弱一档，不参与 grounded 判定。
+  targetDomainRetrieved: boolean
   sentiment: ProbeSentiment
   // D2：确定性词表检测，见下方 HEDGE_TERMS / UNKNOWN_ADMISSION_TERMS 及其校准注释。
   hedged: boolean
@@ -175,13 +189,19 @@ function normalizeHost(host: string): string {
   return host.replace(/^www\./, '').toLowerCase()
 }
 
+// 域名匹配核心：host 是否等于目标域或其子域。导出复用：citation-origin.ts 的
+// classifyCitationOrigin 用同一口径判定"自有域名"，不重复实现一套匹配逻辑。
+export function hostMatchesDomain(host: string, domain: string): boolean {
+  const target = normalizeHost(domain)
+  const h = normalizeHost(host)
+  return h === target || h.endsWith(`.${target}`)
+}
+
 // 引用 URL 是否落在目标域名（含子域）；解析失败的 URL 忽略。
 function citesDomain(urls: string[], domain: string): boolean {
-  const target = normalizeHost(domain)
   return urls.some((u) => {
     try {
-      const host = normalizeHost(new URL(u).hostname)
-      return host === target || host.endsWith(`.${target}`)
+      return hostMatchesDomain(new URL(u).hostname, domain)
     } catch {
       return false
     }
@@ -189,15 +209,19 @@ function citesDomain(urls: string[], domain: string): boolean {
 }
 
 export function parseProbeAnswer(input: ParseInput): ParsedProbeAnswer {
-  const { answerText, citedUrls, brand, domain, competitors, aliases = [] } = input
+  const { answerText, citedUrls, retrievedUrls = [], brand, domain, competitors, aliases = [] } = input
   const domainToken = normalizeHost(domain)
   const brandPresent = mentionsBrandOrAlias(answerText, brand, aliases) || answerText.toLowerCase().includes(domainToken)
   const { hedged, unknownAdmission } = detectHedgeSignals(answerText, brand, aliases)
   return {
     brandPresent,
+    // v6：只认正文引用（citedUrls）——retrievedUrls 弱一档，独立走 targetDomainRetrieved，
+    // 不混进这个判定（五态 grounded 与本字段同一口径，见 engine-capability.ts）。
     targetDomainCited: citesDomain(citedUrls, domain),
     competitorsMentioned: competitorsInText(answerText, competitors),
     citedUrls,
+    retrievedUrls,
+    targetDomainRetrieved: citesDomain(retrievedUrls, domain),
     // 情感分类只在品牌出现时有意义；未出现一律 'neutral'。按 brand + aliases 同一口径传入
     // （v5：此前只传主品牌词，别名句情感恒判 neutral，见上方版本注释）。
     sentiment: brandPresent ? classifyProbeSentiment(answerText, brand, aliases) : 'neutral',

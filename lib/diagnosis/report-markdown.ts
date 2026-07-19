@@ -28,7 +28,7 @@ const CONSTRAINT_PHRASE: Record<ConstraintKind, string> = {
   systemic_basics:
     '系统性基础问题：存在抓取 / 索引 / 渲染层面的高危阻断，请优先修复技术地基（P1）。',
   visibility_data_missing:
-    '可见性数据不足：尚未接入 GSC 或未配置 DataForSEO，关键词现状缺乏数据，建议先接入数据源再定位约束。',
+    '可见性数据不足：尚未在项目中连接 GSC 或未配置 DataForSEO，关键词现状缺乏数据，建议先接入数据源再定位约束。',
   authority_content:
     '权威与内容竞争力不足：关键词缺口较多且权威 / 语料信号偏弱，建议聚焦内容覆盖（P3）与品牌权威（P5）。',
   fine_tuning: '精细优化阶段：无系统性阻断，可按影响 × 成本优先级逐项打磨。',

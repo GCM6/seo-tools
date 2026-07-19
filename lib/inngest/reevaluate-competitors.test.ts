@@ -141,8 +141,23 @@ describe('reevaluateCompetitorsHandler', () => {
       { keyword: 'best crm', gapType: 'missing', ourPosition: null, opportunityScore: 80, searchVolume: 500, evidenceId: 'ev_serp' },
     ])
     // SP-A2 #6：探针 SoV 竞品集并入确认竞品「名」（可被答案原文匹配），非纯域。
-    const probeInput = deps.aggregateProbeSummary.mock.calls[0][0] as { competitors: string[] }
+    const probeInput = deps.aggregateProbeSummary.mock.calls[0][0] as { competitors: string[]; domain?: string }
     expect(probeInput.competitors.sort()).toEqual(['Rival', 'manual.com'])
+    // 第三波修复：此前未传 domain，citedDomains 的 owned 判定恒 third_party；现在应补上归一化裸 host。
+    expect(probeInput.domain).toBe('example.com')
+  })
+
+  it('project.domain 带协议/www 时 aggregateProbeSummary 收到归一化后的裸 host', async () => {
+    const deps = makeDeps({
+      getProject: vi.fn(async () => ({
+        id: 'proj_1', domain: 'https://www.example.com', industry: '', market: 'de', language: 'de', competitors: ['manual.com'],
+      })),
+    })
+    const { args } = makeArgs()
+    await reevaluateCompetitorsHandler(args, asDeps(deps))
+
+    const probeInput = deps.aggregateProbeSummary.mock.calls[0][0] as { domain?: string }
+    expect(probeInput.domain).toBe('example.com')
   })
 
   it('无确认竞品 → 不算 gap、不落 keyword_gaps', async () => {

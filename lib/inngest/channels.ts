@@ -7,7 +7,7 @@ export type RunProgressMessage =
       evidenceType:
         | 'serp_snapshot' | 'page_fetch' | 'schema' | 'render_check' | 'ai_answer' | 'sitemap' | 'site_audit' | 'psi' | 'gsc'
         | 'dataforseo_serp' | 'dataforseo_labs' | 'dataforseo_backlinks'
-        | 'ua_probe' | 'third_party_presence'
+        | 'ua_probe' | 'third_party_presence' | 'serp_aio' | 'social_presence'
     }
   | {
       type: 'phase'

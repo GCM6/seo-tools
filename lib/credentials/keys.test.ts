@@ -13,6 +13,11 @@ describe('credential keys 允许清单', () => {
     expect(isAllowedCredentialKey('HACK')).toBe(false)
     expect(isAllowedCredentialKey('OPENAI_API_KEY')).toBe(true)
   })
+  it('平台托管的 GSC OAuth 三件套不能经 BYOK 凭据 API 写入', () => {
+    expect(isAllowedCredentialKey('GOOGLE_OAUTH_CLIENT_ID')).toBe(false)
+    expect(isAllowedCredentialKey('GOOGLE_OAUTH_CLIENT_SECRET')).toBe(false)
+    expect(isAllowedCredentialKey('GOOGLE_OAUTH_REDIRECT_URI')).toBe(false)
+  })
   it('PROBE_CREDENTIAL_KEYS 恰为 4 家探针 env 名', () => {
     expect(PROBE_CREDENTIAL_KEYS).toEqual(['OPENAI_API_KEY', 'PERPLEXITY_API_KEY', 'GEMINI_API_KEY', 'DEEPSEEK_API_KEY'])
   })
