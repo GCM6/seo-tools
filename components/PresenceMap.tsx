@@ -53,6 +53,9 @@ export function PresenceMap({
   const brandedAnswers = brandedPrompts.flatMap((p) =>
     p.answers.map((a) => ({ ...a, questionText: p.text, state: classifyBrandedAnswer(a) })),
   )
+  // P1-7：下区口径分母是"回答"，不是"提问"——同一提问×多引擎会展开成多格，
+  // 标题旁需明确标注格子数与去重后的引擎数，避免跟上区（一格=一问）当同类打分卡横向比较。
+  const brandedEngineCount = new Set(brandedAnswers.map((a) => a.provider ?? '__unknown__')).size
 
   const unbrandedAbsentCount = unbrandedPrompts.filter((p) => p.answers.length > 0 && !p.present).length
   const unbrandedUnmeasuredCount = unbrandedPrompts.filter((p) => p.answers.length === 0).length
@@ -100,6 +103,9 @@ export function PresenceMap({
             <span>/{unbranded.total}</span>
           </div>
           <small>{t('mapOutcomeMetric')}</small>
+          {hasUnbrandedMeasurement ? (
+            <small className="map-outcome-caliber">{t('mapOutcomeCaliber', { n: unbranded.total })}</small>
+          ) : null}
         </div>
         <div className="map-outcome-copy">
           <span>{t('mapOutcomeEyebrow')}</span>
@@ -122,7 +128,9 @@ export function PresenceMap({
             <div className="map-evidence-index-head">
               <div>
                 <strong>{t('mapEvidenceGridTitle')}</strong>
-                <span>{t('mapEvidenceGridHint')}</span>
+                <span>
+                  {t('mapEvidenceGridHint')} · {t('mapEvidenceGridCount', { total: unbranded.total })}
+                </span>
               </div>
               <span>{t('mapEvidencePrompts', { present: unbranded.present, total: unbranded.total })}</span>
             </div>
@@ -202,6 +210,9 @@ export function PresenceMap({
         <div>
           <span>{t('mapBrandedEyebrow')}</span>
           <strong>{t('mapBrandedTitle')}</strong>
+          <span className="map-grid-denominator">
+            {t('mapBrandedGridCount', { count: brandedAnswers.length, engines: brandedEngineCount })}
+          </span>
         </div>
         <p>{t('mapBrandedDetail')}</p>
         <div className="map-evidence-stats branded" aria-label={t('mapBrandedStatsLabel')}>
@@ -218,7 +229,7 @@ export function PresenceMap({
               <button
                 type="button"
                 key={a.evidenceId}
-                className={`cell state-${a.state}${i === selectedBrandedIndex ? ' selected' : ''}`}
+                className={`cell cell-branded state-${a.state}${i === selectedBrandedIndex ? ' selected' : ''}`}
                 aria-label={t('mapBrandedCell', { number: i + 1, state: t(`state${capitalize(a.state)}`) })}
                 aria-pressed={i === selectedBrandedIndex}
                 onClick={() => setSelectedBrandedIndex(i)}

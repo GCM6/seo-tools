@@ -528,17 +528,20 @@ export async function collectEvidenceHandler(
         .map((r) => ({ keyText: r.keys[0], impressions: r.impressions }))
 
       // query 维证据：K01/K02 的取数锚。keyword_metrics 也引用它作 evidenceId。
-      const queryEvId = `ev_${crypto.randomUUID()}`
       const avgPosition = impressionWeightedAvgPosition(gsc.queryRows)
       const queryRaw = JSON.stringify(gsc.queryRows)
-      await step.run('persist-gsc-query', () =>
-        deps.createEvidenceArtifact({
-          id: queryEvId, projectId, runId, type: 'gsc', claimLevel: 'L4', source: siteUrl,
+      // 证据 ID 必须由 durable step 一并返回。Inngest 重放时会跳过已完成的
+      // step；若在 step 外重新生成 ID，后续指标会引用一个从未入库的证据行。
+      const queryEvidence = await step.run('persist-gsc-query', async () => {
+        const evidenceId = `ev_${crypto.randomUUID()}`
+        await deps.createEvidenceArtifact({
+          id: evidenceId, projectId, runId, type: 'gsc', claimLevel: 'L4', source: siteUrl,
           request: { dimension: 'query', ...gsc.range },
           payload: { dimension: 'query', rows: gsc.queryRows, avgPosition },
           rawText: queryRaw, rawHash: sha256Hex(queryRaw),
-        }),
-      )
+        })
+        return { evidenceId }
+      })
 
       // page×query 交叉维证据：K06 蚕食检测（keys=[page, query]）。
       const qpRaw = JSON.stringify(gsc.queryPageRows)
@@ -564,7 +567,7 @@ export async function collectEvidenceHandler(
           })
           metricRows.push({
             id: `km_${crypto.randomUUID()}`, runId, keywordId: kw.id, source: 'gsc',
-            impressions: m.impressions, clicks: m.clicks, ctr: m.ctr, position: m.position, evidenceId: queryEvId,
+            impressions: m.impressions, clicks: m.clicks, ctr: m.ctr, position: m.position, evidenceId: queryEvidence.evidenceId,
           })
         }
         await deps.createKeywordMetrics(metricRows)

@@ -103,7 +103,7 @@ function asCollectDeps(deps: ReturnType<typeof makeDeps>): Parameters<typeof col
   return deps as unknown as Parameters<typeof collectEvidenceHandler>[1]
 }
 
-function makeArgs() {
+function makeArgs(options: { cachedSteps?: Record<string, unknown> } = {}) {
   const published: unknown[] = []
   return {
     args: {
@@ -112,7 +112,8 @@ function makeArgs() {
       // URL / Date 等富对象会退化成字符串（URL.toJSON() → href）。用直通 fn() 的假
       // step 会漏掉这一层，导致「validUrl 实为 string、.hostname 为 undefined」的线上崩溃测不出来。
       step: {
-        run: async <T,>(_id: string, fn: () => Promise<T> | T): Promise<T> => {
+        run: async <T,>(id: string, fn: () => Promise<T> | T): Promise<T> => {
+          if (Object.hasOwn(options.cachedSteps ?? {}, id)) return options.cachedSteps![id] as T
           const out = await fn()
           return (out === undefined ? undefined : JSON.parse(JSON.stringify(out))) as T
         },
@@ -261,6 +262,22 @@ describe('collectEvidenceHandler', () => {
     const metricRows = deps.createKeywordMetrics.mock.calls[0][0]
     expect(metricRows[0].keywordId).toBe('kw_1')
     expect(published.some((m) => (m as { data: { evidenceType?: string } }).data.evidenceType === 'gsc')).toBe(true)
+  })
+
+  it('reuses the persisted GSC evidence id when Inngest replays that completed step', async () => {
+    const deps = makeDeps({
+      getProjectSettings: vi.fn(async () => ({
+        gscConnected: true, gscRefreshToken: 'refresh_tok', gscSiteUrl: 'sc-domain:example.com', crawlEnabled: false,
+      })),
+      isGscPlatformConfigured: vi.fn(() => true),
+    })
+    const { args } = makeArgs({ cachedSteps: { 'persist-gsc-query': { evidenceId: 'ev_gsc_query_cached' } } })
+
+    await collectEvidenceHandler(args, asCollectDeps(deps))
+
+    const rows = deps.createKeywordMetrics.mock.calls[0][0]
+    expect(rows).toHaveLength(1)
+    expect(rows[0].evidenceId).toBe('ev_gsc_query_cached')
   })
 
   it('skips GSC collection when the project is not connected', async () => {

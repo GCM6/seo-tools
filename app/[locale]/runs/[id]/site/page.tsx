@@ -1,7 +1,10 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
+import Link from 'next/link'
 import { Shell } from '@/components/Shell'
 import { SitePageActions } from '@/components/SitePageActions'
+import { EmptyStateCTA } from '@/components/EmptyStateCTA'
+import { Term } from '@/components/Term'
 import {
   getRun,
   getProject,
@@ -25,7 +28,8 @@ export default async function SiteStructurePage({
   const { locale, id } = await params
   const { status: statusFilter } = await searchParams
   setRequestLocale(locale)
-  const [t, run] = await Promise.all([getTranslations('site'), getRun(id)])
+  // terms 命名空间：术语解释文案统一放这，供本页与 ReportView 共用同一份解释（P1-3 修复）。
+  const [t, tt, run] = await Promise.all([getTranslations('site'), getTranslations('terms'), getRun(id)])
   if (!run) notFound()
   const [project, pages, templates, audit, runEvidence] = await Promise.all([
     getProject(run.projectId),
@@ -49,21 +53,45 @@ export default async function SiteStructurePage({
     return (
       <Shell runId={id} domain={project?.domain}>
         <section className="screen show">
-          <h1 className="text-lg font-semibold">{t('title')}</h1>
-          <p className="mt-4 text-sm text-neutral-500">{t('noData')}</p>
+          <Link href={`/${locale}/runs/${id}`} className="rec-back-link">
+            <span aria-hidden="true">←</span>
+            {t('backToDiagnosis')}
+          </Link>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-lg font-semibold">{t('title')}</h1>
+            <div className="flex items-center gap-3 text-xs">
+              <Link href={`/${locale}/runs/${id}/report`} className="underline underline-offset-2">
+                {t('viewReport')}
+              </Link>
+              <Link href={`/${locale}/runs/${id}/output`} className="underline underline-offset-2">
+                {t('goToOutput')}
+              </Link>
+            </div>
+          </div>
+          <div className="mt-4">
+            <EmptyStateCTA
+              title={t('emptyTitle')}
+              impact={t('noData')}
+              actionLabel={t('backToDiagnosis')}
+              href={`/${locale}/runs/${id}`}
+            />
+          </div>
         </section>
       </Shell>
     )
   }
 
-  const stats: [string, number][] = [
-    [t('totalDiscovered'), payload.stats.totalDiscovered],
-    [t('checked'), payload.stats.checked],
-    [t('http4xx'), payload.stats.http4xx],
-    [t('noindex'), payload.stats.noindex],
-    [t('canonicalOffsite'), payload.stats.canonicalOffsite],
-    [t('orphanPages'), payload.stats.orphanPages],
-    [t('citedPages'), payload.stats.citedPages],
+  // problem: true 的卡片在数值 > 0 时着警示色（--gap 体系）；正向/中性指标（已轻检、
+  // 被 AI 引用页等）保持默认中性色。只按 >0 / =0 二分，不引入新的判断阈值（spec 任务书 §5）。
+  // term：术语解释文案（P1-3 修复），只给需要解释的统计卡配，其余保持裸 label 不变。
+  const stats: { key: string; label: string; value: number; problem?: boolean; term?: string }[] = [
+    { key: 'totalDiscovered', label: t('totalDiscovered'), value: payload.stats.totalDiscovered },
+    { key: 'checked', label: t('checked'), value: payload.stats.checked },
+    { key: 'http4xx', label: t('http4xx'), value: payload.stats.http4xx, problem: true, term: tt('http4xx') },
+    { key: 'noindex', label: t('noindex'), value: payload.stats.noindex, problem: true, term: tt('noindex') },
+    { key: 'canonicalOffsite', label: t('canonicalOffsite'), value: payload.stats.canonicalOffsite, problem: true, term: tt('canonical') },
+    { key: 'orphanPages', label: t('orphanPages'), value: payload.stats.orphanPages, problem: true, term: tt('orphanPages') },
+    { key: 'citedPages', label: t('citedPages'), value: payload.stats.citedPages },
   ]
 
   const statuses = ['checked', 'discovered_only', 'blocked_by_robots', 'error'] as const
@@ -71,22 +99,39 @@ export default async function SiteStructurePage({
   return (
     <Shell runId={id} domain={project?.domain}>
       <section className="screen show">
-        <h1 className="text-lg font-semibold">
-          {project?.domain} · {t('title')}
-        </h1>
+        <Link href={`/${locale}/runs/${id}`} className="rec-back-link">
+          <span aria-hidden="true">←</span>
+          {t('backToDiagnosis')}
+        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-lg font-semibold">
+            {project?.domain} · {t('title')}
+          </h1>
+          <div className="flex items-center gap-3 text-xs">
+            <Link href={`/${locale}/runs/${id}/report`} className="underline underline-offset-2">
+              {t('viewReport')}
+            </Link>
+            <Link href={`/${locale}/runs/${id}/output`} className="underline underline-offset-2">
+              {t('goToOutput')}
+            </Link>
+          </div>
+        </div>
 
         <div className="mt-4">
           <h2 className="text-sm font-medium">{t('statsTitle')}</h2>
-          <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
-            {stats.map(([label, value]) => (
-              <div key={label} className="rounded border p-3">
-                <div className="text-xs text-neutral-500">{label}</div>
-                <div className="text-xl font-semibold">{value}</div>
-              </div>
-            ))}
+          <div className="stats mt-2">
+            {stats.map((s) => {
+              const isWarn = Boolean(s.problem) && s.value > 0
+              return (
+                <div key={s.key} className={isWarn ? 'card stat bg-gap-bg' : 'card stat'}>
+                  <div className="k">{s.term ? <Term explain={s.term}>{s.label}</Term> : s.label}</div>
+                  <div className={isWarn ? 'v text-gap' : 'v'}>{s.value}</div>
+                </div>
+              )
+            })}
           </div>
           {payload.stats.truncated > 0 && (
-            <p className="mt-2 text-xs text-amber-600">
+            <p className="mt-2 text-xs text-warning">
               {t('truncatedNotice', { maxPages: payload.protocol.maxPages, count: payload.stats.truncated })}
             </p>
           )}
@@ -95,41 +140,44 @@ export default async function SiteStructurePage({
         <div className="mt-6">
           <h2 className="text-sm font-medium">
             {t('templatesTitle')}{' '}
-            <span className="ml-1 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600">
+            <span className="tag i">
+              <span className="dot" />
               {t('inferredBadge')}
             </span>
           </h2>
-          <table className="mt-2 w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-neutral-500">
-                <th className="py-1">{t('pattern')}</th>
-                <th>{t('pageCount')}</th>
-                <th>{t('representative')}</th>
-                <th>{t('renderDelta')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {templates.map((tpl) => {
-                const rep = tpl.representativePageId ? pageById.get(tpl.representativePageId) : undefined
-                const delta = tpl.representativePageId
-                  ? renderDeltaBySitePageId.get(tpl.representativePageId)
-                  : undefined
-                return (
-                  <tr key={tpl.id} className="border-t">
-                    <td className="py-1.5 font-mono text-xs">{tpl.pattern}</td>
-                    <td>{tpl.pageCount}</td>
-                    <td className="max-w-xs truncate">
-                      {rep?.url ?? '—'}
-                      {tpl.source === 'user' && (
-                        <span className="ml-1 text-xs text-neutral-400">{t('userPinned')}</span>
-                      )}
-                    </td>
-                    <td>{delta !== undefined ? `${delta > 0 ? '+' : ''}${delta}` : '—'}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <div className="report-table-wrap mt-2">
+            <table className="report-table">
+              <thead>
+                <tr>
+                  <th><Term explain={tt('urlPattern')}>{t('pattern')}</Term></th>
+                  <th>{t('pageCount')}</th>
+                  <th>{t('representative')}</th>
+                  <th><Term explain={tt('renderDelta')}>{t('renderDelta')}</Term></th>
+                </tr>
+              </thead>
+              <tbody>
+                {templates.map((tpl) => {
+                  const rep = tpl.representativePageId ? pageById.get(tpl.representativePageId) : undefined
+                  const delta = tpl.representativePageId
+                    ? renderDeltaBySitePageId.get(tpl.representativePageId)
+                    : undefined
+                  return (
+                    <tr key={tpl.id}>
+                      <td className="font-mono text-xs">{tpl.pattern}</td>
+                      <td>{tpl.pageCount}</td>
+                      <td className="max-w-xs truncate">
+                        {rep?.url ?? '—'}
+                        {tpl.source === 'user' && (
+                          <span className="ml-1 text-xs text-ghost">{t('userPinned')}</span>
+                        )}
+                      </td>
+                      <td>{delta !== undefined ? `${delta > 0 ? '+' : ''}${delta}` : '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="mt-6">
@@ -148,56 +196,60 @@ export default async function SiteStructurePage({
               </a>
             ))}
           </nav>
-          <table className="mt-2 w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-neutral-500">
-                <th className="py-1">URL</th>
-                <th>HTTP</th>
-                <th>{t('pattern')}</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {visiblePages.map((p) => (
-                <tr key={p.id} className="border-t">
-                  <td className="max-w-md truncate py-1.5 font-mono text-xs">
-                    {p.url}
-                    {p.isKeyPage && (
-                      <span className="ml-1 rounded bg-blue-50 px-1 text-xs text-blue-600">{t('keyPageBadge')}</span>
-                    )}
-                  </td>
-                  <td>{p.httpStatus ?? t(`status.${p.checkStatus}`)}</td>
-                  <td className="font-mono text-xs">
-                    {p.templateId ? templates.find((tp) => tp.id === p.templateId)?.pattern ?? '—' : '—'}
-                  </td>
-                  <td className="space-x-2 text-right">
-                    <SitePageActions
-                      pageId={p.id}
-                      isKeyPage={p.isKeyPage}
-                      labels={{ mark: t('markKeyPage'), unmark: t('unmarkKeyPage'), notice: t('nextRunNotice') }}
-                      onToggleKeyPage={async (pageId, next) => {
-                        'use server'
-                        await toggleKeyPageAction(pageId, next, id, locale)
-                      }}
-                    />
-                    {p.templateId && p.checkStatus === 'checked' && (
-                      <form
-                        className="inline"
-                        action={async () => {
-                          'use server'
-                          await setRepresentativeAction(p.templateId!, p.id, id, locale)
-                        }}
-                      >
-                        <button type="submit" className="text-xs text-neutral-500 underline underline-offset-2">
-                          {t('setRepresentative')}
-                        </button>
-                      </form>
-                    )}
-                  </td>
+          <div className="report-table-wrap mt-2">
+            <table className="report-table">
+              <thead>
+                <tr>
+                  <th>URL</th>
+                  <th><Term explain={tt('httpStatus')}>HTTP</Term></th>
+                  <th><Term explain={tt('urlPattern')}>{t('pattern')}</Term></th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {visiblePages.map((p) => (
+                  <tr key={p.id}>
+                    <td className="max-w-md truncate font-mono text-xs">
+                      {p.url}
+                      {p.isKeyPage && (
+                        <span className="ml-1 rounded-full bg-primary-muted px-1.5 py-0.5 text-xs text-primary">
+                          {t('keyPageBadge')}
+                        </span>
+                      )}
+                    </td>
+                    <td>{p.httpStatus ?? t(`status.${p.checkStatus}`)}</td>
+                    <td className="font-mono text-xs">
+                      {p.templateId ? templates.find((tp) => tp.id === p.templateId)?.pattern ?? '—' : '—'}
+                    </td>
+                    <td className="space-x-2 text-right">
+                      <SitePageActions
+                        pageId={p.id}
+                        isKeyPage={p.isKeyPage}
+                        labels={{ mark: t('markKeyPage'), unmark: t('unmarkKeyPage'), notice: t('nextRunNotice') }}
+                        onToggleKeyPage={async (pageId, next) => {
+                          'use server'
+                          await toggleKeyPageAction(pageId, next, id, locale)
+                        }}
+                      />
+                      {p.templateId && p.checkStatus === 'checked' && (
+                        <form
+                          className="inline"
+                          action={async () => {
+                            'use server'
+                            await setRepresentativeAction(p.templateId!, p.id, id, locale)
+                          }}
+                        >
+                          <button type="submit" className="text-xs text-muted underline underline-offset-2">
+                            {t('setRepresentative')}
+                          </button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
     </Shell>

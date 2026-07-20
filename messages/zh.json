@@ -144,6 +144,8 @@
     "colAction": "操作",
     "viewRun": "查看",
     "viewReport": "报告",
+    "viewOutput": "输出",
+    "confirmRecs": "确认建议",
     "noRuns": "该项目还没有诊断记录。",
     "newRun": "新建分析",
     "retestThis": "以此回测",
@@ -391,6 +393,7 @@
     "mapOutcomeSummaryPresent": "当用户只问品类或解决方案时，你已进入部分 AI 回答，但覆盖仍有限。",
     "mapOutcomeSummaryUnmeasured": "请检查探针问题设置，确保包含不带品牌名的品类问题。",
     "mapOutcomeEvidence": "基于本轮 {count} 个已采样问题",
+    "mapOutcomeCaliber": "n={n}，方向性样本",
     "mapOutcomeAction": "查看竞品如何被提及 →",
     "mapMethodSummary": "这项结论是如何得出的",
     "mapEvidenceStatsLabel": "AI 回答证据概览",
@@ -399,6 +402,7 @@
     "mapEvidenceGridLabel": "按问题排列的 AI 回答证据索引",
     "mapEvidenceGridTitle": "逐题核验",
     "mapEvidenceGridHint": "每一格是一条不含品牌名的真实提问",
+    "mapEvidenceGridCount": "共 {total} 个提问",
     "mapEvidenceCell": "问题 {number}：品牌{status}",
     "mapEvidenceQuestion": "问题 {number} 的回答证据",
     "mapEvidencePresent": "出现",
@@ -417,6 +421,7 @@
     "mapOpportunityLink": "查看竞品 SoV 对照 →",
     "mapBrandedEyebrow": "品牌提问 · AI 认知质量",
     "mapBrandedTitle": "AI 谈起你品牌时，说的是有依据的话吗",
+    "mapBrandedGridCount": "共 {count} 条回答（来自 {engines} 个引擎）",
     "mapBrandedDetail": "测的是模型对已知品牌名的认知质量：有引用依据、诚实承认不知道，还是没有依据地断言。非联网引擎（如 DeepSeek）结构上无法提供引用，不参与“有依据/无依据”判定，只标记疑似臆测、承认不知道或未判定。",
     "mapBrandedStatsLabel": "品牌提问回答概览",
     "mapBrandedAnswers": "本轮已采样 {count} 条品牌提问回答",
@@ -495,7 +500,23 @@
     "aioExposureAbsent": "未出现 AIO",
     "aioExposureOwnedCited": "AI Overview 引用了自有域名",
     "aioExposureNotOwnedCited": "AI Overview 未引用自有域名",
-    "aioExposureNoCitedUrls": "该查询未采集到引用链接"
+    "aioExposureNoCitedUrls": "该查询未采集到引用链接",
+    "nav": {
+      "ariaLabel": "页面区块导航",
+      "groupOverview": "结论概览",
+      "groupAi": "AI 可见度",
+      "groupSearch": "传统搜索与竞品",
+      "groupIssues": "问题清单",
+      "itemOverview": "现状概览",
+      "itemGeoPresence": "AI 回答证据索引",
+      "itemSov": "竞品 SoV",
+      "itemCitedDomains": "被引用域名",
+      "itemAioExposure": "Google 实测曝光",
+      "itemSovPerEngine": "分引擎 SoV",
+      "itemPerEngine": "分引擎可见度",
+      "itemSentiment": "引用情感",
+      "itemFindings": "问题清单"
+    }
   },
   "screen3": {
     "title": "优化建议",
@@ -536,63 +557,79 @@
       "risk": "风险",
       "validation": "验证方法",
       "confidence": "置信度",
-      "editedNote": "人工编辑"
+      "editedNote": "人工编辑",
+      "affectedPages": "受影响页面"
     },
-    "note": "人在环内：工具提议，你拍板。只有「已接受 / 已编辑」的建议进入下一步生成提示词。涉及站外（如知乎/社区）的建议只给话术草稿，不自动执行。"
+    "note": "人在环内：工具提议，你拍板。已接受 / 已编辑的建议会进入最终执行报告；否决也会保留在决策轨迹中，但不会进入执行计划。涉及站外（如知乎/社区）的建议只给话术草稿，不自动执行。"
   },
   "screen4": {
     "title": "输出",
-    "meta": "已确认 {count} 条 · 完善交付稿后人工发布，再标记已执行并等待回测",
-    "emptyGated": "尚无「已接受 / 已编辑」的建议可生成交付稿——请先在优化建议屏逐条确认",
-    "promptForContent": "对应建议 · 新增小团队选型对比内容",
-    "promptForSsr": "对应建议 · /features 服务端渲染改造",
-    "promptTpl": {
-      "system": "你是资深 SEO+GEO 专家。请为 {domain} 执行以下已确认的优化建议：",
-      "why": "【为什么】",
-      "impact": "【预期影响】",
-      "validation": "【验证方法】",
-      "edited": "【人工编辑补充】",
-      "brandFacts": "【必须真实使用、不得编造的品牌事实】"
-    },
-    "reportTitle": "分析报告",
-    "unknownDomain": "未识别项目",
-    "reportMeta": "{domain} · 仅汇总本次 run 已确认的真实数据",
-    "report": {
-      "outputTitle": "已确认输出",
-      "outputBody": "当前有 {count} 条已接受 / 已编辑建议可生成执行提示词。",
-      "factsTitle": "已验证品牌事实",
-      "emptyFacts": "尚无 verified brand facts；不会向提示词注入未经验证的品牌事实。",
-      "retestTitle": "回测计划",
-      "retestTag": "下一轮",
-      "retestBody": "回测需要基于同一协议的真实 baseline 与 retest 数据；未生成前不展示 delta。"
-    },
-    "manageFacts": "管理品牌事实 →",
     "note": "交付稿不等于已发布：在这里预览、编辑 Markdown 并交给执行者；完成 CMS 或代码变更后再标记「已执行」，系统才会安排同协议回测。",
     "viewReport": "查看完整报告 →",
+    "output": {
+      "progressAria": "执行进度",
+      "progressCount": "{done}/{total} 已标记执行",
+      "scopeCount": "纳入执行 {count} · 已否决 {rejected}",
+      "draftWarning": "仍有 {count} 条待确认",
+      "draftWarningLink": "回建议页处理 →",
+      "retestTitle": "回测预告",
+      "retestProgress": "已执行 {done}/{total}",
+      "retestPending": "全部标记已执行后可发起同协议回测（4–6 周）。",
+      "retestReady": "全部动作已执行，可安排同协议回测。",
+      "retestPlanDueLabel": "当前到期日期：",
+      "retestPlanNoDue": "尚未安排复测（暂无标记已执行的建议）",
+      "retestPlanPolicyNote": "口径说明：每次标记执行都会把复测日期顺延至该次执行后 28 天；撤销执行不会回退该日期。",
+      "retestPlanManualNote": "手动调整到期日期暂不支持：项目更新接口尚未开放该字段，需要扩展项目 API 才能支持（超出本次改动范围）。",
+      "factsGateTitle": "品牌事实闸门",
+      "factsGateCount": "已验证 {count} 条",
+      "factsGateEmpty": "暂无已验证品牌事实，执行提示词将无真实事实可注入。",
+      "factsGateManage": "管理品牌事实 →"
+    },
+    "actionList": {
+      "heading": "行动清单",
+      "emptyGated": "当前没有已纳入执行的建议",
+      "emptyGatedHint": "请前往建议页接受或编辑建议后再回来查看执行清单。",
+      "detailsSummary": "查看详情",
+      "assetsHeading": "执行资产",
+      "assetsHint": "提示词已注入已验证品牌事实；声明不得编造。",
+      "generate": "生成执行提示词",
+      "generating": "正在生成…",
+      "regenerate": "重新生成",
+      "regenerating": "正在重新生成…",
+      "generateErrorNotFound": "该建议不存在或已被删除。",
+      "generateErrorGeneric": "生成失败，请重试。",
+      "promptLabelContent": "执行提示词",
+      "promptLabelBrief": "写作简报",
+      "rejectedAccordionTitle": "已否决 {count} 条（留痕）",
+      "rejectedNoNote": "系统未记录否决理由。",
+      "affectedPagesSummary": "共 {total} 个，已列前 {shown} 个："
+    },
+    "actionReport": {
+      "eyebrow": "最终交付",
+      "title": "执行决策报告",
+      "summary": "决策留痕与交接文档：汇总本轮所有已确认建议与执行记录。",
+      "sourceLock": "报告逐项锁定在本轮接受、编辑、否决的建议卡与已验证品牌事实；AI 只能归纳，不能新增决策。",
+      "aiGenerate": "AI 严谨总结报告",
+      "generating": "正在按决策卡汇总…",
+      "aiUnavailable": "需先在设置中配置 OpenAI，AI 才能生成决策摘要。",
+      "aiDone": "AI 决策摘要已写入完整报告；逐项行动计划保持原卡片事实。",
+      "aiFailed": "AI 总结未生成，已保留严格的结构化报告；请重试。",
+      "aiErrorRunNotFound": "运行记录不存在，请刷新页面重试。",
+      "aiErrorSummaryFailed": "AI 请求失败，请稍后重试。",
+      "aiErrorValidationFailed": "AI 输出未通过信源校验被拒绝，可重试。",
+      "overwriteConfirm": "AI 生成的摘要将覆盖你在 Markdown 中的手动修改，是否继续？",
+      "expand": "展开预览",
+      "collapse": "收起预览",
+      "viewLabel": "完整报告视图",
+      "copy": "复制完整报告",
+      "download": "下载完整报告 .md",
+      "editorLabel": "完整执行报告 Markdown 编辑器",
+      "draftHint": "编辑仅保留在当前页面；请复制或下载后交给执行者。AI 再次总结会用服务器验证后的完整报告覆盖当前草稿。"
+    },
     "delivery": {
-      "eyebrow": "交付预览",
-      "kind": {
-        "content": "内容执行简报",
-        "technical": "技术变更方案"
-      },
-      "viewLabel": "交付稿视图",
       "preview": "预览",
       "markdown": "编辑 Markdown",
-      "markdownEditor": "交付稿 Markdown 编辑器",
-      "copy": "复制 Markdown",
-      "copied": "已复制",
-      "download": "下载 .md",
-      "draftHint": "编辑仅保留在当前页面；请复制或下载后交给执行者。发布仍需人工审核。",
-      "handoffTitle": "给执行者的交接提示",
-      "copyHandoff": "复制执行提示词",
-      "handoffCopied": "执行提示词已复制",
-      "documentIntro": "这是一份待人工审核的交付稿，不会自动发布到网站。",
-      "reviewTitle": "发布前人工审核",
-      "reviewItemOne": "核实涉及的品牌事实、数据与链接均可追溯。",
-      "reviewItemTwo": "在 CMS 或代码库中完成发布或变更后，再标记「已执行」。",
-      "copyAll": "复制全部 Markdown",
-      "copiedAll": "全部 Markdown 已复制",
-      "downloadAll": "导出全部 Markdown"
+      "copied": "已复制"
     },
     "applied": {
       "mark": "标记已执行",
@@ -600,7 +637,11 @@
       "noteLabel": "执行说明（可选）",
       "notePlaceholder": "可填执行了什么、改动链接等，便于回测复核",
       "submit": "确认已执行",
-      "cancel": "取消"
+      "cancel": "取消",
+      "error": "标记失败，请重试；你填写的说明已保留。",
+      "revoke": "撤销执行",
+      "revoking": "撤销中…",
+      "revokeError": "撤销失败，请重试。"
     }
   },
   "dataHealth": {
@@ -636,9 +677,17 @@
     "dismissReasonPlaceholder": "为何判为误报？如：不适用本站、已修复、判断有误……",
     "dismissReasonRequired": "忽略前请先填写原因",
     "dismissConfirm": "确认忽略",
-    "dismissCancel": "取消"
+    "dismissCancel": "取消",
+    "provenanceHint": {
+      "m": "实测：有 L3/L4 硬证据支撑",
+      "i": "推断：基于证据模式推断，未直接核验",
+      "g": "差距：诊断规则识别的待改进项",
+      "ok": "已具备：已核验达标项"
+    },
+    "legend": "证据等级说明：实测=有 L3/L4 硬证据支撑；推断=基于证据模式推断，未直接核验；差距=待改进项；已具备=已核验达标项"
   },
   "facts": {
+    "backToDiagnosis": "返回诊断看板",
     "title": "品牌事实管理",
     "meta": "只有「已验证」的品牌事实才会被注入执行提示词（§6.2 人在环闸门）",
     "empty": "尚无品牌事实。添加后需人工验证，才能注入提示词。",
@@ -651,6 +700,7 @@
     "factPlaceholder": "填写可核验的品牌事实（不得编造）",
     "sourceUrlLabel": "来源链接（可选）",
     "sourceNoteLabel": "来源备注（可选）",
+    "sourceNotePlaceholder": "例如：官网 About 页面，已于 2026-07-19 核验",
     "add": "添加",
     "verify": "标记为已验证",
     "verified": "已验证",
@@ -658,7 +708,8 @@
     "retired": "已停用",
     "draft": "草稿",
     "remove": "删除",
-    "backToOutput": "← 返回输出"
+    "backToOutput": "← 返回输出",
+    "viewReport": "查看完整报告 →"
   },
   "evidence": {
     "chatgptAnswer": "证据 · ChatGPT 实测回答原文（第 3/5 次）",
@@ -706,9 +757,12 @@
     }
   },
   "competitors": {
+    "backToDiagnosis": "返回诊断看板",
     "title": "竞品",
     "subtitle": "基于 SERP 重叠自动识别的候选竞品。请确认真正的自然搜索竞品——只有确认后的竞品才进入缺口分析与对比（人在环闸门）。",
     "noData": "暂无竞品候选。配置 DataForSEO 并重新运行，即可从 SERP 重叠自动识别竞品。",
+    "emptyTitle": "缺少竞品候选数据",
+    "emptyCta": "去设置页配置 DataForSEO →",
     "candidatesTitle": "候选竞品（待确认）",
     "confirmedTitle": "已确认竞品",
     "dismissedTitle": "已驳回",
@@ -726,17 +780,44 @@
     "matrixTitle": "对比矩阵",
     "matrixEmpty": "至少确认一个竞品后才能查看对比。",
     "you": "本站",
-    "estimateNote": "重叠度与关键词数为第三方估算（L3）。"
+    "estimateNote": "重叠度与关键词数为第三方估算（L3）。",
+    "viewReport": "查看完整报告 →",
+    "goToOutput": "前往输出 →"
   },
   "keywords": {
+    "backToDiagnosis": "返回诊断看板",
     "title": "关键词现状",
     "subtitle": "GSC 实测关键词指标（L4）与 DataForSEO 缺口分析。",
     "empty": "本次诊断暂无关键词数据。",
+    "emptyGscTitle": "缺少 GSC 关键词数据",
+    "emptyGscImpact": "本次诊断暂无关键词数据。连接 Google Search Console 后可获取实测搜索表现指标。",
     "emptyGscCta": "去项目详情页连接 GSC",
     "emptyJoin": "，或",
-    "emptyDataforseoCta": "去设置页配置 DataForSEO →"
+    "emptyDataforseoTitle": "缺少 DataForSEO 数据源",
+    "emptyDataforseoImpact": "配置 DataForSEO API Key 后可获取关键词缺口分析（第三方估算，L3）。",
+    "emptyDataforseoCta": "去设置页配置 DataForSEO →",
+    "viewReport": "查看完整报告 →",
+    "goToOutput": "前往输出 →"
+  },
+  "terms": {
+    "canonical": "canonical 是网页里标注「这一批重复内容该以哪个网址为准」的记号。如果它错误地指向了别的网站，你的页面权重可能被算到别人头上，自己反而没被收录。",
+    "noindex": "noindex 是网页里「不要收录我」的指令。如果本该被搜索到的页面被误标了这个记号，它就不会出现在谷歌搜索结果里，等于对访客隐身。",
+    "http4xx": "4xx 是服务器返回的「访问失败」状态码（比如 404 找不到页面）。这类链接可能是死链，访客点进来会看到报错页，也会被搜索引擎判为体验差。",
+    "orphanPages": "孤岛页是指没有任何其他页面链接到它。搜索引擎主要靠页面之间的链接发现和评估内容，没人链接的页面很难被抓取、收录和排上排名。",
+    "httpStatus": "HTTP 状态码是服务器对本次访问的回应结果：200 表示正常，301/302 表示跳转到了别的网址，404 表示页面不存在，5xx 表示服务器出错。非 200 的页面通常需要检查修复。",
+    "urlPattern": "把网址结构相似的一批页面（比如所有产品详情页）自动归为一类，你不用逐个检查，抽查一个「代表页」就能判断这一整类页面的健康状况。",
+    "renderDelta": "单位：字符数。数值 = 浏览器执行 JS 渲染后的正文字符数 − 网页最初返回的 HTML 正文字符数。正数越大，说明这个页面的核心内容越依赖 JS 才能显示，搜索引擎爬虫不一定会等 JS 跑完，可能抓不到这部分内容。",
+    "wilsonLowerBound": "把小样本的测量结果往保守方向收窄后得到的数字，用来防止「运气好」的个别结果被误当成网站的真实水平，样本量越小，它和原始命中率的差距越大。",
+    "reportLevel": "R0-R5 是这份报告目前能负责任回答到什么程度的等级，不是打分——取决于这次实际采集到了哪些数据源，等级越高代表证据链越完整。",
+    "dataforseo": "DataForSEO 是一个第三方 SEO 数据供应商，本工具用它获取关键词竞争度、竞品分析、外链，以及 Google AI Overviews 的真实搜索结果采样。需要在设置页配置它的 API Key 才能采到数据，没配置时相关区块留空，不是故障。",
+    "labData": "这项数据来自 PageSpeed Insights 的模拟测试环境（固定设备与网络条件下跑分），不是真实访客的实际体验。它仍属于「实测」级别的证据（真实测量、不是猜的），只是测的是实验室环境，不是你网站访客的真实网络状况。",
+    "claimGrounded": "这条 AI 回答附带了可查的引用链接，结论有出处可核实。",
+    "claimSpeculative": "AI 回答语气含糊、不确定（如「可能」「据说」），没有给出可查证的来源。",
+    "claimUnverified": "AI 用肯定语气给出了明确说法，但这个引擎具备联网查资料的能力却没有附上任何来源链接——比「疑似臆测」更值得警惕，不建议直接采信。",
+    "claimUndetermined": "这个 AI 引擎本身不具备联网查资料的能力（只靠训练记忆回答），没法要求它像联网引擎一样「给出处」，所以既不算「有依据」也不算「无依据」，单独归为一类。"
   },
   "site": {
+    "backToDiagnosis": "返回诊断看板",
     "title": "站点结构",
     "inferredBadge": "推断模板",
     "statsTitle": "全站健康（实测）",
@@ -760,6 +841,7 @@
     "keyPageBadge": "重点页",
     "nextRunNotice": "更改将在下次 run 生效",
     "noData": "本次 run 未启用全站爬取或尚未完成采集",
+    "emptyTitle": "缺少全站结构数据",
     "filterAll": "全部",
     "renderDelta": "渲染差异",
     "status": {
@@ -767,7 +849,9 @@
       "discovered_only": "未检（超上限）",
       "blocked_by_robots": "robots 禁抓",
       "error": "失败"
-    }
+    },
+    "viewReport": "查看完整报告 →",
+    "goToOutput": "前往输出 →"
   },
   "report": {
     "title": "综合诊断报告",
@@ -782,13 +866,13 @@
     "generatedBy": "由 Veris 生成 · 证据化 SEO + GEO 诊断",
     "toc": {
       "summary": "1. 执行摘要",
-      "method": "2. 方法与范围",
-      "pillars": "3. 五支柱明细",
-      "geo": "4. GEO 可见度补充",
-      "keywords": "5. 关键词现状与缺口",
-      "competitors": "6. 竞品对比",
-      "priority": "7. 优先级矩阵",
-      "roadmap": "8. 行动路线图",
+      "priority": "2. 优先级矩阵",
+      "roadmap": "3. 行动路线图",
+      "pillars": "4. 五支柱明细",
+      "geo": "5. GEO 可见度补充",
+      "keywords": "6. 关键词现状与缺口",
+      "competitors": "7. 竞品对比",
+      "method": "8. 方法与范围",
       "retest": "9. 回测计划与闭环结果"
     },
     "claim": {
@@ -798,16 +882,20 @@
       "hypothesis": "假设"
     },
     "summary": {
-      "constraintTitle": "约束定位",
+      "constraintTitle": "你现在的情况",
       "focusPillars": "建议优先支柱：",
       "healthTitle": "健康分（推断）",
       "overall": "总健康分",
       "unscored": "未评分",
       "breakdownToggle": "分数怎么算的",
+      "breakdownExplainIntro": "健康分（推断）由五个支柱（P1 技术健康、P2 结构化数据、P3 关键词与内容、P4 SERP 竞争格局、P5 品牌权威与 GEO）各自的 0–100 分按权重加权平均得出；未采集到证据的支柱不计入平均——既不算 0 分，也不会拖累总分。下方『原始明细』记录了每个支柱具体扣了多少分、依据是什么问题。",
+      "breakdownExplainRelation": "健康分与下方发现列表里的『严重度』（高/中/低）是两套不同的尺子：严重度衡量单条具体问题有多紧急，健康分是全站层面的加权概览，二者不互相取代，也不冲突。要判断先修哪条，请优先看标注『高』严重度的发现；健康分仅用于把握整体走向，属于推断，不是实测结果，不建议单独作为决策依据。",
       "topFindings": "最高影响发现",
       "noFindings": "本轮未发现相关问题——这可能表示站点在已检查范围内表现良好，也可能表示证据覆盖不完整。请查看『诊断范围与覆盖度』确认数据源状态。",
       "pillarBarsAria": "五支柱健康分条形图",
-      "evidenceLadderTitle": "证据等级（可信度阶梯）"
+      "evidenceLadderTitle": "证据等级（可信度阶梯）",
+      "nextStepsTitle": "接下来该做的 3 件事",
+      "nextStepsViewDetail": "查看详情 →"
     },
     "evidenceLadder": {
       "l0": { "name": "不可入库", "desc": "无证据支撑，不允许作为结论" },
@@ -817,10 +905,10 @@
       "l4": { "name": "硬证据实测", "desc": "硬证据（如 GSC 近 28 天数据）" }
     },
     "constraint": {
-      "systemic_basics": "系统性基础问题：存在抓取 / 索引 / 渲染层面的高危阻断，请优先修复技术地基（P1）。",
-      "visibility_data_missing": "可见性数据不足：尚未接入 GSC 或未配置 DataForSEO，关键词现状缺乏数据，建议先接入数据源再定位约束。",
-      "authority_content": "权威与内容竞争力不足：关键词缺口较多且权威 / 语料信号偏弱，建议聚焦内容覆盖（P3）与品牌权威（P5）。",
-      "fine_tuning": "精细优化阶段：无系统性阻断，可按影响 × 成本优先级逐项打磨。"
+      "systemic_basics": "你的网站目前存在搜索引擎「看不到」或「看不全」的高危问题——比如页面打不开、没被收录、或渲染出来是空白，这些必须优先修复，否则后续优化大多是白费功夫。",
+      "visibility_data_missing": "现在数据还不够，暂时看不清网站在关键词上的真实表现——建议先接入 Google Search Console 或配置 DataForSEO，才能准确定位问题出在哪。",
+      "authority_content": "网站基础没问题，但覆盖的关键词还不够多，品牌在行业里的认可度也偏弱——接下来应重点补内容、攒口碑。",
+      "fine_tuning": "网站整体状况良好，没有系统性大问题——接下来是精细打磨阶段，按下面「影响大、成本低」的顺序逐项优化即可。"
     },
     "contract": {
       "scopeTitle": "诊断范围与覆盖度",
@@ -875,6 +963,8 @@
       "title": "GEO 可见度补充",
       "meta": "AI 搜索场景下的品牌可见度与认知质量，n=5 方向性抽样",
       "unbrandedHeadline": "无品牌提问召回 {present}/{total}（95% 置信下限 {wilsonPct}%）",
+      "wilsonLabel": "95% 置信下限",
+      "wilsonNote": "样本量小，单轮数字波动大；两轮区间不重叠，才能说是真实变化，不是噪声。",
       "brandedHeadline": "品牌提问 {brandedTotal} 条中，{grounded} 条有依据 · {speculative} 条疑似臆测",
       "citationRate": "联网引擎回答中引用占比 {pct}%",
       "colEngine": "引擎",
@@ -967,8 +1057,11 @@
       "estimateNote": "搜索量 / 难度为第三方估算（L3），非实测。",
       "gapsTitle": "关键词缺口",
       "empty": "未接入 GSC / DataForSEO，暂无关键词数据。",
+      "expandAll": "显示全部（共 {count} 条）",
+      "collapse": "收起",
       "col": {
         "keyword": "关键词",
+        "type": "类型",
         "clicks": "点击",
         "impressions": "展现",
         "ctr": "点击率",
@@ -978,6 +1071,10 @@
         "ourPosition": "我方排名",
         "opportunity": "机会分",
         "volume": "搜索量（估算）"
+      },
+      "type": {
+        "measured": "实测",
+        "gap": "缺口"
       },
       "gapType": {
         "missing": "缺失",
@@ -1095,5 +1192,14 @@
     "findingsLabel": "缺陷数",
     "readinessLabel": "核心诊断数据源就绪度",
     "setupAction": "去配置"
+  },
+  "routeFallback": {
+    "loading": "正在加载诊断数据…"
+  },
+  "runError": {
+    "title": "页面加载失败",
+    "description": "抱歉，加载本页数据时出了问题。你可以重试；若持续失败，请返回诊断总览重新进入。",
+    "retry": "重试",
+    "backToOverview": "返回诊断总览"
   }
 }

@@ -11,6 +11,7 @@ import { SovBar } from '@/components/SovBar'
 import { CitedDomainsCard } from '@/components/CitedDomainsCard'
 import { AioExposureCard } from '@/components/AioExposureCard'
 import { EmptyStateCTA } from '@/components/EmptyStateCTA'
+import { SectionNav, type SectionNavGroup } from '@/components/SectionNav'
 import { resolveWebSearchEnabled } from '@/components/probeEngineCapability'
 import { loadDataSourceStatuses } from '@/lib/settings/load-statuses'
 import { summarizeProjectDataSourceHealth } from '@/lib/settings/data-source-health'
@@ -217,6 +218,45 @@ export default async function RunDiagnosisPage({
     }),
   )
 
+  // P1-6：区块导航条目按「用户关心的顺序」分组，条目按对应区块的真实渲染条件过滤——
+  // 一个 item 只在其锚点确实会被渲染时才出现，避免导航指向空锚点。分组与页面既有布局顺序
+  // 一致（结论概览 → AI 可见度 → 传统搜索与竞品 → 问题清单），不改变任何区块本身的位置。
+  const navGroups: SectionNavGroup[] = [
+    {
+      label: t('screen2.nav.groupOverview'),
+      items: [{ anchor: 'overview-section', label: t('screen2.nav.itemOverview') }],
+    },
+    {
+      label: t('screen2.nav.groupAi'),
+      items: [
+        { anchor: 'geo-presence-section', label: t('screen2.nav.itemGeoPresence') },
+        ...((probeSummary?.sovByEngine?.length ?? 0) > 1
+          ? [{ anchor: 'sov-per-engine-section', label: t('screen2.nav.itemSovPerEngine') }]
+          : []),
+        ...(probeSummary && probeSummary.perEngine.length > 1
+          ? [{ anchor: 'per-engine-section', label: t('screen2.nav.itemPerEngine') }]
+          : []),
+        ...(probeSummary && probeSummary.sentiment.total > 0
+          ? [{ anchor: 'sentiment-section', label: t('screen2.nav.itemSentiment') }]
+          : []),
+      ],
+    },
+    {
+      label: t('screen2.nav.groupSearch'),
+      items: [
+        { anchor: 'sov-section', label: t('screen2.nav.itemSov') },
+        ...(probeSummary && probeSummary.citedDomains.length > 0
+          ? [{ anchor: 'cited-domains-section', label: t('screen2.nav.itemCitedDomains') }]
+          : []),
+        { anchor: 'aio-exposure-section', label: t('screen2.nav.itemAioExposure') },
+      ],
+    },
+    {
+      label: t('screen2.nav.groupIssues'),
+      items: [{ anchor: 'findings-section', label: t('screen2.nav.itemFindings') }],
+    },
+  ]
+
   return (
     <Shell runId={id} domain={project?.domain}>
       <section className="screen show" data-screen="2">
@@ -235,16 +275,33 @@ export default async function RunDiagnosisPage({
           </div>
         ) : null}
 
-        {/* 采集中的 run 需要实时状态；待审阅时先让用户理解诊断，确认入口放到问题清单之后。 */}
-        {run && run.status !== 'reviewing' ? (
+        {/* 采集中的 run 需要实时状态；reviewing/output 是诊断完成时刻，必须带 reviewGate 才有前进
+            出口——否则完成态会卡在只 router.refresh() 的死按钮上（P0-1）。reviewGate 的 href 按
+            三态判定：还有待决策建议 → 去 recommendations；本轮从未生成过建议（totalCount=0）→
+            同样去 recommendations（emptyTitle 分支）；全部已决策 → 去 output。 */}
+        {run ? (
           <RunProgress
             runId={id}
             initialStatus={run.status as RunStatus}
             initialFailureReason={run.failureReason ?? ''}
+            reviewGate={
+              run.status === 'reviewing' || run.status === 'output'
+                ? {
+                    pendingCount: pendingRecommendationCount,
+                    totalCount: recommendations.length,
+                    href:
+                      pendingRecommendationCount > 0 || recommendations.length === 0
+                        ? `/${locale}/runs/${id}/recommendations`
+                        : `/${locale}/runs/${id}/output`,
+                  }
+                : undefined
+            }
           />
         ) : null}
 
-        <div className="work-summary">
+        <SectionNav groups={navGroups} ariaLabel={t('screen2.nav.ariaLabel')} />
+
+        <div className="work-summary" id="overview-section">
           <div>
             <div className="ws-label">{t('screen2.overviewLabel')}</div>
             <h1>{project?.domain ?? id}</h1>
@@ -279,7 +336,7 @@ export default async function RunDiagnosisPage({
         </div>
         <StatStrip cards={cards} evidenceById={evidenceById} locale={locale} projectId={run?.projectId} />
 
-        <div className="sec-h">
+        <div className="sec-h" id="geo-presence-section">
           <h2>{t('screen2.mapTitle')}</h2>
           <span className="meta">
             {probeSummary
@@ -328,7 +385,7 @@ export default async function RunDiagnosisPage({
         {/* ⑤：被引用域名 Top 列表（owned 高亮）——只在有正文引用样本时展示 */}
         {probeSummary && probeSummary.citedDomains.length > 0 && (
           <>
-            <div className="sec-h">
+            <div className="sec-h" id="cited-domains-section">
               <h2>{t('screen2.citedDomainsTitle')}</h2>
               <span className="meta">{t('screen2.citedDomainsMeta')}</span>
             </div>
@@ -350,7 +407,7 @@ export default async function RunDiagnosisPage({
 
         {/* 双口径的实测半边：Google AI Overviews 真实 SERP 采样（唯一允许「实测曝光」字样的区块）。
             summary 为 null = 已配置但本轮未采集；aioTotalQueries=0 且未配置 = 引导去设置页。 */}
-        <div className="sec-h">
+        <div className="sec-h" id="aio-exposure-section">
           <h2>{t('screen2.aioExposureSectionTitle')}</h2>
           <span className="meta">{t('screen2.aioExposureSectionMeta')}</span>
         </div>
@@ -363,7 +420,7 @@ export default async function RunDiagnosisPage({
         {/* 分引擎 SoV（SP-A2 #6，引擎不可互推）——多于一个引擎才展示 */}
         {probeSummary && (probeSummary.sovByEngine?.length ?? 0) > 1 && (
           <>
-            <div className="sec-h">
+            <div className="sec-h" id="sov-per-engine-section">
               <h2>{t('screen2.sovPerEngineTitle')}</h2>
               <span className="meta">{t('screen2.sovPerEngineMeta')}</span>
             </div>
@@ -383,7 +440,7 @@ export default async function RunDiagnosisPage({
         {/* 分引擎可见度（G05/G06 分引擎报告，引擎间不可互推）——多于一个引擎才展示 */}
         {probeSummary && probeSummary.perEngine.length > 1 && (
           <>
-            <div className="sec-h">
+            <div className="sec-h" id="per-engine-section">
               <h2>{t('screen2.perEngineTitle')}</h2>
               <span className="meta">
                 {t('screen2.perEngineMeta')} · {t('screen2.citationRateLabel')} {Math.round(probeSummary.citationRate * 100)}%
@@ -414,7 +471,7 @@ export default async function RunDiagnosisPage({
         {/* 引用情感分布（G09，测量层解析器，n=5 方向性）——有含品牌样本才展示 */}
         {probeSummary && probeSummary.sentiment.total > 0 && (
           <>
-            <div className="sec-h">
+            <div className="sec-h" id="sentiment-section">
               <h2>{t('screen2.sentimentTitle')}</h2>
               <span className="meta">{t('screen2.sentimentMeta')}</span>
             </div>
@@ -436,7 +493,7 @@ export default async function RunDiagnosisPage({
           </>
         )}
 
-        <div className="sec-h">
+        <div className="sec-h" id="findings-section">
           <h2>{t('screen2.findingsTitle')}</h2>
           <span className="meta">{t('screen2.findingsMeta')}</span>
         </div>

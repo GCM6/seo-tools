@@ -75,6 +75,105 @@ function riskText(promptType: PromptType, hit: RuleHit): string {
     : '内容改动需人工终审并遵守否定约束（禁堆词/禁编造）。'
 }
 
+// —— B1：受影响页面清单（P0-4）——
+// hit.detail 只在生成期（内存中的 RuleHit）可得，findings/recommendations 表都没有 detail 列
+// （db schema 只读，不新增列）。因此在此处一次性把受影响 URL 清单序列化进持久化的 why 文本，
+// 用可解析的标记包裹；报告/UI 渲染层（action-report-markdown.ts、ActionList.tsx）用
+// extractAffectedPagesSection 原样解析回结构化数据，全程不依赖任何新 DB 字段。
+export interface AffectedPages {
+  total: number
+  sample: string[]
+}
+
+function looksLikeUrl(value: unknown): value is string {
+  return typeof value === 'string' && /^https?:\/\//i.test(value)
+}
+
+// detail 中可能承载「总数」的计数字段（与 recommend.ts 顶部 COUNT_KEYS 分开维护：那里是给
+// Impact×Effort 定级用，这里只用于「共 N 个」展示文案，字段集合按需更宽松）。
+const AFFECTED_TOTAL_KEYS = ['blockedCount', 'count', 'affectedCount', 'pageCount', 'affectedPages', 'total'] as const
+
+function affectedTotal(detail: Record<string, unknown>, fallback: number): number {
+  for (const k of AFFECTED_TOTAL_KEYS) {
+    const v = detail[k]
+    if (typeof v === 'number' && Number.isFinite(v)) return v
+  }
+  return fallback
+}
+
+// 从 detail 里已知的几种「URL/页面清单」形状中提取受影响 URL；覆盖 rules/technical.ts 与
+// content.ts 中 examples/blockedUrls/sampleUrls（字符串数组或 {url,...} 对象数组）、K06 蚕食的
+// queries[].pages[].url 嵌套形状，以及单页规则用 scope 本身即受影响 URL 的兜底。
+// 未覆盖：TA01/TA02 等按话题群聚合、没有具体 URL 清单的规则——按设计不产出本节。
+export function deriveAffectedPages(hit: RuleHit): AffectedPages | null {
+  const detail = hit.detail
+  const collected: string[] = []
+
+  if (detail) {
+    for (const key of ['blockedUrls', 'sampleUrls', 'examples'] as const) {
+      const arr = detail[key]
+      if (!Array.isArray(arr) || arr.length === 0) continue
+      for (const item of arr) {
+        if (looksLikeUrl(item)) collected.push(item)
+        else if (item && typeof item === 'object' && looksLikeUrl((item as Record<string, unknown>).url)) {
+          collected.push((item as Record<string, unknown>).url as string)
+        }
+      }
+      if (collected.length) break // 命中优先级最高的字段即止，避免多字段重复堆叠
+    }
+
+    if (collected.length === 0 && Array.isArray(detail.queries)) {
+      for (const q of detail.queries) {
+        const pages = (q as Record<string, unknown> | null)?.pages
+        if (!Array.isArray(pages)) continue
+        for (const p of pages) {
+          const url = (p as Record<string, unknown> | null)?.url
+          if (looksLikeUrl(url)) collected.push(url)
+        }
+      }
+    }
+  }
+
+  if (collected.length === 0 && looksLikeUrl(hit.scope)) collected.push(hit.scope)
+
+  if (collected.length === 0) return null
+  const uniq = [...new Set(collected)]
+  return { total: affectedTotal(detail ?? {}, uniq.length), sample: uniq.slice(0, 20) }
+}
+
+const AFFECTED_PAGES_PREFIX = '\n\n受影响页面（共 '
+
+// 把受影响页面清单以可解析的固定格式追加到 why 文本末尾；无清单时原样返回。
+export function appendAffectedPagesSection(why: string, affected: AffectedPages | null): string {
+  if (!affected) return why
+  const lines = affected.sample.map((url) => `- ${url}`).join('\n')
+  return `${why}${AFFECTED_PAGES_PREFIX}${affected.total} 个，已列前 ${affected.sample.length} 个）：\n${lines}`
+}
+
+export interface AffectedPagesSection {
+  total: number
+  shown: number
+  urls: string[]
+}
+
+const AFFECTED_PAGES_PATTERN = /^(\d+) 个，已列前 (\d+) 个）：\n([\s\S]*)$/
+
+// appendAffectedPagesSection 的逆运算：从持久化的 why 文本里把受影响页面清单解析出来，并返回
+// 去掉该清单后的干净 why。供 action-report-markdown.ts 与 ActionList.tsx 复用，两处渲染口径统一。
+export function extractAffectedPagesSection(why: string): { why: string; affected: AffectedPagesSection | null } {
+  const idx = why.indexOf(AFFECTED_PAGES_PREFIX)
+  if (idx < 0) return { why, affected: null }
+  const head = why.slice(0, idx)
+  const rest = why.slice(idx + AFFECTED_PAGES_PREFIX.length)
+  const match = rest.match(AFFECTED_PAGES_PATTERN)
+  if (!match) return { why: head, affected: null }
+  const urls = match[3]
+    .split('\n')
+    .map((line) => line.replace(/^- /, '').trim())
+    .filter(Boolean)
+  return { why: head, affected: { total: Number(match[1]), shown: Number(match[2]), urls } }
+}
+
 // 单条命中 → 建议草稿：查模板（无则按 side 兜底），套 Impact×Effort 四象限，全部中文文案。
 export function generateRecommendation(hit: RuleHit, ctx?: { domain?: string }): RecommendationDraft {
   void ctx
@@ -84,7 +183,10 @@ export function generateRecommendation(hit: RuleHit, ctx?: { domain?: string }):
 
   // fixSnippet 静态示例并入 what，随建议落库并进入 prompt（技术类核心交付物）。
   const what = tpl.fixSnippet ? `${tpl.what}\n\n参考修复示例（静态模板，非生成内容）：\n${tpl.fixSnippet}` : tpl.what
-  const why = tpl.whyHint ? `${hit.description} ${tpl.whyHint}` : hit.description
+  const whyBase = tpl.whyHint ? `${hit.description} ${tpl.whyHint}` : hit.description
+  // B1（P0-4）：把命中侧算出的受影响 URL 清单一并序列化进 why，随建议落库；
+  // 报告/UI 渲染层用 extractAffectedPagesSection 解析回结构化清单（见上方函数注释）。
+  const why = appendAffectedPagesSection(whyBase, deriveAffectedPages(hit))
 
   return {
     what,

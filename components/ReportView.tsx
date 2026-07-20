@@ -8,6 +8,7 @@ import { BlurText } from '@/components/fx/BlurText'
 import { PillarGroupCard } from '@/components/PillarGroupCard'
 import { ReportToc } from '@/components/ReportToc'
 import { CitedDomainsCard } from '@/components/CitedDomainsCard'
+import { Term } from '@/components/Term'
 import {
   getRun,
   getFindings,
@@ -111,6 +112,9 @@ const SEV_CLASS: Record<FindingSeverity, string> = { high: 'hi', mid: 'mid', ok:
 // run 缺失即 notFound()——路由级 404。
 export async function ReportView({ runId }: { runId: string }) {
   const t = await getTranslations('report')
+  // 术语翻译层（P1-3「术语裸奔」修复）：术语解释文案统一放 terms.* 命名空间，
+  // 与页面自身的 report.* 文案分开维护，供多处 <Term> 复用同一份解释。
+  const tt = await getTranslations('terms')
 
   const run = await getRun(runId)
   if (!run) notFound()
@@ -274,7 +278,8 @@ export async function ReportView({ runId }: { runId: string }) {
   })
 
   const dataSources = [...new Set(evidence.map((e) => e.type))]
-  const keywordText = new Map(keywords.map((k) => [k.id, { text: k.text, volume: k.searchVolume, difficulty: k.difficulty }]))
+  // KeywordTable 是 client component，Server→Client 边界只传可序列化的普通结构，不传 Map 实例。
+  const keywordText = Object.fromEntries(keywords.map((k) => [k.id, { text: k.text, volume: k.searchVolume, difficulty: k.difficulty }]))
 
   const pillarName = (p: Pillar) => t(`pillarNames.${p.toLowerCase()}`)
   const scoreText = (s: number | null) => (s === null ? t('summary.unscored') : String(s))
@@ -325,15 +330,25 @@ export async function ReportView({ runId }: { runId: string }) {
 
   const toc: [string, string][] = [
     ['sec-summary', t('toc.summary')],
-    ['sec-method', t('toc.method')],
+    ['sec-priority', t('toc.priority')],
+    ['sec-roadmap', t('toc.roadmap')],
     ['sec-pillars', t('toc.pillars')],
     ['sec-geo', t('toc.geo')],
     ['sec-keywords', t('toc.keywords')],
     ['sec-competitors', t('toc.competitors')],
-    ['sec-priority', t('toc.priority')],
-    ['sec-roadmap', t('toc.roadmap')],
+    ['sec-method', t('toc.method')],
     ['sec-retest', t('toc.retest')],
   ]
+
+  // P1-1「报告结论不先行」修复：第一屏「接下来做的 3 件事」直接取优先级矩阵 top3
+  // （quick_win 优先，其余象限补足），不改矩阵本身的分类逻辑，只在渲染层截取前 3 条。
+  // 优先级矩阵为空（无建议）时，调用方按此数组长度整块不渲染，不硬凑空态。
+  const nextSteps: ReportRecommendation[] = [
+    ...model.priorityMatrix.quick_win,
+    ...model.priorityMatrix.strategic,
+    ...model.priorityMatrix.fill_in,
+    ...model.priorityMatrix.low,
+  ].slice(0, 3)
 
   return (
     <>
@@ -376,6 +391,24 @@ export async function ReportView({ runId }: { runId: string }) {
               ) : null}
             </div>
 
+            {/* ——— 「接下来做的 3 件事」：取优先级矩阵 top3（quick_win 优先），
+                每项跳到 §优先级矩阵 详情；矩阵为空（无建议）时整块不渲染，不硬凑空态 ——— */}
+            {nextSteps.length > 0 ? (
+              <div className="card report-roadmap-group" data-testid="next-steps">
+                <h4>{t('summary.nextStepsTitle')}</h4>
+                <ul>
+                  {nextSteps.map((r) => (
+                    <li key={r.id}>
+                      <div className="report-roadmap-what">{r.what}</div>
+                      <div className="report-roadmap-val note">
+                        <a href="#sec-priority">{t('summary.nextStepsViewDetail')}</a>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             <div className="card report-health">
               <div className="report-health-h">
                 <span>{t('summary.healthTitle')}</span>
@@ -397,11 +430,11 @@ export async function ReportView({ runId }: { runId: string }) {
               />
               <details className="report-breakdown">
                 <summary>{t('summary.breakdownToggle')}</summary>
+                <p className="report-breakdown-explain">{t('summary.breakdownExplainIntro')}</p>
+                <p className="report-breakdown-explain">{t('summary.breakdownExplainRelation')}</p>
                 <pre>{model.execSummary.health.breakdown}</pre>
               </details>
             </div>
-
-            <EvidenceLadder title={t('summary.evidenceLadderTitle')} levels={ladderLevels} />
 
             <h4>{t('summary.topFindings')}</h4>
             {model.execSummary.topFindings.length ? (
@@ -420,113 +453,47 @@ export async function ReportView({ runId }: { runId: string }) {
             ) : (
               <p className="note">{t('summary.noFindings')}</p>
             )}
+
+            <EvidenceLadder title={t('summary.evidenceLadderTitle')} levels={ladderLevels} />
           </section>
 
-          {/* ——— 2. 方法与范围 ——— */}
-          <section id="sec-method" className="report-section">
-            <h3>{t('toc.method')}</h3>
-            <div className="card report-method">
-              <dl>
-                <dt>{t('method.capturedAt')}</dt>
-                <dd>{capturedAt || '—'}</dd>
-                <dt>{t('method.protocol')}</dt>
-                <dd className="mono">{run.protocolVersion}</dd>
-                <dt>{t('method.dataSources')}</dt>
-                <dd>
-                  {dataSources.length ? (
-                    <span className="report-sources">
-                      {dataSources.map((s) => (
-                        <span key={s} className="report-source-chip">{t(`method.sourceLabels.${s}`)}</span>
-                      ))}
-                    </span>
-                  ) : (
-                    t('method.noSources')
-                  )}
-                </dd>
-              </dl>
-            </div>
+          {/* ——— 2. 优先级矩阵（原第 7 段，上移到第一屏之后，紧跟「接下来做的 3 件事」）——— */}
+          <section id="sec-priority" className="report-section">
+            <h3>{t('toc.priority')}</h3>
+            <PriorityMatrix matrix={model.priorityMatrix} labels={matrixLabels} />
+          </section>
 
-            {model.reportContract ? (
-              <div className="card report-method">
-                <h4>{t('contract.scopeTitle')}</h4>
-                <p className="note">{t('contract.scopeMeta')}</p>
-                <dl>
-                  <dt>{t('contract.domain')}</dt>
-                  <dd className="mono">{model.reportContract.scope.domain || '—'}</dd>
-                  <dt>{t('contract.entryUrl')}</dt>
-                  <dd className="mono">{model.reportContract.scope.entryUrl || '—'}</dd>
-                  <dt>{t('contract.market')}</dt>
-                  <dd>{model.reportContract.scope.targetMarket || '—'}</dd>
-                  <dt>{t('contract.language')}</dt>
-                  <dd>{model.reportContract.scope.language || '—'}</dd>
-                  <dt>{t('contract.level')}</dt>
-                  <dd>
-                    <strong>{model.reportContract.level}</strong> · {t(`contract.levelDesc.${model.reportContract.level}`)}
-                  </dd>
-                  <dt>{t('contract.coverage')}</dt>
-                  <dd>
-                    {t('contract.discovered')}: {model.reportContract.coverage.totalDiscovered} · {t('contract.checked')}: {model.reportContract.coverage.checkedPages}
-                    {model.reportContract.coverage.truncated ? ` · ${t('contract.truncated')}` : ''}
-                  </dd>
-                  {model.reportContract.coverage.gscTimeWindow ? (
-                    <>
-                      <dt>{t('contract.gscWindow')}</dt>
-                      <dd>{model.reportContract.coverage.gscTimeWindow}</dd>
-                    </>
-                  ) : null}
-                  <dt>{t('contract.aiSamples')}</dt>
-                  <dd>{model.reportContract.coverage.aiValidSamples ?? 0}</dd>
-                  <dt>{t('contract.competitors')}</dt>
-                  <dd>{model.reportContract.coverage.confirmedCompetitors ?? 0}</dd>
-                </dl>
-
-                <h4>{t('contract.dataSourcesTitle')}</h4>
-                {model.reportContract.dataSources.length ? (
-                  <ul>
-                    {model.reportContract.dataSources.map((source) => (
-                      <li key={source.sourceKey}>
-                        {t(`contract.sourceLabel.${source.sourceKey}`)}：{t(`contract.sourceStatus.${source.status}`)}
-                        {source.capturedEvidenceCount ? ` · ${source.capturedEvidenceCount}` : ''}
-                        {source.failureReason ? ` · ${source.failureReason}` : ''}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="note">{t('method.noSources')}</p>
-                )}
-
-                {model.reportContract.gaps.length ? (
-                  <>
-                    <h4>{t('contract.gapsTitle')}</h4>
-                    <p className="note">{t('contract.gapHint')}</p>
+          {/* ——— 3. 行动路线图（原第 8 段，随优先级矩阵一并上移）——— */}
+          <section id="sec-roadmap" className="report-section">
+            <h3>{t('toc.roadmap')}</h3>
+            {model.roadmap.length ? (
+              (['quick', 'mid', 'long'] as const).map((h) => {
+                const items = model.roadmap.filter((i) => i.horizon === h)
+                if (!items.length) return null
+                return (
+                  <div key={h} className="card report-roadmap-group">
+                    <h4>{t(`roadmap.${h}`)}</h4>
                     <ul>
-                      {model.reportContract.gaps.map((sourceKey) => (
-                        <li key={sourceKey}>{t(`contract.sourceLabel.${sourceKey}`)}</li>
+                      {items.map((i) => (
+                        <li key={i.recommendation.id}>
+                          <div className="report-roadmap-what">{i.recommendation.what}</div>
+                          {i.recommendation.validationMethod ? (
+                            <div className="report-roadmap-val note">
+                              {t('roadmap.validation')}: {i.recommendation.validationMethod}
+                            </div>
+                          ) : null}
+                        </li>
                       ))}
                     </ul>
-                  </>
-                ) : null}
-              </div>
-            ) : null}
-
-            {model.freshness.stale.length ? (
-              <div className="card report-stale">
-                <div className="report-stale-h">{t('method.staleTitle')}</div>
-                <p>{t('method.staleIntro', { date: model.freshness.oldestVerifiedAt ?? t('method.staleNever') })}</p>
-                <ul>
-                  {model.freshness.stale.map((s) => (
-                    <li key={s.artifactKey}>
-                      {s.label} · <a href={s.sourceUrl} target="_blank" rel="noreferrer">{s.sourceUrl}</a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+                  </div>
+                )
+              })
             ) : (
-              <p className="note">{t('method.fresh')}</p>
+              <p className="note">{t('roadmap.empty')}</p>
             )}
           </section>
 
-          {/* ——— 3. 五支柱明细 ——— */}
+          {/* ——— 4. 五支柱明细 ——— */}
           <section id="sec-pillars" className="report-section">
             <h3>{t('toc.pillars')}</h3>
             {model.pillarGroups.map((g) => {
@@ -562,7 +529,11 @@ export async function ReportView({ runId }: { runId: string }) {
                                       <span className="dot" />
                                       {claimLabel(f.claimType)}
                                     </span>
-                                    {isLab ? <span className="tag i report-lab">{t('labTag')}</span> : null}
+                                    {isLab ? (
+                                      <span className="tag i report-lab">
+                                        <Term explain={tt('labData')}>{t('labTag')}</Term>
+                                      </span>
+                                    ) : null}
                                   </div>
                                   {f.description ? <div className="report-finding-desc">{f.description}</div> : null}
                                   {f.evidenceRefs.length ? (
@@ -581,7 +552,7 @@ export async function ReportView({ runId }: { runId: string }) {
             })}
           </section>
 
-          {/* ——— 4. GEO 可见度补充（spec 2026-07-13-geo-branded-unbranded-redesign.md）——— */}
+          {/* ——— 5. GEO 可见度补充（spec 2026-07-13-geo-branded-unbranded-redesign.md）——— */}
           <section id="sec-geo" className="report-section">
             <h3>{t('toc.geo')}</h3>
             <p className="note">{t('geo.meta')}</p>
@@ -593,6 +564,11 @@ export async function ReportView({ runId }: { runId: string }) {
                     total: probeSummary.unbranded.total,
                     wilsonPct: Math.round(probeSummary.unbranded.wilsonLow * 100),
                   })}
+                </p>
+                {/* P1-2 修复：mapWilsonNote 的人话解释此前只存在于诊断页 screen2 命名空间，
+                    没带进报告——这里补一句等价说明，并把「95% 置信下限」本身做成可 hover 的 Term。 */}
+                <p className="note">
+                  <Term explain={tt('wilsonLowerBound')}>{t('geo.wilsonLabel')}</Term>：{t('geo.wilsonNote')}
                 </p>
                 <p>
                   {t('geo.brandedHeadline', {
@@ -613,11 +589,11 @@ export async function ReportView({ runId }: { runId: string }) {
                         <tr>
                           <th>{t('geo.colEngine')}</th>
                           <th>{t('geo.colType')}</th>
-                          <th>{t('geo.colGrounded')}</th>
-                          <th>{t('geo.colSpeculative')}</th>
+                          <th><Term explain={tt('claimGrounded')}>{t('geo.colGrounded')}</Term></th>
+                          <th><Term explain={tt('claimSpeculative')}>{t('geo.colSpeculative')}</Term></th>
                           <th>{t('geo.colUnknown')}</th>
-                          <th>{t('geo.colUnverified')}</th>
-                          <th>{t('geo.colUndetermined')}</th>
+                          <th><Term explain={tt('claimUnverified')}>{t('geo.colUnverified')}</Term></th>
+                          <th><Term explain={tt('claimUndetermined')}>{t('geo.colUndetermined')}</Term></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -738,13 +714,13 @@ export async function ReportView({ runId }: { runId: string }) {
             </div>
           </section>
 
-          {/* ——— 5. 关键词现状与缺口 ——— */}
+          {/* ——— 6. 关键词现状与缺口 ——— */}
           <section id="sec-keywords" className="report-section">
             <h3>{t('toc.keywords')}</h3>
             <KeywordTable keywordMetrics={keywordMetrics} keywordGaps={keywordGaps} keywordText={keywordText} />
           </section>
 
-          {/* ——— 6. 竞品对比 ——— */}
+          {/* ——— 7. 竞品对比 ——— */}
           <section id="sec-competitors" className="report-section">
             <h3>{t('toc.competitors')}</h3>
             {competitors.length ? (
@@ -773,39 +749,112 @@ export async function ReportView({ runId }: { runId: string }) {
             )}
           </section>
 
-          {/* ——— 7. 优先级矩阵 ——— */}
-          <section id="sec-priority" className="report-section">
-            <h3>{t('toc.priority')}</h3>
-            <PriorityMatrix matrix={model.priorityMatrix} labels={matrixLabels} />
-          </section>
+          {/* ——— 8. 方法与范围 ——— */}
+          <section id="sec-method" className="report-section">
+            <h3>{t('toc.method')}</h3>
+            <div className="card report-method">
+              <dl>
+                <dt>{t('method.capturedAt')}</dt>
+                <dd>{capturedAt || '—'}</dd>
+                <dt>{t('method.protocol')}</dt>
+                <dd className="mono">{run.protocolVersion}</dd>
+                <dt>{t('method.dataSources')}</dt>
+                <dd>
+                  {dataSources.length ? (
+                    <span className="report-sources">
+                      {dataSources.map((s) => (
+                        <span key={s} className="report-source-chip">{t(`method.sourceLabels.${s}`)}</span>
+                      ))}
+                    </span>
+                  ) : (
+                    t('method.noSources')
+                  )}
+                </dd>
+              </dl>
+            </div>
 
-          {/* ——— 8. 行动路线图 ——— */}
-          <section id="sec-roadmap" className="report-section">
-            <h3>{t('toc.roadmap')}</h3>
-            {model.roadmap.length ? (
-              (['quick', 'mid', 'long'] as const).map((h) => {
-                const items = model.roadmap.filter((i) => i.horizon === h)
-                if (!items.length) return null
-                return (
-                  <div key={h} className="card report-roadmap-group">
-                    <h4>{t(`roadmap.${h}`)}</h4>
+            {model.reportContract ? (
+              <div className="card report-method">
+                <h4>{t('contract.scopeTitle')}</h4>
+                <p className="note">{t('contract.scopeMeta')}</p>
+                <dl>
+                  <dt>{t('contract.domain')}</dt>
+                  <dd className="mono">{model.reportContract.scope.domain || '—'}</dd>
+                  <dt>{t('contract.entryUrl')}</dt>
+                  <dd className="mono">{model.reportContract.scope.entryUrl || '—'}</dd>
+                  <dt>{t('contract.market')}</dt>
+                  <dd>{model.reportContract.scope.targetMarket || '—'}</dd>
+                  <dt>{t('contract.language')}</dt>
+                  <dd>{model.reportContract.scope.language || '—'}</dd>
+                  <dt><Term explain={tt('reportLevel')}>{t('contract.level')}</Term></dt>
+                  <dd>
+                    <strong>{model.reportContract.level}</strong> · {t(`contract.levelDesc.${model.reportContract.level}`)}
+                  </dd>
+                  <dt>{t('contract.coverage')}</dt>
+                  <dd>
+                    {t('contract.discovered')}: {model.reportContract.coverage.totalDiscovered} · {t('contract.checked')}: {model.reportContract.coverage.checkedPages}
+                    {model.reportContract.coverage.truncated ? ` · ${t('contract.truncated')}` : ''}
+                  </dd>
+                  {model.reportContract.coverage.gscTimeWindow ? (
+                    <>
+                      <dt>{t('contract.gscWindow')}</dt>
+                      <dd>{model.reportContract.coverage.gscTimeWindow}</dd>
+                    </>
+                  ) : null}
+                  <dt>{t('contract.aiSamples')}</dt>
+                  <dd>{model.reportContract.coverage.aiValidSamples ?? 0}</dd>
+                  <dt>{t('contract.competitors')}</dt>
+                  <dd>{model.reportContract.coverage.confirmedCompetitors ?? 0}</dd>
+                </dl>
+
+                <h4>{t('contract.dataSourcesTitle')}</h4>
+                {model.reportContract.dataSources.length ? (
+                  <ul>
+                    {model.reportContract.dataSources.map((source) => (
+                      <li key={source.sourceKey}>
+                        {source.sourceKey === 'dataforseo' ? (
+                          <Term explain={tt('dataforseo')}>{t(`contract.sourceLabel.${source.sourceKey}`)}</Term>
+                        ) : (
+                          t(`contract.sourceLabel.${source.sourceKey}`)
+                        )}
+                        ：{t(`contract.sourceStatus.${source.status}`)}
+                        {source.capturedEvidenceCount ? ` · ${source.capturedEvidenceCount}` : ''}
+                        {source.failureReason ? ` · ${source.failureReason}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="note">{t('method.noSources')}</p>
+                )}
+
+                {model.reportContract.gaps.length ? (
+                  <>
+                    <h4>{t('contract.gapsTitle')}</h4>
+                    <p className="note">{t('contract.gapHint')}</p>
                     <ul>
-                      {items.map((i) => (
-                        <li key={i.recommendation.id}>
-                          <div className="report-roadmap-what">{i.recommendation.what}</div>
-                          {i.recommendation.validationMethod ? (
-                            <div className="report-roadmap-val note">
-                              {t('roadmap.validation')}: {i.recommendation.validationMethod}
-                            </div>
-                          ) : null}
-                        </li>
+                      {model.reportContract.gaps.map((sourceKey) => (
+                        <li key={sourceKey}>{t(`contract.sourceLabel.${sourceKey}`)}</li>
                       ))}
                     </ul>
-                  </div>
-                )
-              })
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            {model.freshness.stale.length ? (
+              <div className="card report-stale">
+                <div className="report-stale-h">{t('method.staleTitle')}</div>
+                <p>{t('method.staleIntro', { date: model.freshness.oldestVerifiedAt ?? t('method.staleNever') })}</p>
+                <ul>
+                  {model.freshness.stale.map((s) => (
+                    <li key={s.artifactKey}>
+                      {s.label} · <a href={s.sourceUrl} target="_blank" rel="noreferrer">{s.sourceUrl}</a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : (
-              <p className="note">{t('roadmap.empty')}</p>
+              <p className="note">{t('method.fresh')}</p>
             )}
           </section>
 

@@ -77,6 +77,19 @@ describe('PresenceMap', () => {
     expect(screen.getByText('品牌提问 · AI 认知质量')).toBeInTheDocument()
   })
 
+  it('P1-7：上下两区在标题处各自硬标注分母，避免把不同粒度的格子当同类打分卡比较', () => {
+    renderMap([...unbrandedPrompts, ...brandedPrompts], { present: 1, total: 2, wilsonLow: 0.15 })
+    // 上区：分母是"提问数"
+    expect(screen.getByText(/共 2 个提问/)).toBeInTheDocument()
+    // 下区：分母是"回答数"，且标明来自几个引擎（本轮 3 条回答，openai/perplexity/deepseek 共 3 个引擎）
+    expect(screen.getByText('共 3 条回答（来自 3 个引擎）')).toBeInTheDocument()
+  })
+
+  it('P1-7：上区结论卡大数字旁标注样本口径，不让人读成高置信分数', () => {
+    renderMap([...unbrandedPrompts, ...brandedPrompts], { present: 1, total: 2, wilsonLow: 0.15 })
+    expect(screen.getByText('n=2，方向性样本')).toBeInTheDocument()
+  })
+
   it('上区头条使用传入的 unbranded 口径而非重新计算', () => {
     renderMap([...unbrandedPrompts, ...brandedPrompts], { present: 1, total: 2, wilsonLow: 0.15 })
     expect(screen.getByText('无品牌提问中，品牌出现于 1/2 个')).toBeInTheDocument()

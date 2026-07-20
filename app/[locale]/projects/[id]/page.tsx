@@ -108,6 +108,8 @@ export default async function ProjectDetailPage({
           colAction: t('colAction'),
           viewRun: t('viewRun'),
           viewReport: t('viewReport'),
+          viewOutput: t('viewOutput'),
+          confirmRecs: t('confirmRecs'),
           noRuns: t('noRuns'),
           retestThis: t('retestThis'),
           retestStarting: tr('starting'),

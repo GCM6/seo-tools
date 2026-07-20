@@ -1,6 +1,8 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
+import Link from 'next/link'
 import { Shell } from '@/components/Shell'
+import { EmptyStateCTA } from '@/components/EmptyStateCTA'
 import { getRun, getProject, getCompetitors, getRunEvidence } from '@/lib/repositories'
 import { confirmCompetitorAction, dismissCompetitorAction, restoreCompetitorAction } from './actions'
 
@@ -48,30 +50,51 @@ export default async function CompetitorsPage({
   return (
     <Shell runId={id} domain={project?.domain}>
       <section className="screen show">
-        <h1 className="text-lg font-semibold">
-          {project?.domain} · {t('title')}
-        </h1>
-        <p className="mt-1 max-w-3xl text-sm text-neutral-500">{t('subtitle')}</p>
+        <Link href={`/${locale}/runs/${id}`} className="rec-back-link">
+          <span aria-hidden="true">←</span>
+          {t('backToDiagnosis')}
+        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-lg font-semibold">
+            {project?.domain} · {t('title')}
+          </h1>
+          <div className="flex items-center gap-3 text-xs">
+            <Link href={`/${locale}/runs/${id}/report`} className="underline underline-offset-2">
+              {t('viewReport')}
+            </Link>
+            <Link href={`/${locale}/runs/${id}/output`} className="underline underline-offset-2">
+              {t('goToOutput')}
+            </Link>
+          </div>
+        </div>
+        <p className="mt-1 max-w-3xl text-sm text-muted">{t('subtitle')}</p>
 
         {competitors.length === 0 ? (
-          <p className="mt-6 text-sm text-neutral-500">{t('noData')}</p>
+          <div className="mt-6">
+            <EmptyStateCTA
+              title={t('emptyTitle')}
+              impact={t('noData')}
+              actionLabel={t('emptyCta')}
+              href={`/${locale}/settings#source-dataforseo`}
+            />
+          </div>
         ) : (
           <>
             {/* —— 候选竞品（待确认）—— */}
             {candidates.length > 0 && (
               <div className="mt-6">
                 <h2 className="text-sm font-medium">{t('candidatesTitle')}</h2>
-                <p className="mt-1 text-xs text-amber-600">{t('reevalNotice')}</p>
+                <p className="mt-1 text-xs text-warning">{t('reevalNotice')}</p>
                 <div className="mt-2 grid gap-2 md:grid-cols-2">
                   {candidates.map((c) => (
-                    <div key={c.id} className="rounded border p-3">
+                    <div key={c.id} className="card p-3">
                       <div className="flex items-center justify-between">
                         <span className="font-mono text-sm">{c.domain}</span>
-                        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600">
+                        <span className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted">
                           {t('candidateBadge')}
                         </span>
                       </div>
-                      <dl className="mt-2 grid grid-cols-2 gap-1 text-xs text-neutral-600">
+                      <dl className="mt-2 grid grid-cols-2 gap-1 text-xs text-muted">
                         <div>
                           {t('overlapScore')}: <b>{pct(c.overlapScore)}</b>
                         </div>
@@ -80,8 +103,8 @@ export default async function CompetitorsPage({
                         </div>
                       </dl>
                       {topKw(c.domain).length > 0 && (
-                        <div className="mt-2 text-xs text-neutral-500">
-                          <span className="text-neutral-400">{t('topKeywords')}:</span> {topKw(c.domain).join(' · ')}
+                        <div className="mt-2 text-xs text-muted">
+                          <span className="text-ghost">{t('topKeywords')}:</span> {topKw(c.domain).join(' · ')}
                         </div>
                       )}
                       <div className="mt-3 flex gap-2">
@@ -91,7 +114,10 @@ export default async function CompetitorsPage({
                             await confirmCompetitorAction(c.id, run.projectId, id, locale)
                           }}
                         >
-                          <button type="submit" className="rounded bg-blue-600 px-2.5 py-1 text-xs text-white">
+                          <button
+                            type="submit"
+                            className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-on-primary hover:bg-primary-hover"
+                          >
                             {t('confirm')}
                           </button>
                         </form>
@@ -101,7 +127,10 @@ export default async function CompetitorsPage({
                             await dismissCompetitorAction(c.id, id, locale)
                           }}
                         >
-                          <button type="submit" className="rounded border px-2.5 py-1 text-xs text-neutral-600">
+                          <button
+                            type="submit"
+                            className="rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:bg-surface-2"
+                          >
                             {t('dismiss')}
                           </button>
                         </form>
@@ -116,59 +145,61 @@ export default async function CompetitorsPage({
             <div className="mt-6">
               <h2 className="text-sm font-medium">{t('matrixTitle')}</h2>
               {confirmed.length === 0 ? (
-                <p className="mt-2 text-sm text-neutral-500">{t('matrixEmpty')}</p>
+                <p className="mt-2 pending-block">{t('matrixEmpty')}</p>
               ) : (
-                <table className="mt-2 w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs text-neutral-500">
-                      <th className="py-1">{t('confirmedTitle')}</th>
-                      <th>{t('overlapScore')}</th>
-                      <th>{t('sharedKeywords')}</th>
-                      <th>{t('topKeywords')}</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="border-t bg-blue-50/40">
-                      <td className="py-1.5 font-mono text-xs font-semibold">{project?.domain} ({t('you')})</td>
-                      <td>—</td>
-                      <td>—</td>
-                      <td>—</td>
-                      <td></td>
-                    </tr>
-                    {confirmed.map((c) => (
-                      <tr key={c.id} className="border-t">
-                        <td className="py-1.5 font-mono text-xs">{c.domain}</td>
-                        <td>{pct(c.overlapScore)}</td>
-                        <td>{c.sharedKeywordsCount}</td>
-                        <td className="max-w-xs truncate text-xs text-neutral-500">{topKw(c.domain).join(' · ') || '—'}</td>
-                        <td className="text-right">
-                          <form
-                            action={async () => {
-                              'use server'
-                              await dismissCompetitorAction(c.id, id, locale)
-                            }}
-                          >
-                            <button type="submit" className="text-xs text-neutral-500 underline underline-offset-2">
-                              {t('dismiss')}
-                            </button>
-                          </form>
-                        </td>
+                <div className="report-table-wrap mt-2">
+                  <table className="report-table">
+                    <thead>
+                      <tr>
+                        <th>{t('confirmedTitle')}</th>
+                        <th>{t('overlapScore')}</th>
+                        <th>{t('sharedKeywords')}</th>
+                        <th>{t('topKeywords')}</th>
+                        <th></th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      <tr className="bg-primary-muted">
+                        <td className="font-mono text-xs font-semibold">{project?.domain} ({t('you')})</td>
+                        <td>—</td>
+                        <td>—</td>
+                        <td>—</td>
+                        <td></td>
+                      </tr>
+                      {confirmed.map((c) => (
+                        <tr key={c.id}>
+                          <td className="font-mono text-xs">{c.domain}</td>
+                          <td>{pct(c.overlapScore)}</td>
+                          <td>{c.sharedKeywordsCount}</td>
+                          <td className="max-w-xs truncate text-xs text-muted">{topKw(c.domain).join(' · ') || '—'}</td>
+                          <td className="text-right">
+                            <form
+                              action={async () => {
+                                'use server'
+                                await dismissCompetitorAction(c.id, id, locale)
+                              }}
+                            >
+                              <button type="submit" className="text-xs text-muted underline underline-offset-2">
+                                {t('dismiss')}
+                              </button>
+                            </form>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
-              <p className="mt-2 text-xs text-neutral-400">{t('estimateNote')}</p>
+              <p className="mt-2 text-xs text-ghost">{t('estimateNote')}</p>
             </div>
 
             {/* —— 已驳回（可恢复）—— */}
             {dismissed.length > 0 && (
               <div className="mt-6">
-                <h2 className="text-sm font-medium text-neutral-500">{t('dismissedTitle')}</h2>
+                <h2 className="text-sm font-medium text-muted">{t('dismissedTitle')}</h2>
                 <ul className="mt-2 space-y-1">
                   {dismissed.map((c) => (
-                    <li key={c.id} className="flex items-center gap-3 text-sm text-neutral-500">
+                    <li key={c.id} className="flex items-center gap-3 text-sm text-muted">
                       <span className="font-mono text-xs line-through">{c.domain}</span>
                       <form
                         action={async () => {
@@ -176,7 +207,7 @@ export default async function CompetitorsPage({
                           await restoreCompetitorAction(c.id, id, locale)
                         }}
                       >
-                        <button type="submit" className="text-xs text-neutral-500 underline underline-offset-2">
+                        <button type="submit" className="text-xs text-muted underline underline-offset-2">
                           {t('restore')}
                         </button>
                       </form>

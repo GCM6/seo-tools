@@ -37,6 +37,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json(applied)
   }
 
+  // 撤销「已执行」（A3 补充）——清空 appliedAt/appliedNote，恢复到可重新标记的状态。
+  // 注意：不回滚 nextRetestDueAt。回滚需要重算「该项目全部建议中最新一次 applied 的时间」
+  // 才能得到正确的新到期日，这超出本次改动范围；因此撤销后复测到期日期保持不变——
+  // 这一点在 output 页复测计划卡的口径说明里同样向用户说明，不是静默行为。
+  if (body.applied === false) {
+    const rec = await db.query.recommendations.findFirst({ where: eq(recommendations.id, id) })
+    if (!rec) return NextResponse.json({ error: 'not_found' }, { status: 404 })
+
+    await db
+      .update(recommendations)
+      .set({ appliedAt: null, appliedNote: null })
+      .where(eq(recommendations.id, id))
+
+    const reverted = await db.query.recommendations.findFirst({ where: eq(recommendations.id, id) })
+    return NextResponse.json(reverted)
+  }
+
   const status = body.status
 
   if (!status || !VALID_STATUS.includes(status as (typeof VALID_STATUS)[number]))

@@ -1,4 +1,4 @@
-import { eq, asc, desc, and, isNull, isNotNull, inArray, ne, or, sql } from 'drizzle-orm'
+import { eq, asc, desc, and, isNull, isNotNull, inArray, ne, or, sql, getTableColumns } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, serpAioResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals, providerCredentials, reportShares, dataSourceStatuses } from '@/db/schema'
 import type { DataSourceStatus } from '@/db/schema'
@@ -254,8 +254,10 @@ export const getKeywords = (projectId: string) =>
   db.select().from(keywords).where(eq(keywords.projectId, projectId))
 export const createKeywordMetrics = (rows: (typeof keywordMetrics.$inferInsert)[]) =>
   rows.length ? db.insert(keywordMetrics).values(rows).returning() : Promise.resolve([])
+// 默认序=点击降序、次级展现降序（P1-8：clicks 是关键词表最主要的可信信号，排前面才不会被淹没）。
 export const getRunKeywordMetrics = (runId: string) =>
   db.select().from(keywordMetrics).where(eq(keywordMetrics.runId, runId))
+    .orderBy(desc(keywordMetrics.clicks), desc(keywordMetrics.impressions))
 
 export const upsertCompetitor = (row: typeof competitors.$inferInsert) =>
   db.insert(competitors).values(row).onConflictDoUpdate({
@@ -271,8 +273,15 @@ export const setCompetitorStatus = (id: string, status: 'candidate' | 'confirmed
 
 export const createKeywordGaps = (rows: (typeof keywordGaps.$inferInsert)[]) =>
   rows.length ? db.insert(keywordGaps).values(rows).returning() : Promise.resolve([])
+// 默认序=机会分降序、次级搜索量降序（P1-8）。opportunityScore 是 text 列（数字字符串），
+// 需 CAST 成 REAL 再排序，否则按字典序排（"9" 会排在 "10" 后面）。次级键 volume 落在
+// keywords 表，left join 进来只用于排序，select 列仍锁定为 keywordGaps 原有列，不改变返回
+// 形状（调用方 ReportView.tsx / keywords/page.tsx 期望的仍是扁平 KeywordGapRow）。
 export const getRunKeywordGaps = (runId: string) =>
-  db.select().from(keywordGaps).where(eq(keywordGaps.runId, runId))
+  db.select(getTableColumns(keywordGaps)).from(keywordGaps)
+    .leftJoin(keywords, eq(keywordGaps.keywordId, keywords.id))
+    .where(eq(keywordGaps.runId, runId))
+    .orderBy(desc(sql`CAST(${keywordGaps.opportunityScore} AS REAL)`), desc(keywords.searchVolume))
 
 // 多项目列表 + 每项目摘要（SP-G1b）：域名 / 市场 / 最近 run（状态·类型·发现数）/ 下次回测。
 // V0 项目数个位数，逐项目查最近 run 与 finding 数可接受（不提前批量化，V1 再优化 N+1）。

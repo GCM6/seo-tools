@@ -84,7 +84,7 @@ export function BrandFactRow({
         gap: 12,
         alignItems: 'flex-start',
         padding: '10px 12px',
-        borderLeft: verified ? '3px solid #16a34a' : '3px solid transparent',
+        borderLeft: verified ? '3px solid var(--ds-success)' : '3px solid transparent',
         opacity: retired ? 0.5 : 1,
       }}
     >
@@ -92,7 +92,7 @@ export function BrandFactRow({
         <div className="fact-text" style={{ fontWeight: verified ? 600 : 400 }}>
           {fact.factText}
         </div>
-        <div className="fact-meta" style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+        <div className="fact-meta" style={{ fontSize: 12, color: 'var(--ds-muted)', marginTop: 2 }}>
           <span>{fact.factType}</span>
           {fact.sourceUrl ? (
             <>
@@ -112,8 +112,8 @@ export function BrandFactRow({
           fontSize: 12,
           padding: '2px 8px',
           borderRadius: 4,
-          background: verified ? '#dcfce7' : retired ? '#f3f4f6' : '#fef9c3',
-          color: verified ? '#166534' : retired ? '#6b7280' : '#854d0e',
+          background: verified ? 'var(--ds-success-muted)' : retired ? 'var(--ds-surface-2)' : 'var(--ds-warning-muted)',
+          color: verified ? 'var(--ds-success)' : retired ? 'var(--ds-muted)' : 'var(--ds-warning)',
           whiteSpace: 'nowrap',
         }}
       >
@@ -123,7 +123,7 @@ export function BrandFactRow({
       <div className="fact-actions" style={{ display: 'flex', gap: 6 }}>
         <button
           type="button"
-          className={`act acc${verified ? ' on' : ''}`}
+          className={`act accept${verified ? ' on' : ''}`}
           aria-pressed={verified}
           onClick={() => changeStatus(verified ? 'draft' : 'verified')}
         >

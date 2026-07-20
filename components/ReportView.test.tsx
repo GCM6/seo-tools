@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import zhMessages from '@/messages/zh.json'
 
@@ -316,5 +316,104 @@ describe('ReportView §9 回测表 —— metricName 人类可读标签', () => 
     await renderReport()
     expect(screen.getByText('some.future_metric')).toBeInTheDocument()
     expect(screen.queryByText(/retest\.metric/)).not.toBeInTheDocument()
+  })
+})
+
+// P1-1「报告结论不先行」修复：把 9 段重排为「结论先行三段式」——第一屏读懂现状 + 下一步，
+// 优先级矩阵/行动路线图上移到五支柱明细之前，方法与范围下沉到回测之前。
+// 只验证重排顺序、新增的「接下来做的 3 件事」渲染/空态、以及 constraint.* 文案改写；
+// 不复测已有各段内部渲染逻辑（前面各 describe 块已覆盖）。
+describe('ReportView §P1-1 结论先行重排', () => {
+  beforeEach(() => {
+    state.fx = baseFixtures()
+  })
+
+  function recommendationRow(overrides: Partial<{
+    id: string
+    findingId: string
+    what: string
+    priority: string
+    status: string
+  }>) {
+    return {
+      id: overrides.id ?? 'rec_1',
+      findingId: overrides.findingId ?? 'f1',
+      what: overrides.what ?? '示例建议',
+      why: '示例理由',
+      expectedImpact: '',
+      effort: '低',
+      priority: overrides.priority ?? 'quick_win',
+      confidence: '',
+      status: overrides.status ?? 'proposed',
+      outcome: '',
+      validationMethod: '',
+    }
+  }
+
+  it('9 个段落标题按新顺序渲染：执行摘要→优先级矩阵→行动路线图→五支柱明细→GEO→关键词→竞品→方法与范围→回测', async () => {
+    await renderReport()
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    expect(headings).toEqual([
+      '1. 执行摘要',
+      '2. 优先级矩阵',
+      '3. 行动路线图',
+      '4. 五支柱明细',
+      '5. GEO 可见度补充',
+      '6. 关键词现状与缺口',
+      '7. 竞品对比',
+      '8. 方法与范围',
+      '9. 回测计划与闭环结果',
+    ])
+  })
+
+  it('约束定位卡使用改写后的人话文案（保留原 constraint.* key，不再是术语堆砌）', async () => {
+    state.fx.findings = [
+      {
+        id: 'f1',
+        side: 'us',
+        pillar: 'P1',
+        title: '首页抓取被阻断',
+        description: 'robots.txt 拦截了核心页面',
+        severity: 'high',
+        claimType: 'measured_hard',
+        confidence: 'high',
+        evidenceRefs: ['page_fetch_1'],
+        status: 'open',
+      },
+    ]
+    await renderReport()
+    const expectedText = resolveMessage('report', 'constraint.systemic_basics')
+    expect(screen.getByText(expectedText)).toBeInTheDocument()
+    // 旧的术语堆砌文案不应再出现
+    expect(
+      screen.queryByText('系统性基础问题：存在抓取 / 索引 / 渲染层面的高危阻断，请优先修复技术地基（P1）。'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('「接下来做的 3 件事」取优先级矩阵 top3（quick_win 优先），每项带跳转到优先级矩阵详情的锚点', async () => {
+    state.fx.recommendations = [
+      recommendationRow({ id: 'r1', what: '修复移动端渲染空白问题', priority: 'quick_win' }),
+      recommendationRow({ id: 'r2', what: '补齐产品页结构化数据', priority: 'quick_win' }),
+      recommendationRow({ id: 'r3', what: '扩充无品牌关键词内容', priority: 'strategic' }),
+      recommendationRow({ id: 'r4', what: '优化次要页面标题', priority: 'fill_in' }),
+    ]
+    await renderReport()
+    const block = screen.getByTestId('next-steps')
+    const items = within(block).getAllByRole('listitem')
+    expect(items).toHaveLength(3)
+    expect(items[0]).toHaveTextContent('修复移动端渲染空白问题')
+    expect(items[1]).toHaveTextContent('补齐产品页结构化数据')
+    expect(items[2]).toHaveTextContent('扩充无品牌关键词内容')
+    expect(within(block).queryByText('优化次要页面标题')).not.toBeInTheDocument()
+    const links = within(block).getAllByRole('link')
+    expect(links.length).toBeGreaterThan(0)
+    for (const link of links) expect(link).toHaveAttribute('href', '#sec-priority')
+  })
+
+  it('优先级矩阵为空（无建议）时，「接下来做的 3 件事」整块不渲染，不硬凑空态', async () => {
+    state.fx.recommendations = []
+    await renderReport()
+    expect(screen.queryByTestId('next-steps')).not.toBeInTheDocument()
+    expect(screen.queryByText(resolveMessage('report', 'summary.nextStepsTitle'))).not.toBeInTheDocument()
   })
 })

@@ -108,11 +108,11 @@ export function RulesAdminClient({
         classes = "bg-amber-500/10 text-amber-600 border border-amber-500/20"
         break
       case 'deprecate':
-        classes = "bg-rose-500/10 text-rose-600 border border-rose-500/20"
+        classes = "bg-error/10 text-error border border-error/20"
         break
       case 'update_artifact':
       default:
-        classes = "bg-indigo-500/10 text-indigo-600 border border-indigo-500/20"
+        classes = "bg-info/10 text-info border border-info/20"
         break
     }
     return (

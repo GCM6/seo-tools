@@ -207,9 +207,10 @@ export function RunProgress({
         </div>
       )}
 
-      {/* 完成时刻 CTA */}
-      {state.status === 'collected' && (
-        <button type="button" className="mt-3" onClick={() => router.refresh()}>
+      {/* 完成时刻 CTA：reviewGate 存在时，导航已由上方的 rp-gate-action 链接承担，
+          这里不再重复渲染只会 router.refresh() 的死按钮（P0-1）。 */}
+      {state.status === 'collected' && !reviewGate && (
+        <button type="button" className="rp-action" onClick={() => router.refresh()}>
           {t('viewResults')}
         </button>
       )}
@@ -217,7 +218,7 @@ export function RunProgress({
       {/* 失败态：可重试 */}
       {state.status === 'failed' && (
         <div className="mt-3">
-          <button type="button" onClick={retry} disabled={retrying}>
+          <button type="button" className="rp-action-retry" onClick={retry} disabled={retrying}>
             {retrying ? t('retrying') : t('retry')}
           </button>
           {retryErr && (

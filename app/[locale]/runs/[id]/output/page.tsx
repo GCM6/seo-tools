@@ -1,29 +1,57 @@
 import { setRequestLocale, getTranslations } from 'next-intl/server'
 import Link from 'next/link'
+import { notFound } from 'next/navigation'
 import { Shell } from '@/components/Shell'
-import { DeliveryCard, type DeliveryKind } from '@/components/DeliveryCard'
-import { DeliveryExportActions } from '@/components/DeliveryExportActions'
-import { ReportPanel } from '@/components/ReportPanel'
+import { ActionReportWorkspace } from '@/components/ActionReportWorkspace'
+import { ActionList, type ActionListItem, type ActionListPrompt, type ActionListRejectedItem } from '@/components/ActionList'
+import { RetestPlanCard } from '@/components/RetestPlanCard'
 import {
   getRecommendations,
   getRun,
   getProject,
   getBrandFacts,
-  getFindings,
+  getGeneratedPromptsForRec,
   getRunEvidence,
 } from '@/lib/repositories'
-import { assembleContentBrief, assemblePrompt } from '@/lib/diagnosis/prompt-assembler'
-import { GLOBAL_CONTENT_BLOCKERS } from '@/lib/diagnosis/templates'
-import { summarizeCompetitorForm, type CompetitorFormSignal } from '@/lib/collection/competitor-form'
+import { resolveCredential } from '@/lib/credentials/store'
+import { renderActionReportMarkdown, summarizeEvidenceRefs, type EvidenceSummaryInput } from '@/lib/diagnosis/action-report-markdown'
 
-// Human-gate: only accepted/edited recommendations may yield execution prompts.
-// Drafts and rejected recs never reach the output screen.
+// Human-gate: only accepted/edited recommendations may enter the execution
+// register. The full report still records drafts and rejections as scope truth.
 const GATED = new Set(['accepted', 'edited'])
 
+// 四象限排序：quick_win（优先处理）最先，未知值兜底为最低优先级（对齐
+// recommendations/page.tsx 的 PRIORITY_ORDER 排序惯例）。
+const PRIORITY_ORDER: Record<string, number> = {
+  quick_win: 0,
+  strategic: 1,
+  fill_in: 2,
+  low: 3,
+}
+
+const PROMPT_TYPE_ORDER: Record<string, number> = { technical: 0, content: 1, brief: 2, cms: 3 }
+
 function resolvedTitle(what: string, payload: unknown): string {
-  if (!payload || typeof payload !== 'object') return what
-  const p = payload as Record<string, unknown>
-  return typeof p.what === 'string' && p.what.trim() ? p.what.trim() : what
+  const p = payload && typeof payload === 'object' ? payload as Record<string, unknown> : undefined
+  const value = typeof p?.what === 'string' && p.what.trim() ? p.what.trim() : what
+  // 模板中的静态修复示例属于交付正文，不应该把整段 HTML / JSON-LD
+  // 展开到列表标题里；避免 15 条输出卡片的扫读被代码淹没。
+  const exampleIndex = value.indexOf('参考修复示例')
+  return exampleIndex >= 0 ? value.slice(0, exampleIndex).trim() : value
+}
+
+// 同一 promptType 可能因 regenerate 累积多条留痕记录；预载时按 createdAt 只取每类型最新一条
+// （与 app/api/recommendations/[id]/prompt/route.ts 的 latestPerType 同一口径，独立实现——
+// 该 route 不导出这个私有函数，也不允许本任务修改该文件）。
+function latestPromptsByType(rows: { id: string; promptType: string; promptText: string; createdAt: string }[]): ActionListPrompt[] {
+  const latestByType = new Map<string, typeof rows[number]>()
+  for (const row of rows) {
+    const prev = latestByType.get(row.promptType)
+    if (!prev || row.createdAt > prev.createdAt) latestByType.set(row.promptType, row)
+  }
+  return [...latestByType.values()]
+    .sort((a, b) => (PROMPT_TYPE_ORDER[a.promptType] ?? 9) - (PROMPT_TYPE_ORDER[b.promptType] ?? 9))
+    .map((row) => ({ id: row.id, promptType: row.promptType, promptText: row.promptText }))
 }
 
 export default async function OutputPage({
@@ -35,91 +63,85 @@ export default async function OutputPage({
   setRequestLocale(locale)
   const t = await getTranslations('screen4')
 
-  // 真实 run 才有 project；不存在的 run 不再回退旧样例项目，避免误导。
+  // 无效 run 直接 404（对齐 components/ReportView.tsx 的做法），不再静默降级成空白页。
   const run = await getRun(id)
-  const project = run ? await getProject(run.projectId) : undefined
+  if (!run) notFound()
+
+  const project = await getProject(run.projectId)
   const domain = project?.domain ?? ''
 
-  const [recommendations, findings, allFacts, evidence] = await Promise.all([
+  const [recommendations, allFacts, openAiKey, evidenceRows] = await Promise.all([
     getRecommendations(id),
-    getFindings(id),
-    run ? getBrandFacts(run.projectId) : Promise.resolve([]),
-    run ? getRunEvidence(run.id) : Promise.resolve([]),
+    getBrandFacts(run.projectId),
+    resolveCredential('OPENAI_API_KEY'),
+    getRunEvidence(id),
   ])
-  const gated = recommendations.filter((r) => GATED.has(r.status))
-  const verifiedFacts = allFacts.filter((f) => f.status === 'verified')
-  const verifiedFactInputs = verifiedFacts.map((fact) => ({
-    id: fact.id,
-    factText: fact.factText,
-    status: 'verified' as const,
-  }))
-  const findingsById = new Map(findings.map((finding) => [finding.id, finding]))
-  const formRow = evidence.find(
-    (item) => item.type === 'dataforseo_serp' && (item.payload as { kind?: string } | null)?.kind === 'competitor_content_form',
-  )
-  const signals = formRow ? ((formRow.payload as { signals?: CompetitorFormSignal[] }).signals ?? []) : []
-  const competitorForm = summarizeCompetitorForm(signals) || undefined
 
-  // Render a read-only server-composed handoff as a Markdown delivery draft.
-  // It has no write side effect: users may refine it locally, copy/download it,
-  // then publish in their CMS or codebase and explicitly mark that work applied.
-  const deliveries = gated.map((rec) => {
-    const finding = findingsById.get(rec.findingId)
-    const kind: DeliveryKind = finding?.side === 'technical' ? 'technical' : 'content'
-    const evidenceRefs = finding?.evidenceRefs?.length ? finding.evidenceRefs : rec.evidenceRefs
-    const title = resolvedTitle(rec.what, rec.editedPayload)
-    const handoff = assemblePrompt({
-      rec: {
-        what: rec.what,
-        why: rec.why,
-        expectedImpact: rec.expectedImpact,
-        validationMethod: rec.validationMethod,
-        promptType: kind,
-        evidenceRefs,
-        editedPayload: rec.editedPayload,
+  // B2（P0-4）：evidenceRefs 原样是内部 ev_xxx ID，这里按 run 证据表解析成人类可读摘要，
+  // 首屏报告与行动清单才不会展示裸 ID（照抄 app/api/runs/[id]/action-report/route.ts 的组装逻辑）。
+  const evidenceById = new Map<string, EvidenceSummaryInput>(
+    evidenceRows.map((row) => [
+      row.id,
+      {
+        id: row.id,
+        type: row.type,
+        claimLevel: row.claimLevel,
+        source: row.source,
+        capturedAt: row.capturedAt,
+        payload: row.payload,
       },
-      verifiedFacts: verifiedFactInputs,
-      domain,
-      negativeConstraints: kind === 'content' ? GLOBAL_CONTENT_BLOCKERS : undefined,
-    }).promptText
-    const executionText = kind === 'content'
-      ? assembleContentBrief({
-          rec: {
-            what: rec.what,
-            why: rec.why,
-            expectedImpact: rec.expectedImpact,
-            validationMethod: rec.validationMethod,
-            evidenceRefs,
-            editedPayload: rec.editedPayload,
-          },
-          verifiedFacts: verifiedFactInputs,
-          domain,
-          competitorForm,
-          negativeConstraints: GLOBAL_CONTENT_BLOCKERS,
-        }).promptText
-      : handoff
-    const markdown = [
-      `# ${t(`delivery.kind.${kind}`)} · ${title}`,
-      '',
-      `> ${t('delivery.documentIntro')}`,
-      '',
-      `## ${t('delivery.handoffTitle')}`,
-      '',
-      executionText,
-      '',
-      `## ${t('delivery.reviewTitle')}`,
-      '',
-      `- ${t('delivery.reviewItemOne')}`,
-      `- ${t('delivery.reviewItemTwo')}`,
-    ].join('\n')
+    ]),
+  )
 
+  const gated = [...recommendations.filter((r) => GATED.has(r.status))].sort(
+    (a, b) => (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99),
+  )
+  const rejected = recommendations.filter((r) => r.status === 'rejected')
+  const draftCount = recommendations.filter((r) => r.status === 'draft').length
+  const verifiedFacts = allFacts.filter((f) => f.status === 'verified')
+
+  const gatedPrompts = await Promise.all(gated.map((rec) => getGeneratedPromptsForRec(rec.id)))
+
+  const actionItems: ActionListItem[] = gated.map((rec, index) => {
+    // B2（P0-4）：evidenceRefs 逐条解析成摘要，供 ActionList 展示人类可读文本而不是裸 ev_xxx ID。
+    const summaries = summarizeEvidenceRefs(rec.evidenceRefs, evidenceById)
     return {
-      rec,
-      kind,
-      title,
-      handoff,
-      markdown,
+      id: rec.id,
+      priority: rec.priority,
+      title: resolvedTitle(rec.what, rec.editedPayload),
+      status: rec.status as 'accepted' | 'edited',
+      expectedImpact: rec.expectedImpact,
+      effort: rec.effort,
+      risk: rec.risk,
+      confidence: rec.confidence,
+      why: rec.why,
+      validationMethod: rec.validationMethod,
+      evidenceRefs: rec.evidenceRefs,
+      evidenceSummaries: Object.fromEntries(rec.evidenceRefs.map((ref, i) => [ref, summaries[i]])),
+      appliedAt: rec.appliedAt,
+      appliedNote: rec.appliedNote ?? '',
+      prompts: latestPromptsByType(gatedPrompts[index]),
     }
+  })
+
+  const rejectedItems: ActionListRejectedItem[] = rejected.map((rec) => ({
+    id: rec.id,
+    title: resolvedTitle(rec.what, rec.editedPayload),
+    note: rec.why,
+  }))
+
+  const appliedCount = gated.filter((rec) => rec.appliedAt).length
+  const gatedCount = gated.length
+  const progressPct = gatedCount ? Math.round((appliedCount / gatedCount) * 100) : 0
+  const retestReady = gatedCount > 0 && appliedCount === gatedCount
+
+  const actionReportMarkdown = renderActionReportMarkdown(recommendations, {
+    domain,
+    runId: id,
+    capturedAt: run.finishedAt ?? run.startedAt ?? '',
+  }, {
+    verifiedFacts: verifiedFacts.map((fact) => fact.factText),
+    evidenceById,
   })
 
   return (
@@ -127,48 +149,72 @@ export default async function OutputPage({
       <div className="sec-h output-page-head">
         <div>
           <h2>{t('title')}</h2>
-          <span className="meta">{t('meta', { count: gated.length })}</span>
         </div>
         <div className="sec-h-actions">
-          <Link href={`/${locale}/runs/${id}/report`} className="underline underline-offset-2">
+          <Link href={`/${locale}/runs/${id}/report`} className="sec-h-link">
             {t('viewReport')}
           </Link>
-          <DeliveryExportActions
-            documents={deliveries.map((delivery) => ({ title: delivery.title, markdown: delivery.markdown }))}
-            filenameBase={`veris-${id}-deliveries`}
-          />
         </div>
       </div>
 
-      <div className="out-grid">
-        <div>
-          {gated.length ? (
-            deliveries.map((delivery) => (
-              <DeliveryCard
-                key={delivery.rec.id}
-                recId={delivery.rec.id}
-                title={delivery.title}
-                kind={delivery.kind}
-                initialMarkdown={delivery.markdown}
-                handoffText={delivery.handoff}
-                initialAppliedAt={delivery.rec.appliedAt}
-                initialAppliedNote={delivery.rec.appliedNote ?? ''}
-              />
-            ))
-          ) : (
-            <div className="card pending-block">{t('emptyGated')}</div>
-          )}
+      <div className="card output-progress">
+        <div
+          className="output-progress-track"
+          role="progressbar"
+          aria-label={t('output.progressAria')}
+          aria-valuenow={progressPct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div className="output-progress-fill" style={{ width: `${progressPct}%` }} />
         </div>
-
-        <div>
-          <ReportPanel facts={verifiedFacts} domain={domain} confirmedCount={gated.length} />
-          <div className="note" style={{ marginTop: 12 }}>
-            <Link href={`/${locale}/runs/${id}/facts`} className="underline underline-offset-2">
-              {t('manageFacts')}
+        <div className="output-progress-meta">
+          <span className="output-progress-count">{t('output.progressCount', { done: appliedCount, total: gatedCount })}</span>
+          <span className="output-progress-scope">{t('output.scopeCount', { count: gatedCount, rejected: rejected.length })}</span>
+          {draftCount > 0 ? (
+            <Link href={`/${locale}/runs/${id}/recommendations`} className="output-progress-warning">
+              {t('output.draftWarning', { count: draftCount })} · {t('output.draftWarningLink')}
             </Link>
-          </div>
+          ) : null}
         </div>
       </div>
+
+      <ActionList items={actionItems} rejectedItems={rejectedItems} />
+
+      <div className="output-summary-grid">
+        <RetestPlanCard
+          runId={id}
+          locale={locale}
+          dueAt={project?.nextRetestDueAt ?? null}
+          appliedDone={appliedCount}
+          appliedTotal={gatedCount}
+          retestReady={retestReady}
+        />
+
+        <div className="card output-facts-card">
+          <h3>{t('output.factsGateTitle')}</h3>
+          <p className="output-facts-count">{t('output.factsGateCount', { count: verifiedFacts.length })}</p>
+          {verifiedFacts.length ? (
+            <ul className="output-facts-preview">
+              {verifiedFacts.slice(0, 3).map((fact) => (
+                <li key={fact.id}>{fact.factText}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="output-facts-empty">{t('output.factsGateEmpty')}</p>
+          )}
+          <Link href={`/${locale}/runs/${id}/facts`} className="sec-h-link">
+            {t('output.factsGateManage')}
+          </Link>
+        </div>
+      </div>
+
+      <ActionReportWorkspace
+        runId={id}
+        initialMarkdown={actionReportMarkdown}
+        filenameBase={`veris-${id}-execution-decision-report`}
+        aiAvailable={Boolean(openAiKey)}
+      />
 
       <div className="note">{t('note')}</div>
     </Shell>

@@ -31,6 +31,10 @@ export function RunHistory({
     colAction: string
     viewRun: string
     viewReport: string
+    // 可选：调用方尚未接入时（如仅接收本次改动的 caller 未同步 labels），
+    // 新增的「输出」「确认建议」链接直接不渲染，而不是编译期报错或显示英文/占位符。
+    viewOutput?: string
+    confirmRecs?: string
     noRuns: string
     retestThis: string
     retestStarting: string
@@ -68,6 +72,18 @@ export function RunHistory({
                   <>
                     {' · '}
                     <Link href={`/${locale}/runs/${r.id}/report`}>{labels.viewReport}</Link>
+                    {labels.viewOutput ? (
+                      <>
+                        {' · '}
+                        <Link href={`/${locale}/runs/${r.id}/output`}>{labels.viewOutput}</Link>
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+                {r.status === 'reviewing' && labels.confirmRecs ? (
+                  <>
+                    {' · '}
+                    <Link href={`/${locale}/runs/${r.id}/recommendations`}>{labels.confirmRecs}</Link>
                   </>
                 ) : null}
                 {r.runType === 'baseline' && isCompletedRunStatus(r.status) ? (

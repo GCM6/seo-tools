@@ -144,6 +144,8 @@
     "colAction": "Action",
     "viewRun": "View",
     "viewReport": "Report",
+    "viewOutput": "Output",
+    "confirmRecs": "Confirm recs",
     "noRuns": "This project has no runs yet.",
     "newRun": "New analysis",
     "retestThis": "Retest from here",
@@ -391,6 +393,7 @@
     "mapOutcomeSummaryPresent": "When people ask only about a category or solution, you appear in some AI answers, but coverage remains limited.",
     "mapOutcomeSummaryUnmeasured": "Check the probe setup and ensure it includes category prompts without your brand name.",
     "mapOutcomeEvidence": "Based on {count} sampled prompts in this run",
+    "mapOutcomeCaliber": "n={n}, directional sample",
     "mapOutcomeAction": "See how competitors are mentioned →",
     "mapMethodSummary": "How this conclusion was calculated",
     "mapEvidenceStatsLabel": "AI answer evidence overview",
@@ -399,6 +402,7 @@
     "mapEvidenceGridLabel": "AI answer evidence index by prompt",
     "mapEvidenceGridTitle": "Prompt-level evidence",
     "mapEvidenceGridHint": "Each cell is a real prompt without your brand name",
+    "mapEvidenceGridCount": "{total} prompts total",
     "mapEvidenceCell": "Prompt {number}: brand {status}",
     "mapEvidenceQuestion": "Answer evidence for prompt {number}",
     "mapEvidencePresent": "present",
@@ -417,6 +421,7 @@
     "mapOpportunityLink": "See competitor SoV comparison →",
     "mapBrandedEyebrow": "Branded prompts · AI cognitive quality",
     "mapBrandedTitle": "When AI talks about your brand, is it grounded",
+    "mapBrandedGridCount": "{count} answers total (from {engines} engines)",
     "mapBrandedDetail": "This measures the model's cognitive quality about a known brand name: does it cite grounding, honestly admit it doesn't know, or assert without any backing. Non-web-search engines (e.g. DeepSeek) structurally cannot cite sources, so they're excluded from the grounded/unverified split — only flagged as speculative, unknown, or undetermined.",
     "mapBrandedStatsLabel": "Branded prompt answer overview",
     "mapBrandedAnswers": "{count} branded-prompt answers sampled in this run",
@@ -495,7 +500,23 @@
     "aioExposureAbsent": "AIO absent",
     "aioExposureOwnedCited": "The AI Overview cited your own domain",
     "aioExposureNotOwnedCited": "The AI Overview did not cite your own domain",
-    "aioExposureNoCitedUrls": "No citation URLs were collected for this query"
+    "aioExposureNoCitedUrls": "No citation URLs were collected for this query",
+    "nav": {
+      "ariaLabel": "Page section navigation",
+      "groupOverview": "Overview",
+      "groupAi": "AI visibility",
+      "groupSearch": "Search & competitors",
+      "groupIssues": "Issues",
+      "itemOverview": "Current state",
+      "itemGeoPresence": "AI answer evidence index",
+      "itemSov": "Competitor SoV",
+      "itemCitedDomains": "Cited domains",
+      "itemAioExposure": "Google measured exposure",
+      "itemSovPerEngine": "SoV by engine",
+      "itemPerEngine": "Visibility by engine",
+      "itemSentiment": "Citation sentiment",
+      "itemFindings": "Issue list"
+    }
   },
   "screen3": {
     "title": "Recommendations",
@@ -536,63 +557,79 @@
       "risk": "Risk",
       "validation": "Validation",
       "confidence": "Confidence",
-      "editedNote": "Human edit"
+      "editedNote": "Human edit",
+      "affectedPages": "Affected pages"
     },
-    "note": "Human in the loop: the tool proposes, you decide. Only \"accepted / edited\" recommendations advance to prompt generation. Off-site recommendations (e.g. forums) only produce talking-point drafts, never auto-executed."
+    "note": "Human in the loop: the tool proposes, you decide. Accepted / edited recommendations enter the final execution report; rejected decisions remain traceable but never enter the execution plan. Off-site recommendations (e.g. forums) only produce talking-point drafts, never auto-executed."
   },
   "screen4": {
     "title": "Output",
-    "meta": "{count} confirmed · refine the delivery draft, publish manually, then mark it executed for retest",
-    "emptyGated": "No accepted / edited recommendations to generate delivery drafts yet — confirm them on the Recommendations screen first",
-    "promptForContent": "For recommendation · new small-team comparison content",
-    "promptForSsr": "For recommendation · /features server-rendering rework",
-    "promptTpl": {
-      "system": "You are a senior SEO + GEO expert. Execute the following confirmed optimization recommendation for {domain}:",
-      "why": "[Why] ",
-      "impact": "[Expected impact] ",
-      "validation": "[Validation] ",
-      "edited": "[Human edit]",
-      "brandFacts": "[Brand facts you must use verbatim and never fabricate]"
-    },
-    "reportTitle": "Analysis report",
-    "unknownDomain": "Unknown project",
-    "reportMeta": "{domain} · only confirmed real data from this run is summarized",
-    "report": {
-      "outputTitle": "Confirmed output",
-      "outputBody": "{count} accepted / edited recommendations can generate execution prompts.",
-      "factsTitle": "Verified brand facts",
-      "emptyFacts": "No verified brand facts yet; unverified brand claims will not be injected into prompts.",
-      "retestTitle": "Retest plan",
-      "retestTag": "Next round",
-      "retestBody": "Retest requires real baseline and retest data under the same protocol; no delta is shown until it exists."
-    },
-    "manageFacts": "Manage brand facts →",
     "note": "A delivery draft is not a publication: preview or edit its Markdown here, then hand it to an executor. Mark it executed only after the CMS or code change is live so the same-protocol retest can be scheduled.",
     "viewReport": "View full report →",
+    "output": {
+      "progressAria": "Execution progress",
+      "progressCount": "{done}/{total} marked executed",
+      "scopeCount": "{count} in scope · {rejected} rejected",
+      "draftWarning": "{count} still awaiting decision",
+      "draftWarningLink": "Go to recommendations →",
+      "retestTitle": "Retest preview",
+      "retestProgress": "{done}/{total} executed",
+      "retestPending": "Mark every action executed to start the same-protocol retest (4–6 weeks).",
+      "retestReady": "Every action is executed — you can schedule the same-protocol retest.",
+      "retestPlanDueLabel": "Current due date:",
+      "retestPlanNoDue": "No retest scheduled yet (no recommendation has been marked executed)",
+      "retestPlanPolicyNote": "Rule: marking any recommendation executed pushes the retest due date to 28 days after that action; undoing execution does not roll it back.",
+      "retestPlanManualNote": "Manually adjusting the due date isn't supported yet: the project update API doesn't expose this field, and extending it is outside this change's scope.",
+      "factsGateTitle": "Brand fact gate",
+      "factsGateCount": "{count} verified",
+      "factsGateEmpty": "No verified brand facts yet — execution prompts have no real facts to inject.",
+      "factsGateManage": "Manage brand facts →"
+    },
+    "actionList": {
+      "heading": "Action list",
+      "emptyGated": "No recommendations are currently in scope for execution",
+      "emptyGatedHint": "Accept or edit recommendations on the recommendations page, then come back to this action list.",
+      "detailsSummary": "View details",
+      "assetsHeading": "Execution assets",
+      "assetsHint": "Prompts are injected with verified brand facts; fabrication is never allowed.",
+      "generate": "Generate execution prompt",
+      "generating": "Generating…",
+      "regenerate": "Regenerate",
+      "regenerating": "Regenerating…",
+      "generateErrorNotFound": "This recommendation no longer exists.",
+      "generateErrorGeneric": "Generation failed. Please try again.",
+      "promptLabelContent": "Execution prompt",
+      "promptLabelBrief": "Writing brief",
+      "rejectedAccordionTitle": "{count} rejected (kept for the record)",
+      "rejectedNoNote": "No rejection reason was recorded.",
+      "affectedPagesSummary": "{total} total, showing first {shown}:"
+    },
+    "actionReport": {
+      "eyebrow": "Final delivery",
+      "title": "Execution decision report",
+      "summary": "A decision record and handoff document summarizing every confirmed recommendation and execution entry this run.",
+      "sourceLock": "Every item is locked to this run’s accepted, edited, or rejected recommendation cards and verified brand facts. AI may summarize only; it cannot add a decision.",
+      "aiGenerate": "Generate rigorous AI summary",
+      "generating": "Summarizing decision cards…",
+      "aiUnavailable": "Configure OpenAI in Settings before AI can generate the decision summary.",
+      "aiDone": "The AI decision summary was added; every action record remains locked to its source card.",
+      "aiFailed": "AI summary was not generated. The strict structured report was retained; please try again.",
+      "aiErrorRunNotFound": "This run no longer exists. Refresh the page and try again.",
+      "aiErrorSummaryFailed": "The AI request failed. Please try again shortly.",
+      "aiErrorValidationFailed": "The AI output failed source verification and was rejected. You can retry.",
+      "overwriteConfirm": "The AI summary will overwrite your manual edits in the Markdown tab. Continue?",
+      "expand": "Expand preview",
+      "collapse": "Collapse preview",
+      "viewLabel": "Complete report view",
+      "copy": "Copy complete report",
+      "download": "Download complete report .md",
+      "editorLabel": "Complete execution report Markdown editor",
+      "draftHint": "Edits stay in this browser tab. Copy or download before handing off; a new AI summary replaces this draft with the server-validated full report."
+    },
     "delivery": {
-      "eyebrow": "Delivery preview",
-      "kind": {
-        "content": "Content execution brief",
-        "technical": "Technical change plan"
-      },
-      "viewLabel": "Delivery draft view",
       "preview": "Preview",
       "markdown": "Edit Markdown",
-      "markdownEditor": "Delivery draft Markdown editor",
-      "copy": "Copy Markdown",
-      "copied": "Copied",
-      "download": "Download .md",
-      "draftHint": "Edits stay in this browser tab. Copy or download the draft before handing it to an executor; publishing still needs human review.",
-      "handoffTitle": "Executor handoff",
-      "copyHandoff": "Copy execution prompt",
-      "handoffCopied": "Execution prompt copied",
-      "documentIntro": "This is a delivery draft for human review; it will not publish to the website automatically.",
-      "reviewTitle": "Human review before publishing",
-      "reviewItemOne": "Verify that every brand fact, data point, and link is traceable.",
-      "reviewItemTwo": "Mark it executed only after the CMS or code change has been published.",
-      "copyAll": "Copy all Markdown",
-      "copiedAll": "All Markdown copied",
-      "downloadAll": "Export all Markdown"
+      "copied": "Copied"
     },
     "applied": {
       "mark": "Mark as executed",
@@ -600,7 +637,11 @@
       "noteLabel": "Execution note (optional)",
       "notePlaceholder": "Optionally note what was done, links to the change, etc.",
       "submit": "Confirm executed",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "error": "Failed to save. Please try again — your note has been kept.",
+      "revoke": "Undo execution",
+      "revoking": "Undoing…",
+      "revokeError": "Failed to undo. Please try again."
     }
   },
   "dataHealth": {
@@ -636,9 +677,17 @@
     "dismissReasonPlaceholder": "Why is this a false positive? e.g. inapplicable to this site, already fixed, misjudged…",
     "dismissReasonRequired": "A reason is required before dismissing",
     "dismissConfirm": "Confirm dismiss",
-    "dismissCancel": "Cancel"
+    "dismissCancel": "Cancel",
+    "provenanceHint": {
+      "m": "Measured: backed by L3/L4 hard evidence",
+      "i": "Inferred: derived from evidence patterns, not directly verified",
+      "g": "Gap: an area flagged for improvement",
+      "ok": "Good: already verified as meeting the bar"
+    },
+    "legend": "Evidence grade legend: Measured = backed by L3/L4 hard evidence; Inferred = derived from evidence patterns, not directly verified; Gap = flagged for improvement; Good = already verified as meeting the bar"
   },
   "facts": {
+    "backToDiagnosis": "Back to diagnostic dashboard",
     "title": "Brand facts",
     "meta": "Only \"verified\" brand facts are injected into execution prompts (§6.2 human-in-the-loop gate)",
     "empty": "No brand facts yet. Add one, then verify it manually before it can be injected into prompts.",
@@ -651,6 +700,7 @@
     "factPlaceholder": "A verifiable brand fact (never fabricate)",
     "sourceUrlLabel": "Source URL (optional)",
     "sourceNoteLabel": "Source note (optional)",
+    "sourceNotePlaceholder": "e.g. Official About page, checked on 2026-07-19",
     "add": "Add",
     "verify": "Mark verified",
     "verified": "Verified",
@@ -658,7 +708,8 @@
     "retired": "Retired",
     "draft": "Draft",
     "remove": "Delete",
-    "backToOutput": "← Back to output"
+    "backToOutput": "← Back to output",
+    "viewReport": "View full report →"
   },
   "evidence": {
     "chatgptAnswer": "Evidence · ChatGPT measured answer, verbatim (run 3/5)",
@@ -706,9 +757,12 @@
     }
   },
   "competitors": {
+    "backToDiagnosis": "Back to diagnostic dashboard",
     "title": "Competitors",
     "subtitle": "SERP-overlap candidates. Confirm the ones that are real organic competitors — only confirmed competitors enter gap analysis and comparison (human-in-the-loop).",
     "noData": "No competitor candidates yet. Configure DataForSEO and re-run to auto-identify competitors from SERP overlap.",
+    "emptyTitle": "Missing competitor candidate data",
+    "emptyCta": "Configure DataForSEO in Settings →",
     "candidatesTitle": "Candidates (pending confirmation)",
     "confirmedTitle": "Confirmed competitors",
     "dismissedTitle": "Dismissed",
@@ -726,17 +780,44 @@
     "matrixTitle": "Comparison matrix",
     "matrixEmpty": "Confirm at least one competitor to see the comparison.",
     "you": "You (this site)",
-    "estimateNote": "Overlap & keyword figures are third-party estimates (L3)."
+    "estimateNote": "Overlap & keyword figures are third-party estimates (L3).",
+    "viewReport": "View full report →",
+    "goToOutput": "Go to output →"
   },
   "keywords": {
+    "backToDiagnosis": "Back to diagnostic dashboard",
     "title": "Keyword status",
     "subtitle": "GSC-measured keyword metrics (L4) and DataForSEO gap analysis.",
     "empty": "No keyword data for this run yet.",
+    "emptyGscTitle": "Missing GSC keyword data",
+    "emptyGscImpact": "No keyword data for this run yet. Connect Google Search Console to get measured search performance metrics.",
     "emptyGscCta": "Connect GSC from the project detail page",
     "emptyJoin": ", or ",
-    "emptyDataforseoCta": "configure DataForSEO in Settings →"
+    "emptyDataforseoTitle": "Missing DataForSEO data source",
+    "emptyDataforseoImpact": "Configure a DataForSEO API key to get keyword gap analysis (third-party estimate, L3).",
+    "emptyDataforseoCta": "configure DataForSEO in Settings →",
+    "viewReport": "View full report →",
+    "goToOutput": "Go to output →"
+  },
+  "terms": {
+    "canonical": "A canonical tag marks which URL is the \"official\" one among a batch of duplicate-looking pages. If it mistakenly points to another site, your page's ranking credit can end up going to that other site instead of getting indexed itself.",
+    "noindex": "noindex is a \"don't index me\" instruction on a page. If a page that should be searchable gets mistakenly tagged this way, it will never show up in Google search results — invisible to visitors.",
+    "http4xx": "4xx is a server response code meaning the request failed (e.g. 404 = page not found). These links are likely broken — visitors hit an error page, and search engines read it as a bad experience.",
+    "orphanPages": "An orphan page has no other page linking to it. Search engines mostly discover and evaluate content through links between pages, so an unlinked page is hard to crawl, index, or rank.",
+    "httpStatus": "The HTTP status code is the server's response to this request: 200 means OK, 301/302 means it redirected elsewhere, 404 means the page doesn't exist, 5xx means the server errored. Anything other than 200 usually needs a look.",
+    "urlPattern": "Pages with a similar URL structure (e.g. all product detail pages) are automatically grouped into one template, so you can spot-check a single \"representative page\" instead of checking every page in that group.",
+    "renderDelta": "Unit: characters. Value = main-content character count after browser JS rendering minus the character count in the initial HTML response. The larger the positive number, the more this page's core content depends on JS to display — and search crawlers may not wait for JS to finish, so they may miss it.",
+    "wilsonLowerBound": "A number obtained by conservatively narrowing a small-sample measurement, so a lucky one-off result doesn't get mistaken for the site's real rate. The smaller the sample, the further this number sits from the raw hit rate.",
+    "reportLevel": "R0-R5 marks how far this report can responsibly answer right now — not a score. It depends on which data sources were actually collected this run; a higher level means a more complete evidence chain.",
+    "dataforseo": "DataForSEO is a third-party SEO data provider this tool uses for keyword competition, competitor analysis, backlinks, and real Google AI Overviews search sampling. It needs an API key configured in Settings before any of that data can be collected — until then, the related sections stay empty, which isn't a bug.",
+    "labData": "This data comes from PageSpeed Insights' simulated lab environment (a fixed device/network condition), not real visitors' actual experience. It's still \"measured\" evidence (really measured, not guessed) — just measured in a lab setting, not your visitors' real-world conditions.",
+    "claimGrounded": "This AI answer came with a checkable citation link — the claim has a traceable source.",
+    "claimSpeculative": "The AI answer hedges (e.g. \"might\", \"reportedly\") without giving a verifiable source.",
+    "claimUnverified": "The AI stated this confidently, but this engine can search the web and still gave no source link — more concerning than \"speculative\"; don't take it at face value.",
+    "claimUndetermined": "This AI engine has no web-search capability at all (it only answers from training memory), so it can't be held to the same \"show your source\" bar as a search-backed engine — it's neither grounded nor unverified, just its own category."
   },
   "site": {
+    "backToDiagnosis": "Back to diagnostic dashboard",
     "title": "Site structure",
     "inferredBadge": "Inferred template",
     "statsTitle": "Site health (measured)",
@@ -760,6 +841,7 @@
     "keyPageBadge": "Key page",
     "nextRunNotice": "Changes take effect on the next run",
     "noData": "Site crawl was not enabled for this run or collection has not finished",
+    "emptyTitle": "Missing site structure data",
     "filterAll": "All",
     "renderDelta": "Render delta",
     "status": {
@@ -767,7 +849,9 @@
       "discovered_only": "Unchecked (over cap)",
       "blocked_by_robots": "Blocked by robots",
       "error": "Failed"
-    }
+    },
+    "viewReport": "View full report →",
+    "goToOutput": "Go to output →"
   },
   "report": {
     "title": "Comprehensive Diagnostic Report",
@@ -782,13 +866,13 @@
     "generatedBy": "Generated by Veris · evidence-based SEO + GEO diagnosis",
     "toc": {
       "summary": "1. Executive Summary",
-      "method": "2. Method & Scope",
-      "pillars": "3. Five-Pillar Detail",
-      "geo": "4. GEO Visibility Supplement",
-      "keywords": "5. Keyword Status & Gaps",
-      "competitors": "6. Competitor Comparison",
-      "priority": "7. Priority Matrix",
-      "roadmap": "8. Action Roadmap",
+      "priority": "2. Priority Matrix",
+      "roadmap": "3. Action Roadmap",
+      "pillars": "4. Five-Pillar Detail",
+      "geo": "5. GEO Visibility Supplement",
+      "keywords": "6. Keyword Status & Gaps",
+      "competitors": "7. Competitor Comparison",
+      "method": "8. Method & Scope",
       "retest": "9. Retest Plan & Loop Results"
     },
     "claim": {
@@ -798,16 +882,20 @@
       "hypothesis": "Hypothesis"
     },
     "summary": {
-      "constraintTitle": "Constraint locator",
+      "constraintTitle": "Where you stand",
       "focusPillars": "Focus pillars: ",
       "healthTitle": "Health score (inferred)",
       "overall": "Overall",
       "unscored": "Not scored",
       "breakdownToggle": "How the score is computed",
+      "breakdownExplainIntro": "The health score (inferred) is a weighted average of five pillar scores (P1 Technical health, P2 Structured data, P3 Keywords & content, P4 SERP competition, P5 Brand authority & GEO), each scored 0–100. A pillar with no collected evidence is excluded from the average entirely — it is not scored as 0, nor does it drag the total down. The raw breakdown below shows exactly how many points each pillar lost and why.",
+      "breakdownExplainRelation": "The health score and the \"severity\" label on each finding below (high/mid/low) are two different rulers: severity measures how urgent one specific issue is, while the health score is a site-wide weighted overview — neither replaces the other. To decide what to fix first, look at findings marked \"high\" severity. Use the health score only to gauge overall direction; it is inferred, not measured, and should not be used alone to make decisions.",
       "topFindings": "Highest-impact findings",
       "noFindings": "No issues found this run — this may mean the site performs well within the checked scope, or it may indicate incomplete evidence coverage. Check 'Diagnostic Scope & Coverage' to confirm data source status.",
       "pillarBarsAria": "Five-pillar health score bar chart",
-      "evidenceLadderTitle": "Evidence grade (confidence ladder)"
+      "evidenceLadderTitle": "Evidence grade (confidence ladder)",
+      "nextStepsTitle": "Next 3 Things To Do",
+      "nextStepsViewDetail": "View details →"
     },
     "evidenceLadder": {
       "l0": { "name": "Unsupported", "desc": "No evidence; not allowed as a conclusion" },
@@ -817,10 +905,10 @@
       "l4": { "name": "Hard measured", "desc": "Hard evidence (e.g. GSC last 28 days)" }
     },
     "constraint": {
-      "systemic_basics": "Systemic basics: high-severity crawl / index / render blockers exist — fix the technical foundation (P1) first.",
-      "visibility_data_missing": "Visibility data missing: GSC is not connected or DataForSEO is unconfigured, so keyword status lacks data. Connect a data source before locating the constraint.",
-      "authority_content": "Authority & content gap: many keyword gaps plus weak authority / corpus signals — focus on content coverage (P3) and brand authority (P5).",
-      "fine_tuning": "Fine-tuning stage: no systemic blockers — work items by impact × effort priority."
+      "systemic_basics": "Your site currently has severe problems where search engines \"can't see it\" or \"can't see it fully\" — pages that won't load, aren't indexed, or render blank. Fix these first, or later optimization work is mostly wasted.",
+      "visibility_data_missing": "There isn't enough data yet to see how your site actually performs on keywords — connect Google Search Console or configure DataForSEO first so the diagnosis can be accurate.",
+      "authority_content": "The site's foundation is fine, but it covers too few keywords and brand recognition in the industry is still weak — focus next on adding content and building reputation.",
+      "fine_tuning": "The site is in good overall shape with no systemic blockers — this is now a fine-tuning stage: work through the items below in order of \"high impact, low cost.\""
     },
     "contract": {
       "scopeTitle": "Diagnostic Scope & Coverage",
@@ -875,6 +963,8 @@
       "title": "GEO Visibility Supplement",
       "meta": "Brand visibility and cognitive quality in AI search — n=5 directional sampling",
       "unbrandedHeadline": "Unbranded recall {present}/{total} (95% lower bound {wilsonPct}%)",
+      "wilsonLabel": "95% lower confidence bound",
+      "wilsonNote": "Small samples swing a lot round to round; call it a real change only when the two rounds' intervals don't overlap — otherwise it's noise.",
       "brandedHeadline": "Of {brandedTotal} branded prompts, {grounded} grounded · {speculative} look speculative",
       "citationRate": "Citation rate among search-backed engine answers: {pct}%",
       "colEngine": "Engine",
@@ -967,8 +1057,11 @@
       "estimateNote": "Search volume / difficulty are third-party estimates (L3), not measured.",
       "gapsTitle": "Keyword gaps",
       "empty": "GSC / DataForSEO not connected — no keyword data.",
+      "expandAll": "Show all ({count} rows)",
+      "collapse": "Collapse",
       "col": {
         "keyword": "Keyword",
+        "type": "Type",
         "clicks": "Clicks",
         "impressions": "Impressions",
         "ctr": "CTR",
@@ -978,6 +1071,10 @@
         "ourPosition": "Our position",
         "opportunity": "Opportunity",
         "volume": "Volume (est.)"
+      },
+      "type": {
+        "measured": "Measured",
+        "gap": "Gap"
       },
       "gapType": {
         "missing": "Missing",
@@ -1095,5 +1192,14 @@
     "findingsLabel": "Findings",
     "readinessLabel": "Diagnostic source readiness",
     "setupAction": "Setup"
+  },
+  "routeFallback": {
+    "loading": "Loading diagnosis data…"
+  },
+  "runError": {
+    "title": "Failed to load this page",
+    "description": "Sorry, something went wrong loading this page's data. You can retry; if it keeps failing, go back to the run overview and re-enter.",
+    "retry": "Retry",
+    "backToOverview": "Back to run overview"
   }
 }

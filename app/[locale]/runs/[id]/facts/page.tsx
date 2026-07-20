@@ -27,15 +27,26 @@ export default async function FactsPage({
     <Shell runId={id} domain={project.domain}>
       <section className="screen show">
         <div className="sec-h">
-          <h2>{t('title')}</h2>
-          <span className="meta">{t('meta')}</span>
+          <div>
+            <Link href={`/${locale}/runs/${id}`} className="rec-back-link">
+              <span aria-hidden="true">←</span>
+              {t('backToDiagnosis')}
+            </Link>
+            <h2>{t('title')}</h2>
+            <span className="meta">{t('meta')}</span>
+          </div>
+          <div className="sec-h-actions">
+            <Link href={`/${locale}/runs/${id}/report`} className="underline underline-offset-2">
+              {t('viewReport')}
+            </Link>
+          </div>
         </div>
 
         <div className="note" style={{ marginBottom: 12 }}>
           {t('gateNotice')}
         </div>
 
-        <div className="card">
+        <div className="card facts-list-card">
           {facts.length ? (
             facts.map((f) => (
               <BrandFactRow
@@ -76,8 +87,7 @@ export default async function FactsPage({
           <h2>{t('addTitle')}</h2>
         </div>
         <form
-          className="card"
-          style={{ display: 'grid', gap: 10 }}
+          className="card facts-form"
           action={async (formData: FormData) => {
             'use server'
             await addBrandFact({
@@ -91,24 +101,24 @@ export default async function FactsPage({
             })
           }}
         >
-          <label style={{ display: 'grid', gap: 4 }}>
-            <span className="fb-l">{t('typeLabel')}</span>
-            <input name="factType" required placeholder={t('typePlaceholder')} />
+          <label className="facts-field facts-field-wide">
+            <span className="facts-field-label">{t('typeLabel')}</span>
+            <input className="facts-input" name="factType" required placeholder={t('typePlaceholder')} />
           </label>
-          <label style={{ display: 'grid', gap: 4 }}>
-            <span className="fb-l">{t('factLabel')}</span>
-            <textarea name="factText" required placeholder={t('factPlaceholder')} />
+          <label className="facts-field facts-field-wide">
+            <span className="facts-field-label">{t('factLabel')}</span>
+            <textarea className="facts-textarea" name="factText" rows={5} required placeholder={t('factPlaceholder')} />
           </label>
-          <label style={{ display: 'grid', gap: 4 }}>
-            <span className="fb-l">{t('sourceUrlLabel')}</span>
-            <input name="sourceUrl" type="url" placeholder="https://…" />
+          <label className="facts-field">
+            <span className="facts-field-label">{t('sourceUrlLabel')}</span>
+            <input className="facts-input" name="sourceUrl" type="url" placeholder="https://…" />
           </label>
-          <label style={{ display: 'grid', gap: 4 }}>
-            <span className="fb-l">{t('sourceNoteLabel')}</span>
-            <input name="sourceNote" />
+          <label className="facts-field">
+            <span className="facts-field-label">{t('sourceNoteLabel')}</span>
+            <input className="facts-input" name="sourceNote" placeholder={t('sourceNotePlaceholder')} />
           </label>
-          <div>
-            <button type="submit" className="act acc on">
+          <div className="facts-form-actions">
+            <button type="submit" className="act accept">
               {t('add')}
             </button>
           </div>

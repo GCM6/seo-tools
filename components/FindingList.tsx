@@ -17,6 +17,7 @@ export function FindingCard({
   provVariant,
   provLabel,
   confidence,
+  provHint,
   severity,
   labels,
   children,
@@ -26,6 +27,8 @@ export function FindingCard({
   provVariant: 'm' | 'i' | 'g' | 'ok'
   provLabel: string
   confidence: string
+  // 徽章 title/aria-label 的就近解释文案（已由调用方 t() 翻译），可选以兼容旧测试。
+  provHint?: string
   severity: string
   labels: {
     dismiss: string
@@ -38,6 +41,10 @@ export function FindingCard({
   }
   children: ReactNode
 }) {
+  // P1-5：confidence 与 provLabel 同源自 confidenceLabel(claimType)（见
+  // lib/diagnosis/finding-rows.ts），此前徽章与本字段各渲染一次造成重复展示，
+  // 现只保留徽章。字段仍保留在签名里以兼容既有调用方（page.tsx 仍会传入）。
+  void confidence
   const [open, setOpen] = useState(false)
 
   // 人工忽略（误报反馈，喂 §11.2 校准）：忽略必须填原因，乐观置灰折叠，PATCH 成功后提交；
@@ -101,8 +108,10 @@ export function FindingCard({
       >
         <span className={`sev ${severity}`} />
         <span className="find-title">{title}</span>
-        <ProvenanceTag variant={provVariant} label={provLabel} />
-        {confidence ? <span className="find-conf">{confidence}</span> : null}
+        {/* P1-5：confidence 纯文本与徽章同源重复，已删除；就近解释改用 title/aria-label */}
+        <span title={provHint} aria-label={provHint}>
+          <ProvenanceTag variant={provVariant} label={provLabel} />
+        </span>
         <span className="chev">▶</span>
       </button>
       <div className="evidence" style={{ display: open ? 'block' : 'none' }}>
@@ -189,6 +198,8 @@ export function FindingList({ items }: { items: FindingItem[] }) {
             {t('tabSeo')}
           </button>
         </div>
+        {/* P1-5：证据等级说明离用户太远——报告开头出现一次不够，这里就近补一行图例 */}
+        <p className="note">{tf('legend')}</p>
       </div>
       <div className="card">
         {shown.map((it) => (
@@ -199,6 +210,7 @@ export function FindingList({ items }: { items: FindingItem[] }) {
             provVariant={it.provVariant}
             provLabel={it.provLabel}
             confidence={it.confidence}
+            provHint={tf(`provenanceHint.${it.provVariant}`)}
             severity={it.severity}
             labels={{
               dismiss: tf('dismiss'),
