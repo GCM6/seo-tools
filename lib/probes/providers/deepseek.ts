@@ -37,12 +37,20 @@ export function createDeepseekProbeProvider({ apiKey, model, fetchImpl = fetch }
       if (!res.ok) throw new Error(`deepseek probe failed: ${res.status}`)
 
       const raw = (await res.json()) as DeepseekBody
+      const content = raw.choices?.[0]?.message?.content
+      // 协议不兼容检测：HTTP 200 但拿不到 choices 数组、或解析出的正文是空字符串。
+      if (!Array.isArray(raw.choices) || raw.choices.length === 0 || content == null || content === '') {
+        throw new Error('deepseek_protocol_mismatch')
+      }
+
       return {
-        answerText: raw.choices?.[0]?.message?.content ?? '',
+        answerText: content,
         citedUrls: [],
         retrievedUrls: [],
         rawResponse: raw,
         webSearchEnabled: false,
+        // DeepSeek 开放 API 没有联网搜索结构，恒 false（不是缺失，是协议如实记录）。
+        searchEvidenceObserved: false,
         temperature: null,
         topP: null,
       }

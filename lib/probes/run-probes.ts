@@ -177,6 +177,9 @@ export async function collectProbesStage(
               request: {
                 ...requestBase,
                 web_search_enabled: answer.webSearchEnabled,
+                // 观测事实（非声明）：本次响应里是否真的出现了检索/引用结构证据，与上面
+                // web_search_enabled（该引擎是否被声明为联网型）并列独立存储，互不替代。
+                search_evidence_observed: answer.searchEvidenceObserved,
                 temperature: answer.temperature,
                 top_p: answer.topP,
               },
@@ -227,6 +230,8 @@ export async function collectProbesStage(
               request: {
                 ...requestBase,
                 web_search_enabled: provider.webSearchEnabled,
+                // 调用失败（含协议不匹配）时未拿到 answer，观测值未知——如实记 null，不虚构。
+                search_evidence_observed: null,
                 temperature: null,
                 top_p: null,
                 error_code: message,

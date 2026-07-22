@@ -29,8 +29,8 @@ import {
 import { buildReport, buildReportContractInput, type ReportFinding, type ReportRecommendation } from '@/lib/diagnosis/report'
 import { rulesVersionDelta } from '@/lib/diagnosis/rule-proposals'
 import { RULES_VERSION, type Pillar, type FindingSeverity } from '@/lib/diagnosis/types'
+import { pillarsWithData } from '@/lib/diagnosis/pillars-with-data'
 import type { ReferenceArtifactRow } from '@/lib/diagnosis/reference-artifacts'
-import type { EvidenceType } from '@/lib/types'
 // GEO 补充段（spec 2026-07-13-geo-branded-unbranded-redesign.md）：报告页只消费聚合结果渲染，
 // 聚合逻辑仍是 lib/probes/summary.ts 这唯一数据来源（不改该文件，只读用它导出的纯函数）。
 import { aggregateProbeSummary } from '@/lib/probes/summary'
@@ -48,33 +48,8 @@ import type { CitationPlatform } from '@/lib/probes/citation-platform'
 
 const PILLARS: Pillar[] = ['P1', 'P2', 'P3', 'P4', 'P5']
 
-// 证据类型 → 支柱：据此判定「采集到数据源的支柱」，并入 findings 里出现的支柱后传给 buildReport。
-const EVIDENCE_PILLAR: Partial<Record<EvidenceType, Pillar>> = {
-  psi: 'P1',
-  site_audit: 'P1',
-  page_fetch: 'P1',
-  schema: 'P2',
-  render_check: 'P2',
-  gsc: 'P3',
-  dataforseo_labs: 'P3',
-  dataforseo_serp: 'P4',
-  ua_probe: 'P5',
-  third_party_presence: 'P5',
-  dataforseo_backlinks: 'P5',
-}
-
 // P1 下的性能/PSI 相关证据类型（明细里标注「实验室数据」）。
 const LAB_TYPES = new Set<string>(['psi'])
-
-function pillarsWithData(evidenceTypes: string[], findingPillars: (string | null)[]): Pillar[] {
-  const set = new Set<Pillar>()
-  for (const t of evidenceTypes) {
-    const p = EVIDENCE_PILLAR[t as EvidenceType]
-    if (p) set.add(p)
-  }
-  for (const p of findingPillars) if (p && (PILLARS as string[]).includes(p)) set.add(p as Pillar)
-  return PILLARS.filter((p) => set.has(p))
-}
 
 // 回测表 metricName → i18n key 映射（第二波任务，spec 见编排者续派消息）。覆盖
 // lib/diagnosis/retest-delta.ts::buildRetestSnapshotRows 与 lib/diagnosis/retest-metrics.ts::
@@ -271,6 +246,7 @@ export async function ReportView({ runId }: { runId: string }) {
     pillarsWithData: pillarsWithData(
       evidence.map((e) => e.type),
       findingRows.map((f) => f.pillar),
+      competitors.length,
     ),
     artifacts,
     ...reportContractInput,

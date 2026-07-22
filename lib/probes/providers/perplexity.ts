@@ -44,17 +44,28 @@ export function createPerplexityProbeProvider({ apiKey, model, fetchImpl = fetch
       if (!res.ok) throw new Error(`perplexity probe failed: ${res.status}`)
 
       const raw = (await res.json()) as PerplexityBody
+      const content = raw.choices?.[0]?.message?.content
+      // 协议不兼容检测：HTTP 200 但拿不到 choices 数组、或解析出的正文是空字符串——
+      // 不静默当空 answer 处理，标记为协议不匹配。
+      if (!Array.isArray(raw.choices) || raw.choices.length === 0 || content == null || content === '') {
+        throw new Error('perplexity_protocol_mismatch')
+      }
+
       const citedUrls = raw.citations ?? []
       const citedSet = new Set(citedUrls)
       const fromSearchResults = (raw.search_results ?? []).map((r) => r.url).filter((u): u is string => Boolean(u))
       // 去重：既在 citedUrls 也在 search_results 里的 URL，只算作 cited，不重复进 retrievedUrls。
       const retrievedUrls = [...new Set(fromSearchResults)].filter((u) => !citedSet.has(u))
+      // 观测证据：citations/search_results 字段是否出现在响应里——字段存在即证据（空数组也算
+      // "引擎回应了这个结构"，与字段完全缺失是两回事），不是看数组是否非空。
+      const searchEvidenceObserved = 'citations' in raw || 'search_results' in raw
       return {
-        answerText: raw.choices?.[0]?.message?.content ?? '',
+        answerText: content,
         citedUrls,
         retrievedUrls,
         rawResponse: raw,
         webSearchEnabled: true,
+        searchEvidenceObserved,
         temperature: null,
         topP: null,
       }

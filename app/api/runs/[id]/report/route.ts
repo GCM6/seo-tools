@@ -12,36 +12,9 @@ import {
 } from '@/lib/repositories'
 import { buildReport, buildReportContractInput, type ReportFinding, type ReportRecommendation } from '@/lib/diagnosis/report'
 import { renderReportMarkdown } from '@/lib/diagnosis/report-markdown'
-import type { Pillar, FindingSeverity } from '@/lib/diagnosis/types'
+import { pillarsWithData } from '@/lib/diagnosis/pillars-with-data'
+import type { FindingSeverity } from '@/lib/diagnosis/types'
 import type { ReferenceArtifactRow } from '@/lib/diagnosis/reference-artifacts'
-import type { EvidenceType } from '@/lib/types'
-
-const PILLARS: Pillar[] = ['P1', 'P2', 'P3', 'P4', 'P5']
-
-// 证据类型 → 支柱（与 report 页 helper 同源；此处内联避免跨层导出页面私有函数）。
-const EVIDENCE_PILLAR: Partial<Record<EvidenceType, Pillar>> = {
-  psi: 'P1',
-  site_audit: 'P1',
-  page_fetch: 'P1',
-  schema: 'P2',
-  render_check: 'P2',
-  gsc: 'P3',
-  dataforseo_labs: 'P3',
-  dataforseo_serp: 'P4',
-  ua_probe: 'P5',
-  third_party_presence: 'P5',
-  dataforseo_backlinks: 'P5',
-}
-
-function pillarsWithData(evidenceTypes: string[], findingPillars: (string | null)[]): Pillar[] {
-  const set = new Set<Pillar>()
-  for (const t of evidenceTypes) {
-    const p = EVIDENCE_PILLAR[t as EvidenceType]
-    if (p) set.add(p)
-  }
-  for (const p of findingPillars) if (p && (PILLARS as string[]).includes(p)) set.add(p as Pillar)
-  return PILLARS.filter((p) => set.has(p))
-}
 
 // GET /runs/{id}/report（§7）—— 默认返回只读聚合 JSON；?format=md 返回可下载的 Markdown 报告（八板块）。
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -106,6 +79,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     pillarsWithData: pillarsWithData(
       evidence.map((e) => e.type),
       findings.map((f) => f.pillar),
+      competitors.length,
     ),
     artifacts,
     ...buildReportContractInput({

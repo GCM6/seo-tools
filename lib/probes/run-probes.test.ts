@@ -19,6 +19,7 @@ function fakeProvider(id: AiProbeProvider['id'], opts?: { configured?: boolean; 
         retrievedUrls: [],
         rawResponse: { echo: prompt },
         webSearchEnabled: true,
+        searchEvidenceObserved: true,
         temperature: null,
         topP: null,
       }
@@ -98,6 +99,8 @@ describe('collectProbesStage', () => {
     expect(req.run_idx).toBe(1)
     expect(req.user_prompt).toBeTruthy()
     expect(req.web_search_enabled).toBe(true)
+    // 观测事实字段与 web_search_enabled（声明值）并列独立落库，不是替代。
+    expect(req.search_evidence_observed).toBe(true)
     const result = created.results[0]
     expect(result.brandPresent).toBe(true)
     expect(result.targetDomainCited).toBe(true)
@@ -120,6 +123,7 @@ describe('collectProbesStage', () => {
         retrievedUrls: ['https://metadocu.com/search-hit'],
         rawResponse: {},
         webSearchEnabled: true,
+        searchEvidenceObserved: true,
         temperature: null,
         topP: null,
       })),
@@ -168,6 +172,8 @@ describe('collectProbesStage', () => {
     const errorEvidence = created.evidence.filter((e) => (e.request as Record<string, unknown>).error_code)
     expect(errorEvidence).toHaveLength(60)
     expect((errorEvidence[0].request as Record<string, unknown>).provider).toBe('openai')
+    // 调用失败时没有 answer，观测值未知——如实记 null，不虚构为 false。
+    expect((errorEvidence[0].request as Record<string, unknown>).search_evidence_observed).toBeNull()
   })
 
   it('D2/D7: persists hedged/unknownAdmission on the probe result and threads project_settings.brandAliases into parsing', async () => {
