@@ -14,12 +14,30 @@ interface Proposal {
   createdAt: string
 }
 
+const CHANGE_TYPE_CLASSES: Record<string, string> = {
+  new_rule: 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20',
+  modify_threshold: 'bg-amber-500/10 text-amber-600 border border-amber-500/20',
+  deprecate: 'bg-error/10 text-error border border-error/20',
+  update_artifact: 'bg-info/10 text-info border border-info/20',
+}
+
+function ChangeTypeBadge({ type, label }: { type: string; label: string }) {
+  return <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${CHANGE_TYPE_CLASSES[type] ?? CHANGE_TYPE_CLASSES.update_artifact}`}>{label}</span>
+}
+
+function formatDate(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toISOString().slice(0, 16).replace('T', ' ')
+}
+
 export function RulesAdminClient({
   pending,
+  approvedCount,
   changelog,
 }: {
   locale: string
   pending: Proposal[]
+  approvedCount: number
   changelog: ChangelogEntry[]
 }) {
   const t = useTranslations('rulesAdmin')
@@ -58,7 +76,11 @@ export function RulesAdminClient({
         headers: { 'content-type': 'application/json' },
         body: '{}',
       })
-      const data = (await res.json()) as { version: string; released: number; artifactsUpdated: number }
+      const data = (await res.json()) as { version?: string; released?: number; artifactsUpdated?: number; error?: string }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      if (!data.version || typeof data.released !== 'number' || typeof data.artifactsUpdated !== 'number') {
+        throw new Error('release_response_invalid')
+      }
       setMsg(t('releaseDone', { version: data.version, released: data.released, artifacts: data.artifactsUpdated }))
       setBusy(false)
       router.refresh()
@@ -97,41 +119,6 @@ export function RulesAdminClient({
     }
   }
 
-  // 根据变更类型，渲染漂亮的带色 Badge
-  function getChangeTypeBadge(type: string) {
-    let classes = ""
-    switch (type) {
-      case 'new_rule':
-        classes = "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-        break
-      case 'modify_threshold':
-        classes = "bg-amber-500/10 text-amber-600 border border-amber-500/20"
-        break
-      case 'deprecate':
-        classes = "bg-error/10 text-error border border-error/20"
-        break
-      case 'update_artifact':
-      default:
-        classes = "bg-info/10 text-info border border-info/20"
-        break
-    }
-    return (
-      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${classes}`}>
-        {t(`changeLabels.${type}`)}
-      </span>
-    )
-  }
-
-  // 格式化日期
-  function formatDate(dStr: string) {
-    try {
-      const d = new Date(dStr)
-      return d.toLocaleDateString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-    } catch {
-      return dStr
-    }
-  }
-
   return (
     <main className="animate-fade-in space-y-6 pb-16 max-w-4xl mx-auto px-4 md:px-0">
       {/* 头部区域 */}
@@ -147,12 +134,12 @@ export function RulesAdminClient({
         </div>
 
         {/* 全局打包发版控制区 */}
-        {pending.length > 0 && (
+        {approvedCount > 0 && (
           <div className="flex items-center gap-3">
             <button
               onClick={release}
               disabled={busy}
-              className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-mystic text-on-mystic font-bold rounded-xl shadow-[0_4px_14px_rgba(99,102,241,0.3)] hover:bg-mystic-hover hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none"
+              className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-mystic text-on-mystic font-bold rounded-xl shadow-[0_4px_14px_rgba(99,102,241,0.3)] hover:bg-mystic-hover hover:scale-[1.02] active:scale-[0.98] transition-[background-color,transform,opacity] disabled:opacity-50 disabled:pointer-events-none"
             >
               {busy ? (
                 <svg className="animate-spin h-4 w-4 text-current" fill="none" viewBox="0 0 24 24">
@@ -184,7 +171,7 @@ export function RulesAdminClient({
       <div className="flex border-b border-border/80 gap-6">
         <button
           onClick={() => { setActiveTab('pending'); setMsg(null) }}
-          className={`pb-3 font-semibold text-sm transition-all relative outline-none flex items-center gap-1.5 ${
+          className={`pb-3 font-semibold text-sm transition-colors relative outline-none flex items-center gap-1.5 ${
             activeTab === 'pending' ? 'text-primary' : 'text-muted hover:text-ink'
           }`}
         >
@@ -199,7 +186,7 @@ export function RulesAdminClient({
 
         <button
           onClick={() => { setActiveTab('submit'); setMsg(null) }}
-          className={`pb-3 font-semibold text-sm transition-all relative outline-none ${
+          className={`pb-3 font-semibold text-sm transition-colors relative outline-none ${
             activeTab === 'submit' ? 'text-primary' : 'text-muted hover:text-ink'
           }`}
         >
@@ -209,7 +196,7 @@ export function RulesAdminClient({
 
         <button
           onClick={() => { setActiveTab('history'); setMsg(null) }}
-          className={`pb-3 font-semibold text-sm transition-all relative outline-none ${
+          className={`pb-3 font-semibold text-sm transition-colors relative outline-none ${
             activeTab === 'history' ? 'text-primary' : 'text-muted hover:text-ink'
           }`}
         >
@@ -234,11 +221,11 @@ export function RulesAdminClient({
             ) : (
               <div className="grid grid-cols-1 gap-4">
                 {pending.map((p) => (
-                  <div key={p.id} className="bg-surface-1 border border-border rounded-2xl p-5 shadow-card hover:shadow-card-hover transition-all duration-300 space-y-4 flex flex-col justify-between">
+                  <div key={p.id} className="bg-surface-1 border border-border rounded-2xl p-5 shadow-card hover:shadow-card-hover transition-shadow duration-300 space-y-4 flex flex-col justify-between">
                     <div className="space-y-3">
                       {/* 卡片头部：类型与源 */}
                       <div className="flex items-center justify-between flex-wrap gap-2">
-                        {getChangeTypeBadge(p.changeType)}
+                        <ChangeTypeBadge type={p.changeType} label={t(`changeLabels.${p.changeType}`)} />
                         <div className="flex items-center gap-2 text-xs text-muted">
                           <span>{t('source')}:</span>
                           <span className="font-semibold text-body bg-surface-2 border border-border-subtle px-2 py-0.5 rounded">
@@ -262,9 +249,9 @@ export function RulesAdminClient({
                       <div>
                         <span className="block text-[11px] font-mono text-muted mb-1.5 uppercase tracking-wider">{t('evidence')}</span>
                         <div className="flex flex-wrap gap-2">
-                          {p.evidenceRefs.map((ref, idx) => (
+                          {p.evidenceRefs.map((ref) => (
                             <a
-                              key={idx}
+                              key={ref}
                               href={ref}
                               target="_blank"
                               rel="noopener noreferrer"
@@ -285,14 +272,14 @@ export function RulesAdminClient({
                       <button
                         onClick={() => patch(p.id, 'reject')}
                         disabled={busy}
-                        className="inline-flex items-center justify-center gap-1.5 px-4 py-1.5 text-xs font-bold text-error bg-error/5 border border-error/20 rounded-lg hover:bg-error hover:text-white transition-all disabled:opacity-50 disabled:pointer-events-none active:scale-[0.96]"
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-1.5 text-xs font-bold text-error bg-error/5 border border-error/20 rounded-lg hover:bg-error hover:text-white transition-[background-color,color,transform,opacity] disabled:opacity-50 disabled:pointer-events-none active:scale-[0.96]"
                       >
                         {t('reject')}
                       </button>
                       <button
                         onClick={() => patch(p.id, 'approve')}
                         disabled={busy}
-                        className="inline-flex items-center justify-center gap-1.5 px-4 py-1.5 text-xs font-bold text-success bg-success/5 border border-success/20 rounded-lg hover:bg-success hover:text-white transition-all disabled:opacity-50 disabled:pointer-events-none active:scale-[0.96]"
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-1.5 text-xs font-bold text-success bg-success/5 border border-success/20 rounded-lg hover:bg-success hover:text-white transition-[background-color,color,transform,opacity] disabled:opacity-50 disabled:pointer-events-none active:scale-[0.96]"
                       >
                         {t('approve')}
                       </button>
@@ -317,29 +304,31 @@ export function RulesAdminClient({
             <div className="space-y-4">
               {/* Target */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-body">
+                <label htmlFor="manual-rule-target" className="block text-xs font-semibold text-body">
                   {t('manualTargetLabel')} <span className="text-error">*</span>
                 </label>
                 <input
+                  id="manual-rule-target"
                   type="text"
                   value={manualTarget}
                   onChange={(e) => setManualTarget(e.target.value)}
                   placeholder="例如：rule_canonical_canonical_link 或 refart_gsc_docs"
-                  className="w-full bg-surface-2 border border-border rounded-lg px-3.5 py-2.5 font-mono text-sm focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none transition-all placeholder-ghost/60"
+                  className="w-full bg-surface-2 border border-border rounded-lg px-3.5 py-2.5 font-mono text-sm focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none transition-[border-color,box-shadow] placeholder-ghost/60"
                   disabled={busy}
                 />
               </div>
 
               {/* Change Type */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-body">
+                <label htmlFor="manual-rule-change-type" className="block text-xs font-semibold text-body">
                   {t('changeType')}
                 </label>
                 <div className="relative">
                   <select
+                    id="manual-rule-change-type"
                     value={manualChange}
                     onChange={(e) => setManualChange(e.target.value)}
-                    className="w-full bg-surface-2 border border-border rounded-lg px-3.5 py-2.5 text-sm focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none transition-all appearance-none cursor-pointer text-ink font-semibold"
+                    className="w-full bg-surface-2 border border-border rounded-lg px-3.5 py-2.5 text-sm focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none transition-[border-color,box-shadow] appearance-none cursor-pointer text-ink font-semibold"
                     disabled={busy}
                   >
                     {['new_rule', 'modify_threshold', 'deprecate', 'update_artifact'].map((c) => (
@@ -358,15 +347,16 @@ export function RulesAdminClient({
 
               {/* Evidence Textarea */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-body">
+                <label htmlFor="manual-rule-evidence" className="block text-xs font-semibold text-body">
                   {t('manualEvidenceLabel')} <span className="text-error">*</span>
                 </label>
                 <textarea
+                  id="manual-rule-evidence"
                   value={manualEvidence}
                   onChange={(e) => setManualEvidence(e.target.value)}
                   placeholder="https://example.com/source-evidence-page-url&#10;https://another-evidence.org/blog-post"
                   rows={4}
-                  className="w-full bg-surface-2 border border-border rounded-lg px-3.5 py-2.5 text-sm focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none transition-all placeholder-ghost/60 font-mono"
+                  className="w-full bg-surface-2 border border-border rounded-lg px-3.5 py-2.5 text-sm focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none transition-[border-color,box-shadow] placeholder-ghost/60 font-mono"
                   disabled={busy}
                 />
                 <span className="block text-[11px] text-muted">请输入一手来源 URL 作为支撑证据，多条请换行输入。</span>
@@ -378,7 +368,7 @@ export function RulesAdminClient({
               <button
                 onClick={submitManual}
                 disabled={busy || !manualTarget.trim() || !manualEvidence.trim()}
-                className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 bg-ink text-on-ink font-bold rounded-xl shadow-card hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none"
+                className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 bg-ink text-on-ink font-bold rounded-xl shadow-card hover:opacity-90 active:scale-[0.98] transition-[opacity,transform] disabled:opacity-50 disabled:pointer-events-none"
               >
                 {busy && (
                   <svg className="animate-spin h-3.5 w-3.5 text-current" fill="none" viewBox="0 0 24 24">
@@ -418,11 +408,11 @@ export function RulesAdminClient({
                   {/* 提案子变更列表 */}
                   <div className="bg-surface-1 border border-border/80 rounded-2xl p-4 shadow-card">
                     <ul className="divide-y divide-border-subtle text-sm">
-                      {e.proposals.map((p, i) => (
-                        <li key={i} className="py-3 first:pt-0 last:pb-0 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      {e.proposals.map((p) => (
+                        <li key={`${p.changeType}:${p.target}:${p.evidenceRefs.join('|')}`} className="py-3 first:pt-0 last:pb-0 flex flex-col md:flex-row md:items-center justify-between gap-3">
                           <div className="space-y-1.5 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              {getChangeTypeBadge(p.changeType)}
+                              <ChangeTypeBadge type={p.changeType} label={t(`changeLabels.${p.changeType}`)} />
                               <code className="text-xs font-mono text-ink bg-surface-2 px-1.5 py-0.5 rounded border border-border-subtle">
                                 {p.target}
                               </code>
@@ -432,9 +422,9 @@ export function RulesAdminClient({
                           {/* 关联证据 */}
                           {p.evidenceRefs && p.evidenceRefs.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 justify-end md:max-w-xs">
-                              {p.evidenceRefs.map((ref, idx) => (
+                              {p.evidenceRefs.map((ref) => (
                                 <a
-                                  key={idx}
+                                  key={`${p.target}:${ref}`}
                                   href={ref}
                                   target="_blank"
                                   rel="noopener noreferrer"
@@ -461,4 +451,3 @@ export function RulesAdminClient({
     </main>
   )
 }
-

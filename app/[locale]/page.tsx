@@ -1,4 +1,5 @@
 import { setRequestLocale, getTranslations } from 'next-intl/server'
+import { marketLabel } from '@/lib/markets'
 import Link from 'next/link'
 import { listProjectsWithSummary } from '@/lib/repositories'
 import { loadDataSourceStatuses } from '@/lib/settings/load-statuses'
@@ -159,7 +160,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
                       </div>
                       <div className="project-card-market-row">
                         <span className="project-card-market-tag">
-                          {p.market}
+                          {marketLabel(p.market, locale) ?? tProjects('marketUnset')}
                         </span>
                       </div>
                     </div>

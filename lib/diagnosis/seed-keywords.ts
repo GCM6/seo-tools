@@ -1,43 +1,46 @@
-// 种子词收集（Phase C 竞品识别与缺口分析的输入）：GSC Top 展示词 ∪ 探针 prompt 检索式，
-// 去品牌导航词、去重、按优先级截断。纯函数、确定性——同输入同输出，保证同协议回测可比。
-// spec §4 P4：种子词集 = GSC Top 展示词（≤100）∪ 探针 prompt 对应检索式（去品牌词）。
+// 种子词收集（SP-A §3.3）：用户目标词 → 本期 GSC → 历史 GSC → 站点关键短语；去品牌（含别名）、去重、截断。
+// 探针问句不再作为种子——它们是自然语言问题，且曾被行业下拉默认值污染（审计 §3.1）。
+// 纯函数、确定性：同输入同输出，保证同协议回测可比。
+export type SeedSource = 'manual' | 'gsc' | 'gsc_history' | 'site_phrase'
 
-const normalize = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, ' ')
-
-// 品牌导航词判定：归一后包含品牌串即视为品牌词（竞品识别不用品牌词——SERP 会被本站自身占位，
-// 无法暴露真实竞品）。品牌为空则不过滤。
-function isBrandQuery(text: string, brand: string): boolean {
-  const b = normalize(brand)
-  if (!b) return false
-  return normalize(text).includes(b)
+export interface Seed {
+  text: string
+  source: SeedSource
+  lastSeenAt?: string
 }
 
-export function gatherSeedKeywords(input: {
-  // GSC query 维展示词（keyText + impressions），按展示量排序取头部。
-  gscQueries: { keyText: string; impressions: number }[]
-  // 探针 prompt 文本（作为品类/长尾检索式种子）。
-  promptTexts: string[]
-  brand: string
-  limit: number
-}): string[] {
-  const { gscQueries, promptTexts, brand, limit } = input
-  const seen = new Set<string>()
-  const out: string[] = []
+const normalize = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, ' ')
+// 品牌比较口径：去掉大小写、空白与符号（'Meta Docu' / 'meta-docu' / 'MetaDocu' 视为同一品牌）。
+const squash = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '')
 
-  const push = (raw: string) => {
+export function gatherSeedKeywords(input: {
+  manualKeywords: string[]
+  gscQueries: { keyText: string; impressions: number }[]
+  historicalGsc: { keyText: string; lastSeenAt: string }[]
+  sitePhrases: string[]
+  brand: string
+  aliases: string[]
+  limit: number
+}): Seed[] {
+  const brandKeys = [input.brand, ...input.aliases].map(squash).filter(Boolean)
+  const isBrand = (t: string) => brandKeys.some((b) => squash(t).includes(b))
+  const seen = new Set<string>()
+  const out: Seed[] = []
+
+  const push = (raw: string, source: SeedSource, lastSeenAt?: string) => {
     const text = raw.trim()
-    if (!text) return
-    if (isBrandQuery(text, brand)) return // 去品牌导航词
+    if (!text || isBrand(text)) return
     const key = normalize(text)
     if (seen.has(key)) return
     seen.add(key)
-    out.push(text)
+    out.push(lastSeenAt ? { text, source, lastSeenAt } : { text, source })
   }
 
-  // GSC 展示词优先（真实需求信号，L4），按展示量降序。
-  for (const q of [...gscQueries].sort((a, b) => b.impressions - a.impressions)) push(q.keyText)
-  // 探针检索式补充品类/长尾覆盖。
-  for (const t of promptTexts) push(t)
+  for (const k of input.manualKeywords) push(k, 'manual')
+  for (const q of [...input.gscQueries].sort((a, b) => b.impressions - a.impressions)) push(q.keyText, 'gsc')
+  for (const h of [...input.historicalGsc].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt)))
+    push(h.keyText, 'gsc_history', h.lastSeenAt)
+  for (const p of input.sitePhrases) push(p, 'site_phrase')
 
-  return out.slice(0, Math.max(0, limit))
+  return out.slice(0, Math.max(0, input.limit))
 }

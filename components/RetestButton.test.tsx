@@ -49,6 +49,21 @@ describe('RetestButton', () => {
     expect(pushMock).not.toHaveBeenCalled()
   })
 
+  it('422 品类/市场未设置（SP-A §3.5）：链到向导补充项目设置', async () => {
+    mockFetch(422, { error: 'category_required', projectId: 'proj_1' })
+    render(<RetestButton locale="zh" baselineRunId="run_base" labels={{ ...labels, needsSetup: '项目品类/市场未设置，先补充' }} />)
+    fireEvent.click(screen.getByRole('button', { name: '发起回测' }))
+    const link = await screen.findByRole('link', { name: '项目品类/市场未设置，先补充' })
+    expect(link).toHaveAttribute('href', '/zh/new?projectId=proj_1')
+  })
+
+  it('422 但调用方没给 needsSetup 文案：链接回落到错误文案', async () => {
+    mockFetch(422, { error: 'market_required', projectId: 'proj_1' })
+    render(<RetestButton locale="zh" baselineRunId="run_base" labels={labels} />)
+    fireEvent.click(screen.getByRole('button', { name: '发起回测' }))
+    expect(await screen.findByRole('link', { name: '发起失败，请重试' })).toHaveAttribute('href', '/zh/new?projectId=proj_1')
+  })
+
   it('5xx：显示错误文案', async () => {
     mockFetch(503, { error: 'dispatch_failed' })
     render(<RetestButton locale="zh" baselineRunId="run_base" labels={labels} />)

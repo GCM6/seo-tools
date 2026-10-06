@@ -21,3 +21,24 @@ describe('§6.2 invariants', () => {
     expect(() => assertInputFactsVerified([{ status: 'verified' }])).not.toThrow()
   })
 })
+
+import { isValidCategory, assertValidCategory, isValidKeyword } from '@/lib/repositories/validators'
+
+describe('品类/关键词校验（SP-A §3.2）', () => {
+  it('接受英文品类描述', () => {
+    for (const ok of ['document metadata removal tool', 'B2B SaaS', "Men's running shoes", 'CRM & sales automation', 'e-mail (IMAP/SMTP) client'])
+      expect(isValidCategory(ok), ok).toBe(true)
+  })
+  it('拒绝旧下拉默认值、中文、过短、过长、纯空白', () => {
+    for (const bad of ['B2B SaaS · 项目协作', 'B2B SaaS · Team collaboration', '其他…', 'Other…', '文档工具', 'ab', '   ', 'x'.repeat(81), '-leading dash'])
+      expect(isValidCategory(bad), bad).toBe(false)
+    expect(() => assertValidCategory('其他…')).toThrow()
+    expect(() => assertValidCategory('document metadata removal tool')).not.toThrow()
+  })
+  it('关键词允许 2 字符、拒绝中文', () => {
+    expect(isValidKeyword('ai')).toBe(true)
+    expect(isValidKeyword('remove pdf metadata')).toBe(true)
+    expect(isValidKeyword('a')).toBe(false)
+    expect(isValidKeyword('移除元数据')).toBe(false)
+  })
+})

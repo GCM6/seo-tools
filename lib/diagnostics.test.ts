@@ -93,7 +93,7 @@ describe('deriveStatCards', () => {
         // 头条指标应严格等于这里的 unbranded 子集，而非上面的全集 promptsPresent/promptsTotal。
         unbranded: { present: 6, total: 23, wilsonLow: 0.18 },
         branded: { perEngine: [] },
-        citationRate: 0, citedDomains: [], ugcCitationShare: null,
+        citationRate: 0, citedDomains: [], ugcCitationShare: null, samplesPerPromptPerEngine: 1,
       },
     })
     expect(card(cards, 'aiVisibility')).toEqual({
@@ -120,7 +120,7 @@ describe('deriveStatCards', () => {
         sampleEvidenceId: 'ev_probe_hit',
         unbranded: { present: 0, total: 0, wilsonLow: 0 },
         branded: { perEngine: [] },
-        citationRate: 0, citedDomains: [], ugcCitationShare: null,
+        citationRate: 0, citedDomains: [], ugcCitationShare: null, samplesPerPromptPerEngine: 1,
       },
     })
     expect(card(cards, 'aiVisibility')).toEqual({
@@ -177,5 +177,15 @@ describe('deriveAvgRank', () => {
     expect(deriveStatCards([]).find((c) => c.key === 'avgRank')).toEqual({ key: 'avgRank', state: 'pending', reason: 'gsc' })
     expect(deriveStatCards([gscEv('e', { dimension: 'query', rows: [] })]).find((c) => c.key === 'avgRank'))
       .toEqual({ key: 'avgRank', state: 'pending', reason: 'gsc' })
+  })
+})
+
+describe('首页结构化数据类型卡（SP-A §5.3：卡名写"首页"，取数必须是首页）', () => {
+  it('深检页的 schema 证据排在前面时，仍取入口页（无 sitePageId）那条', () => {
+    const cards = deriveStatCards([
+      { id: 'ev_sc_deep', type: 'schema', claimLevel: 'L4', sitePageId: 'sp_2', payload: { types: ['Product', 'BreadcrumbList', 'Organization', 'WebSite', 'WebPage'] } },
+      { id: 'ev_sc_entry', type: 'schema', claimLevel: 'L4', sitePageId: null, payload: { types: ['Organization', 'WebSite'] } },
+    ])
+    expect(card(cards, 'schemaCoverage')).toMatchObject({ state: 'measured', value: '2', evidenceId: 'ev_sc_entry' })
   })
 })

@@ -1,5 +1,6 @@
-import { sqliteTable, text, integer, check, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, blob, check, uniqueIndex, index } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
+import type { InternalLinkDetail, ExternalLinkDetail } from '../lib/crawl/light-check'
 
 export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(),
@@ -40,6 +41,9 @@ export const projectSettings = sqliteTable('project_settings', {
   // D7（GEO branded/unbranded 重设计）：用户在设置页维护的品牌别名，供探针 branded 判定 /
   // parse 的 mentions 逐一匹配。匹配配置而非发布事实，不走 verified 闸门。
   brandAliases: text('brand_aliases', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  // SP-A §3.3：用户在向导里填的目标关键词（种子第一优先级）。存设置而不写 keywords 表——keywords 是测量面，
+  // 与 GSC/DataForSEO 词按 (project, text, market) 合并且级联挂指标；整组替换会撞唯一索引、级联删历史指标（第一波审查 C1/I1）。
+  targetKeywords: text('target_keywords', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
 })
 
 export const brandFacts = sqliteTable('brand_facts', {
@@ -65,6 +69,8 @@ export const runs = sqliteTable('runs', {
   startedAt: text('started_at'),
   finishedAt: text('finished_at'),
   failureReason: text('failure_reason'),
+  // 知识脑工作流兼容桥：legacy /api/runs 会自动创建 analysis_session 并回填此字段。
+  analysisSessionId: text('analysis_session_id'),
 }, (t) => [
   check('runs_type', sql`${t.runType} in ('baseline','retest')`),
   check('runs_status', sql`${t.status} in ('draft','collecting','collected','diagnosing','reviewing','output','failed')`),
@@ -130,6 +136,11 @@ export const sitePages = sqliteTable('site_pages', {
   // 与 url_templates.representative_page_id 互为环，SQLite 单侧建 FK，此列存普通 id 字符串。
   templateId: text('template_id'),
   isKeyPage: integer('is_key_page', { mode: 'boolean' }).notNull().default(false),
+  // 本行最近一次被哪个 run 抓到/发现（spec S1 §5）：快照与入度按 run 隔离，历史 run 的页不混入。
+  lastSeenRunId: text('last_seen_run_id'),
+  // 链接明细（spec S1 §3）：站内目标聚合（锚文本/区域/rel）与站外链接；discovered_only 等未抓页为 null。
+  linkDetails: text('link_details', { mode: 'json' }).$type<InternalLinkDetail[]>(),
+  externalLinks: text('external_links', { mode: 'json' }).$type<ExternalLinkDetail[]>(),
   lastCheckedAt: text('last_checked_at'),
   createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
 }, (t) => [
@@ -185,6 +196,27 @@ export const evidenceArtifacts = sqliteTable('evidence_artifacts', {
 }, (t) => [
   check('evidence_type', sql`${t.type} in ('gsc','ai_answer','page_fetch','render_check','schema','serp_snapshot','manual','sitemap','site_audit','dataforseo_serp','dataforseo_labs','dataforseo_backlinks','psi','ua_probe','third_party_presence','serp_aio','social_presence')`),
   check('evidence_level', sql`${t.claimLevel} in ('L1','L2','L3','L4')`),
+])
+
+// 原始响应（SP-A §4.3）：第三方 API 的原文 gzip 后按需存取（诊断上下文不加载）。失败响应没有证据行，
+// evidence_id 可空，采集成功后再挂到证据上；sha256 为完整原文哈希；删 run/证据级联删除。
+export const evidenceRaw = sqliteTable('evidence_raw', {
+  id: text('id').primaryKey(),
+  runId: text('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
+  evidenceId: text('evidence_id').references(() => evidenceArtifacts.id, { onDelete: 'cascade' }),
+  // 与 data_source_statuses.source_key 同口径（如 'dataforseo:labs'、'psi'）。
+  sourceKey: text('source_key').notNull(),
+  httpStatus: integer('http_status'),
+  contentType: text('content_type'),
+  encoding: text('encoding').notNull().default('gzip'),
+  content: blob('content', { mode: 'buffer' }).notNull(),
+  byteLength: integer('byte_length').notNull(),
+  truncated: integer('truncated', { mode: 'boolean' }).notNull().default(false),
+  sha256: text('sha256').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [
+  index('evidence_raw_evidence_id').on(t.evidenceId),
+  check('evidence_raw_encoding', sql`${t.encoding} in ('gzip')`),
 ])
 
 export const aiProbeResults = sqliteTable('ai_probe_results', {
@@ -252,6 +284,12 @@ export const findings = sqliteTable('findings', {
   // 误报反馈（喂 §11.2 校准）
   dismissedAt: text('dismissed_at'),
   dismissReason: text('dismiss_reason'),
+  // 诊断切入知识脑后的可追溯字段；历史 finding 可空。
+  workflowStepRunId: text('workflow_step_run_id'),
+  knowledgeVersionRefs: text('knowledge_version_refs', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  knowledgeReleaseVersion: text('knowledge_release_version'),
+  workflowVersion: text('workflow_version'),
+  ruleConfigVersion: text('rule_config_version'),
 }, (t) => [
   check('findings_side', sql`${t.side} in ('seo','geo','technical')`),
   check('findings_claim', sql`${t.claimType} in ('hypothesis','inferred','measured_sample','measured_hard')`),
@@ -420,3 +458,287 @@ export const reportShares = sqliteTable('report_shares', {
 }, (t) => [
   uniqueIndex('report_shares_token').on(t.token),
 ])
+
+// —— SEO 知识脑：来源 → 不可变原文版本 → 原子论点 → 双语知识版本 → 发布 ——
+export const knowledgeSources = sqliteTable('knowledge_sources', {
+  id: text('id').primaryKey(),
+  sourceType: text('source_type').notNull(),
+  name: text('name').notNull(),
+  canonicalUrl: text('canonical_url').notNull(),
+  language: text('language').notNull().default('en'),
+  authorityLevel: text('authority_level').notNull().default('community'),
+  config: text('config', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default(sql`'{}'`),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  lastCursor: text('last_cursor'),
+  lastSuccessAt: text('last_success_at'),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+  updatedAt: text('updated_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [
+  uniqueIndex('knowledge_sources_url').on(t.canonicalUrl),
+  check('knowledge_sources_type', sql`${t.sourceType} in ('google_docs','google_news','reddit_community','reddit_search','legacy_seed')`),
+  check('knowledge_sources_authority', sql`${t.authorityLevel} in ('official','measured','community','legacy')`),
+])
+
+export const knowledgeIngestRuns = sqliteTable('knowledge_ingest_runs', {
+  id: text('id').primaryKey(),
+  trigger: text('trigger').notNull().default('scheduled'),
+  sourceId: text('source_id').references(() => knowledgeSources.id, { onDelete: 'set null' }),
+  status: text('status').notNull().default('running'),
+  startedAt: text('started_at').notNull().default(sql`(current_timestamp)`),
+  finishedAt: text('finished_at'),
+  fetchedCount: integer('fetched_count').notNull().default(0),
+  changedCount: integer('changed_count').notNull().default(0),
+  skippedCount: integer('skipped_count').notNull().default(0),
+  errorCount: integer('error_count').notNull().default(0),
+  coverage: text('coverage', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default(sql`'{}'`),
+  errorSummary: text('error_summary'),
+}, (t) => [
+  index('knowledge_ingest_runs_source_started').on(t.sourceId, t.startedAt),
+  check('knowledge_ingest_runs_status', sql`${t.status} in ('running','completed','partial','failed')`),
+  check('knowledge_ingest_runs_trigger', sql`${t.trigger} in ('scheduled','manual','backfill','retry')`),
+])
+
+export const sourceDocuments = sqliteTable('source_documents', {
+  id: text('id').primaryKey(),
+  sourceId: text('source_id').notNull().references(() => knowledgeSources.id, { onDelete: 'cascade' }),
+  externalId: text('external_id').notNull(),
+  canonicalUrl: text('canonical_url').notNull(),
+  documentType: text('document_type').notNull().default('article'),
+  title: text('title').notNull().default(''),
+  authorHash: text('author_hash'),
+  community: text('community'),
+  publishedAt: text('published_at'),
+  lastObservedAt: text('last_observed_at').notNull().default(sql`(current_timestamp)`),
+  deletedAt: text('deleted_at'),
+  currentVersionId: text('current_version_id'),
+  metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default(sql`'{}'`),
+}, (t) => [
+  uniqueIndex('source_documents_source_external').on(t.sourceId, t.externalId),
+  index('source_documents_published').on(t.publishedAt),
+  check('source_documents_type', sql`${t.documentType} in ('article','release_note','post','comment','thread','legacy_rule')`),
+])
+
+export const sourceDocumentVersions = sqliteTable('source_document_versions', {
+  id: text('id').primaryKey(),
+  documentId: text('document_id').notNull().references(() => sourceDocuments.id, { onDelete: 'cascade' }),
+  ingestRunId: text('ingest_run_id').references(() => knowledgeIngestRuns.id, { onDelete: 'set null' }),
+  contentHash: text('content_hash').notNull(),
+  objectKey: text('object_key').notNull(),
+  rawText: text('raw_text').notNull().default(''),
+  locale: text('locale').notNull().default('en'),
+  capturedAt: text('captured_at').notNull().default(sql`(current_timestamp)`),
+  httpEtag: text('http_etag'),
+  httpLastModified: text('http_last_modified'),
+  parserVersion: text('parser_version').notNull().default('knowledge_parser_v1'),
+  status: text('status').notNull().default('stored'),
+}, (t) => [
+  uniqueIndex('source_document_versions_doc_hash').on(t.documentId, t.contentHash),
+  index('source_document_versions_captured').on(t.capturedAt),
+  check('source_document_versions_status', sql`${t.status} in ('stored','distilling','distilled','failed','superseded')`),
+])
+
+export const claimBatches = sqliteTable('claim_batches', {
+  id: text('id').primaryKey(),
+  documentVersionId: text('document_version_id').notNull().references(() => sourceDocumentVersions.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull(),
+  model: text('model').notNull(),
+  promptVersion: text('prompt_version').notNull(),
+  inputHash: text('input_hash').notNull(),
+  status: text('status').notNull().default('running'),
+  error: text('error'),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+  finishedAt: text('finished_at'),
+}, (t) => [
+  uniqueIndex('claim_batches_input_provider_prompt').on(t.inputHash, t.provider, t.model, t.promptVersion),
+  check('claim_batches_status', sql`${t.status} in ('running','completed','failed','invalid')`),
+])
+
+export const knowledgeClaims = sqliteTable('knowledge_claims', {
+  id: text('id').primaryKey(),
+  batchId: text('batch_id').notNull().references(() => claimBatches.id, { onDelete: 'cascade' }),
+  documentVersionId: text('document_version_id').notNull().references(() => sourceDocumentVersions.id, { onDelete: 'cascade' }),
+  claimType: text('claim_type').notNull(),
+  topic: text('topic').notNull(),
+  statementZh: text('statement_zh').notNull(),
+  statementEn: text('statement_en').notNull().default(''),
+  applicability: text('applicability', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default(sql`'{}'`),
+  confidence: text('confidence').notNull().default('hypothesis'),
+  officialConflict: integer('official_conflict', { mode: 'boolean' }).notNull().default(false),
+  consensusKey: text('consensus_key'),
+  status: text('status').notNull().default('pending_review'),
+  reviewerNote: text('reviewer_note'),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+  reviewedAt: text('reviewed_at'),
+}, (t) => [
+  index('knowledge_claims_status_topic').on(t.status, t.topic),
+  index('knowledge_claims_consensus').on(t.consensusKey),
+  check('knowledge_claims_type', sql`${t.claimType} in ('principle','diagnostic_check','decision_rule','remediation','blocker','validation','explanation','hypothesis')`),
+  check('knowledge_claims_confidence', sql`${t.confidence} in ('observation','hypothesis','community_practice_candidate','inferred','measured','official')`),
+  check('knowledge_claims_status', sql`${t.status} in ('pending_review','approved','edited','rejected','superseded')`),
+])
+
+export const claimEvidence = sqliteTable('claim_evidence', {
+  id: text('id').primaryKey(),
+  claimId: text('claim_id').notNull().references(() => knowledgeClaims.id, { onDelete: 'cascade' }),
+  documentVersionId: text('document_version_id').notNull().references(() => sourceDocumentVersions.id, { onDelete: 'cascade' }),
+  exactQuote: text('exact_quote').notNull(),
+  startOffset: integer('start_offset').notNull(),
+  endOffset: integer('end_offset').notNull(),
+  sourceUrl: text('source_url').notNull(),
+}, (t) => [index('claim_evidence_claim').on(t.claimId)])
+
+export const knowledgeEntries = sqliteTable('knowledge_entries', {
+  id: text('id').primaryKey(),
+  stableKey: text('stable_key').notNull(),
+  knowledgeType: text('knowledge_type').notNull(),
+  topic: text('topic').notNull(),
+  status: text('status').notNull().default('draft'),
+  currentVersionId: text('current_version_id'),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+  updatedAt: text('updated_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [
+  uniqueIndex('knowledge_entries_stable_key').on(t.stableKey),
+  index('knowledge_entries_topic_status').on(t.topic, t.status),
+  check('knowledge_entries_status', sql`${t.status} in ('draft','published','retired')`),
+])
+
+export const knowledgeEntryVersions = sqliteTable('knowledge_entry_versions', {
+  id: text('id').primaryKey(),
+  entryId: text('entry_id').notNull().references(() => knowledgeEntries.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull(),
+  titleZh: text('title_zh').notNull(),
+  titleEn: text('title_en').notNull(),
+  bodyZh: text('body_zh').notNull(),
+  bodyEn: text('body_en').notNull(),
+  diagnosticInstruction: text('diagnostic_instruction', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default(sql`'{}'`),
+  claimIds: text('claim_ids', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  sourceUrls: text('source_urls', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  confidence: text('confidence').notNull(),
+  changeSummary: text('change_summary').notNull().default(''),
+  createdBy: text('created_by').notNull().default('human_review'),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [uniqueIndex('knowledge_entry_versions_entry_version').on(t.entryId, t.version)])
+
+export const knowledgeReleases = sqliteTable('knowledge_releases', {
+  id: text('id').primaryKey(),
+  version: text('version').notNull(),
+  entryVersionIds: text('entry_version_ids', { mode: 'json' }).$type<string[]>().notNull(),
+  status: text('status').notNull().default('published'),
+  notes: text('notes').notNull().default(''),
+  publishedAt: text('published_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [
+  uniqueIndex('knowledge_releases_version').on(t.version),
+  check('knowledge_releases_status', sql`${t.status} in ('published','superseded','rolled_back')`),
+])
+
+export const knowledgeReviews = sqliteTable('knowledge_reviews', {
+  id: text('id').primaryKey(),
+  targetType: text('target_type').notNull(),
+  targetId: text('target_id').notNull(),
+  action: text('action').notNull(),
+  reviewer: text('reviewer').notNull().default('local'),
+  reason: text('reason').notNull().default(''),
+  editedPayload: text('edited_payload', { mode: 'json' }),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [
+  index('knowledge_reviews_target').on(t.targetType, t.targetId),
+  check('knowledge_reviews_target_type', sql`${t.targetType} in ('claim','knowledge_entry','workflow_proposal')`),
+  check('knowledge_reviews_action', sql`${t.action} in ('approve','edit','reject','retire','release')`),
+])
+
+// —— 可执行诊断工作流：知识发布后，变更仍需第二次人工审核 ——
+export const workflowChangeProposals = sqliteTable('workflow_change_proposals', {
+  id: text('id').primaryKey(),
+  baseWorkflowVersion: text('base_workflow_version'),
+  knowledgeReleaseVersion: text('knowledge_release_version').notNull(),
+  title: text('title').notNull(),
+  rationale: text('rationale').notNull(),
+  diff: text('diff', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  evidenceRefs: text('evidence_refs', { mode: 'json' }).$type<string[]>().notNull(),
+  providerSnapshot: text('provider_snapshot', { mode: 'json' }).$type<Record<string, unknown>>(),
+  status: text('status').notNull().default('pending_review'),
+  reviewedAt: text('reviewed_at'),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [
+  index('workflow_change_proposals_status').on(t.status),
+  check('workflow_change_proposals_status', sql`${t.status} in ('pending_review','approved','rejected','released')`),
+])
+
+export const workflowVersions = sqliteTable('workflow_versions', {
+  id: text('id').primaryKey(),
+  version: text('version').notNull(),
+  knowledgeReleaseVersion: text('knowledge_release_version').notNull(),
+  definition: text('definition', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  checksum: text('checksum').notNull(),
+  sourceProposalIds: text('source_proposal_ids', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  status: text('status').notNull().default('published'),
+  publishedAt: text('published_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [
+  uniqueIndex('workflow_versions_version').on(t.version),
+  check('workflow_versions_status', sql`${t.status} in ('published','superseded','rolled_back')`),
+])
+
+export const ruleConfigReleases = sqliteTable('rule_config_releases', {
+  id: text('id').primaryKey(),
+  version: text('version').notNull(),
+  config: text('config', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  checksum: text('checksum').notNull(),
+  status: text('status').notNull().default('published'),
+  publishedAt: text('published_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [uniqueIndex('rule_config_releases_version').on(t.version)])
+
+export const analysisSessions = sqliteTable('analysis_sessions', {
+  id: text('id').primaryKey(),
+  goal: text('goal').notNull(),
+  domain: text('domain'),
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  runId: text('run_id').references(() => runs.id, { onDelete: 'set null' }),
+  scenario: text('scenario'),
+  siteStage: text('site_stage'),
+  detectedSymptoms: text('detected_symptoms', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  classificationConfidence: text('classification_confidence'),
+  missingFields: text('missing_fields', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  intakeContext: text('intake_context', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default(sql`'{}'`),
+  status: text('status').notNull().default('classifying'),
+  knowledgeReleaseVersion: text('knowledge_release_version'),
+  workflowVersion: text('workflow_version'),
+  rulesVersion: text('rules_version'),
+  ruleConfigVersion: text('rule_config_version'),
+  classifierSnapshot: text('classifier_snapshot', { mode: 'json' }).$type<Record<string, unknown>>(),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+  updatedAt: text('updated_at').notNull().default(sql`(current_timestamp)`),
+  finishedAt: text('finished_at'),
+}, (t) => [
+  index('analysis_sessions_status_created').on(t.status, t.createdAt),
+  check('analysis_sessions_scenario', sql`${t.scenario} is null or ${t.scenario} in ('new_build','diagnose','optimize','learn')`),
+  check('analysis_sessions_status', sql`${t.status} in ('classifying','waiting_input','ready','running','reviewing','completed','failed')`),
+])
+
+export const workflowStepRuns = sqliteTable('workflow_step_runs', {
+  id: text('id').primaryKey(),
+  sessionId: text('session_id').notNull().references(() => analysisSessions.id, { onDelete: 'cascade' }),
+  stepId: text('step_id').notNull(),
+  sequence: integer('sequence').notNull(),
+  status: text('status').notNull().default('pending'),
+  routeReason: text('route_reason').notNull().default(''),
+  knowledgeVersionRefs: text('knowledge_version_refs', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  ruleIds: text('rule_ids', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  requiredSources: text('required_sources', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  outputSummary: text('output_summary'),
+  startedAt: text('started_at'),
+  finishedAt: text('finished_at'),
+  error: text('error'),
+}, (t) => [
+  uniqueIndex('workflow_step_runs_session_step').on(t.sessionId, t.stepId),
+  check('workflow_step_runs_status', sql`${t.status} in ('pending','running','waiting_input','completed','skipped','failed')`),
+])
+
+export const workflowArtifacts = sqliteTable('workflow_artifacts', {
+  id: text('id').primaryKey(),
+  sessionId: text('session_id').notNull().references(() => analysisSessions.id, { onDelete: 'cascade' }),
+  stepRunId: text('step_run_id').references(() => workflowStepRuns.id, { onDelete: 'cascade' }),
+  artifactType: text('artifact_type').notNull(),
+  payload: text('payload', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  evidenceRefs: text('evidence_refs', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [index('workflow_artifacts_session').on(t.sessionId)])

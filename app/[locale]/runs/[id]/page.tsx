@@ -1,5 +1,6 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import Link from 'next/link'
+import { notFound } from 'next/navigation'
 import { Shell } from '@/components/Shell'
 import { StatStrip } from '@/components/StatStrip'
 import { FindingList, type FindingItem } from '@/components/FindingList'
@@ -60,6 +61,8 @@ export default async function RunDiagnosisPage({
     getRecommendations(id),
     getRunSerpAioResults(id),
   ])
+  // 与 site/keywords/output 等子页一致：不存在的 run 走路由级 404，不渲染一个空的"诊断工作台"。
+  if (!run) notFound()
   const project = run ? await getProject(run.projectId) : undefined
   const pendingRecommendationCount = recommendations.filter((recommendation) => recommendation.status === 'draft').length
   const showReviewHandoff = run?.status === 'reviewing' && pendingRecommendationCount > 0
@@ -174,7 +177,7 @@ export default async function RunDiagnosisPage({
 
   // 从当前 run 的真实证据派生指标卡；measured 卡可点开对应证据原文。
   const cards = deriveStatCards(
-    evidenceRows.map((e) => ({ id: e.id, type: e.type, claimLevel: e.claimLevel, payload: e.payload })),
+    evidenceRows.map((e) => ({ id: e.id, type: e.type, claimLevel: e.claimLevel, payload: e.payload, sitePageId: e.sitePageId })),
     { probe: probeSummary, sources: { renderProvider: sources.renderProvider, renderStaticFallback: sources.renderStaticFallback } },
   )
   const evidenceById: Record<string, EvidenceView> = Object.fromEntries(
@@ -468,12 +471,12 @@ export default async function RunDiagnosisPage({
           </>
         )}
 
-        {/* 引用情感分布（G09，测量层解析器，n=5 方向性）——有含品牌样本才展示 */}
+        {/* 引用情感分布（G09，测量层解析器，小样本方向性；n 取探针实际采样数）——有含品牌样本才展示 */}
         {probeSummary && probeSummary.sentiment.total > 0 && (
           <>
             <div className="sec-h" id="sentiment-section">
               <h2>{t('screen2.sentimentTitle')}</h2>
-              <span className="meta">{t('screen2.sentimentMeta')}</span>
+              <span className="meta">{t('screen2.sentimentMeta', { n: probeSummary.samplesPerPromptPerEngine })}</span>
             </div>
             <div className="grid grid-cols-4 gap-2">
               {(

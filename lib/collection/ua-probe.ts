@@ -11,11 +11,12 @@
 // AI 爬虫 UA 注册表。kind 区分用途：
 //   - 'search'：检索/引用型（实时抓取以回答问题，直接影响 AI 答案可见性）。
 //   - 'training'：训练语料型（抓取用于模型训练，影响长期被「记住」的概率）。
+// Google-Extended 不在探测清单里：它只是 robots 控制令牌，没有独立的 HTTP UA（Google 用现有 UA 抓取），
+// 以它为 UA 发请求测不出任何东西（developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers，2026-07-14 版）。
 export const SEARCH_CRAWLER_UAS = [
   'OAI-SearchBot',
   'Claude-SearchBot',
   'PerplexityBot',
-  'Google-Extended',
 ] as const
 
 export const TRAINING_CRAWLER_UAS = [
@@ -54,12 +55,13 @@ export interface UaProbeInput {
 }
 
 /**
- * 判定「被封禁」：显式拒绝（403/429）或任意 4xx+ 状态码。
+ * 判定「被封禁」：4xx 状态码（403/429 等显式拒绝）；5xx 是服务端错误，不算封禁。
  * status 为 null（请求失败）时**不**判为封禁 —— 网络抖动/超时不等于站点拒绝该 UA。
  */
 function isBlocked(status: number | null): boolean {
   if (status === null) return false
-  return status === 403 || status === 429 || status >= 400
+  // 只认 4xx：5xx 是服务端错误（宕机、过载），说明不了站点在拦这个 UA（最终审查 F1-2）。
+  return status >= 400 && status < 500
 }
 
 /**

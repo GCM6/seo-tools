@@ -5,8 +5,11 @@
 //   - Lighthouse 实验室数据（lighthouseResult）仅作诊断/修复线索 → inferred，
 //     **绝不可**作为排名输入；调用方展示时须恒标「实验室模拟，非排名输入」。
 //
-// PSI v5 端点免费、无需鉴权即可调用；可选的 PAGESPEED_API_KEY 仅用于提高配额，不改变返回结构。
-// 本模块是自包含的纯采集器：不落库、不耦合 RuleContext，仅解析为结构化 PsiResult。
+// PSI v5 端点无需鉴权即可调用，但匿名调用共用一个日配额：2026-10-04 实测已耗尽，返回 429
+// （'Queries per day'）。要稳定采集须配 PAGESPEED_API_KEY；key 不改变返回结构。
+// 本模块是自包含的纯采集器：不落库、不耦合 RuleContext，返回统一采集结果（含原始响应，由编排层存档）。
+
+import { failResult, okResult, readRaw, reasonOf, type CollectResult, type RawResponse } from './result'
 
 const PSI_ENDPOINT = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed'
 
@@ -33,8 +36,8 @@ export interface PsiResult {
 export type FetchImpl = (url: string) => Promise<Response>
 
 /**
- * PSI 免费且无需 key 即可工作，因此永远视为「已配置」。
- * 可选的 PAGESPEED_API_KEY 仅用于提升配额（避免匿名调用的速率限制）。
+ * 无 key 也会尝试调用，所以恒视为「已配置」；匿名配额耗尽时调用如实失败（http_429），不会伪装成测得值。
+ * 稳定采集需要 PAGESPEED_API_KEY（见 .env.example）。
  */
 export function isPsiConfigured(): boolean {
   return true
@@ -56,7 +59,9 @@ function readCruxMetric(metrics: Record<string, unknown> | undefined, key: strin
 }
 
 /**
- * 拉取并解析单次 PSI 结果。永不因字段缺失抛错 —— 缺失即返回 null / 空数组。
+ * 拉取单次 PSI 结果（SP-A §4.1 统一采集结果）：失败如实返回原因，不再把错误页/配额错误解析成"全 null 测得值"。
+ * 原因码：http_<status> | invalid_json | empty_result（既无 Lighthouse 分数也无 CrUX 现场数据）| network_error。
+ * 有响应时带原始响应（raw），由编排层存档到 evidence_raw。
  * @param url 目标页面 URL
  * @param strategy 'mobile' | 'desktop'（移动/桌面分列，见 T09a）
  * @param fetchImpl 可注入的 fetch（测试用）
@@ -65,16 +70,28 @@ export async function fetchPageSpeedInsights(
   url: string,
   strategy: PsiStrategy,
   fetchImpl: FetchImpl = fetch,
-): Promise<PsiResult> {
-  const res = await fetchImpl(buildUrl(url, strategy))
-
-  let json: Record<string, unknown> = {}
+): Promise<CollectResult<PsiResult>> {
+  let raw: RawResponse
   try {
-    json = (await res.json()) as Record<string, unknown>
-  } catch {
-    // 响应非 JSON（网络/配额错误页）→ 全 null 降级，不抛错。
-    json = {}
+    raw = await readRaw(await fetchImpl(buildUrl(url, strategy)))
+  } catch (err) {
+    return failResult(reasonOf(err))
   }
+  if (raw.status < 200 || raw.status >= 300) return failResult(`http_${raw.status}`, raw.status, raw)
+  let json: unknown
+  try {
+    json = JSON.parse(raw.body)
+  } catch {
+    return failResult('invalid_json', raw.status, raw)
+  }
+  const value = parsePsi(json, strategy)
+  if (value.lighthouse.performanceScore === null && !value.crux.hasFieldData) return failResult('empty_result', raw.status, raw)
+  return okResult(value, raw)
+}
+
+/** 解析 PSI v5 响应体。永不因字段缺失抛错——缺失即 null / 空数组（是否算"采集成功"由调用方判定）。 */
+export function parsePsi(input: unknown, strategy: PsiStrategy): PsiResult {
+  const json = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
 
   // ── CrUX 字段数据 ──────────────────────────────────────────────
   const loadingExperience = json.loadingExperience as Record<string, unknown> | undefined

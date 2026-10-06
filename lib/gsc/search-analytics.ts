@@ -19,6 +19,8 @@ export interface QueryOptions {
   endDate: string // YYYY-MM-DD
   dimensions: GscDimension[]
   rowLimit?: number
+  // 市场国家过滤（SP-A §3.1）：ISO 3166-1 alpha-3（取自 lib/markets.ts 的 gscCountry）；null/缺省 = 不过滤（全球英文）。
+  country?: string | null
 }
 
 interface SearchAnalyticsResponse {
@@ -51,6 +53,9 @@ export async function querySearchAnalytics(
       endDate: opts.endDate,
       dimensions: opts.dimensions,
       rowLimit: opts.rowLimit ?? 1000,
+      ...(opts.country
+        ? { dimensionFilterGroups: [{ filters: [{ dimension: 'country', operator: 'equals', expression: opts.country }] }] }
+        : {}),
     }),
   })
   const body = (await res.json().catch(() => ({}))) as SearchAnalyticsResponse

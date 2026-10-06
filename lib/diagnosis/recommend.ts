@@ -91,7 +91,7 @@ function looksLikeUrl(value: unknown): value is string {
 
 // detail 中可能承载「总数」的计数字段（与 recommend.ts 顶部 COUNT_KEYS 分开维护：那里是给
 // Impact×Effort 定级用，这里只用于「共 N 个」展示文案，字段集合按需更宽松）。
-const AFFECTED_TOTAL_KEYS = ['blockedCount', 'count', 'affectedCount', 'pageCount', 'affectedPages', 'total'] as const
+const AFFECTED_TOTAL_KEYS = ['blockedCount', 'count', 'affectedCount', 'pageCount', 'affectedPages', 'total', 'missingCount', 'unsupportedCount'] as const
 
 function affectedTotal(detail: Record<string, unknown>, fallback: number): number {
   for (const k of AFFECTED_TOTAL_KEYS) {
@@ -175,9 +175,11 @@ export function extractAffectedPagesSection(why: string): { why: string; affecte
 }
 
 // 单条命中 → 建议草稿：查模板（无则按 side 兜底），套 Impact×Effort 四象限，全部中文文案。
-export function generateRecommendation(hit: RuleHit, ctx?: { domain?: string }): RecommendationDraft {
+export function generateRecommendation(hit: RuleHit, ctx?: { domain?: string }): RecommendationDraft | null {
   void ctx
   const tpl = templates[hit.ruleId] ?? genericTemplate(hit.side)
+  // 只记录型规则（SP-A §5.3）：发现照常落库，不生成建议。
+  if (tpl.recordOnly) return null
   const impact = impactLevel(hit)
   const priority = priorityQuadrant(impact, tpl.effort)
 

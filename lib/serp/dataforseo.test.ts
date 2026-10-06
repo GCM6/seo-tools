@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createAioSerpProvider, isAioConfigured, createAioSerpProviderFromEnv } from './dataforseo'
+import { reasonOf } from '@/lib/collection/result'
 
 // 响应 fixture 形状对齐官方文档摘录（交付报告附来源 URL）：
 // items[] 里 type='ai_overview'，markdown 为整体摘要，references[] 为引用来源
@@ -114,5 +115,23 @@ describe('isAioConfigured / createAioSerpProviderFromEnv', () => {
     expect(createAioSerpProviderFromEnv().isConfigured()).toBe(false)
     process.env.DATAFORSEO_LOGIN = prev.login
     process.env.DATAFORSEO_PASSWORD = prev.password
+  })
+})
+
+describe('AIO：任务成功但没有 result（第二波审查 C1）', () => {
+  it('抛错 empty_result，不当成"该词没有 AI Overview"', async () => {
+    const provider = createAioSerpProvider({ login: 'u', password: 'p', fetchImpl: fakeFetch({ status_code: 20000, tasks: [{ status_code: 20000, result: null }] }) })
+    expect(reasonOf(await provider.fetchAioForKeyword('remove exif', { locationCode: 2840, languageCode: 'en' }).catch((e: unknown) => e))).toBe('empty_result')
+  })
+  it('200 但响应体不是 JSON → 抛错 invalid_json', async () => {
+    const provider = createAioSerpProvider({ login: 'u', password: 'p', fetchImpl: (async () => new Response('<html></html>', { status: 200 })) as unknown as typeof fetch })
+    expect(reasonOf(await provider.fetchAioForKeyword('remove exif', { locationCode: 2840, languageCode: 'en' }).catch((e: unknown) => e))).toBe('invalid_json')
+  })
+})
+
+describe('AIO：任务成功、JSON 合法但缺 items（最终审查 F1-1）', () => {
+  it('items:null → 抛错 invalid_shape（不当成"该词没有 AI Overview"）', async () => {
+    const provider = createAioSerpProvider({ login: 'u', password: 'p', fetchImpl: fakeFetch({ status_code: 20000, tasks: [{ status_code: 20000, result: [{ items: null }] }] }) })
+    expect(reasonOf(await provider.fetchAioForKeyword('remove exif', { locationCode: 2840, languageCode: 'en' }).catch((e: unknown) => e))).toBe('invalid_shape')
   })
 })

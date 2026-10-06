@@ -60,6 +60,8 @@ export interface DataSourceCoverage {
   failureReason?: string | null
   capturedEvidenceCount: number
   protocolSnapshot?: unknown
+  // 子阶段（SP-A §4.2）：source_key 为「父:子」的行挂在父项下；只在合同输出的父项上出现。
+  children?: DataSourceCoverage[]
 }
 
 // —— 报告合同（报告合同 §3.1-3.2）——
@@ -290,6 +292,10 @@ function buildReportContract(input: BuildReportInput): ReportContract | null {
   if (!input.scope) return null
 
   const sources = input.dataSources ?? []
+  // 子阶段（「父:子」）挂到父项下；合同的数据源列表与报告等级只看父项，未覆盖项包含非 collected 的子阶段。
+  const parents = sources
+    .filter((s) => !s.sourceKey.includes(':'))
+    .map((p) => ({ ...p, children: sources.filter((c) => c.sourceKey.startsWith(`${p.sourceKey}:`)) }))
   const gaps = sources
     .filter((s) => s.status !== 'collected')
     .map((s) => s.sourceKey)
@@ -298,7 +304,7 @@ function buildReportContract(input: BuildReportInput): ReportContract | null {
 
   return {
     scope: input.scope,
-    dataSources: sources,
+    dataSources: parents,
     coverage: {
       totalDiscovered: stats.totalDiscovered ?? 0,
       checkedPages: stats.checkedPages ?? 0,
@@ -307,7 +313,7 @@ function buildReportContract(input: BuildReportInput): ReportContract | null {
       aiValidSamples: stats.aiValidSamples,
       confirmedCompetitors: stats.confirmedCompetitors,
     },
-    level: deriveReportLevel(withCoverageProtocol(sources, stats)),
+    level: deriveReportLevel(withCoverageProtocol(parents, stats)),
     gaps,
     exclusions: sources
       .filter((s) => s.status !== 'collected')

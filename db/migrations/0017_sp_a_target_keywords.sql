@@ -1,0 +1,1 @@
+ALTER TABLE `project_settings` ADD `target_keywords` text DEFAULT '[]' NOT NULL;

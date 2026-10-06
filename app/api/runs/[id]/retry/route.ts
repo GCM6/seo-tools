@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getRun, getProject, markRunStatus } from '@/lib/repositories'
 import { inngest } from '@/lib/inngest/client'
 import { buildCollectRequestedEvent } from '@/lib/inngest/events'
+import { runGateError } from '@/lib/runs/gate'
 
 // 失败采集 run 重试：重置 collecting 并重派采集事件（与 POST /runs 派发同构）。
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -9,8 +10,14 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const run = await getRun(id)
   if (!run) return NextResponse.json({ error: 'not_found' }, { status: 404 })
   if (run.status !== 'failed') return NextResponse.json({ error: 'not_failed' }, { status: 409 })
+  // 回测的基线 id 只在首次派发的事件里：重派会丢掉基线、按当前项目重建问句，变成不同协议的回测。
+  // 不支持直接重试，引导用户从基线重新发起回测（最终审查 F5-1）。
+  if (run.runType === 'retest') return NextResponse.json({ error: 'retest_retry_unsupported', projectId: run.projectId }, { status: 409 })
   const project = await getProject(run.projectId)
   if (!project) return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  // SP-A §3.5 闸门：品类/市场无效不得重派采集。
+  const gate = runGateError(project)
+  if (gate) return NextResponse.json({ error: gate, projectId: project.id }, { status: 422 })
 
   await markRunStatus(id, 'collecting', { failureReason: null, allowCancelled: true })
   try {

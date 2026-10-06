@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest'
+import { buildLinkGraph } from '@/lib/crawl/link-graph'
+import { fetchLightCheck } from '@/lib/crawl/light-check'
 import type { RuleContext, RuleHitDraft } from '../types'
 import type { SiteAuditPage, SiteAuditPayload, SiteAuditTemplate } from '@/lib/crawl/site-audit'
 import { contentRules } from './content'
+import { buildRuleContext } from '../context'
+import { templates } from '../templates'
+import { WOOCOMMERCE_PRODUCT_JSONLD, WOOCOMMERCE_PRODUCT_PAGE_URL, YOAST_ARTICLE_JSONLD, YOAST_ARTICLE_PAGE_URL, jsonLdScript, schemaEvidenceFromHtml } from '@/lib/test-fixtures/real-shapes'
 
 const rule = (id: string) => contentRules.find((r) => r.id === id)!
 
@@ -119,7 +124,17 @@ describe('C03 h1', () => {
   })
   it('h1 duplicates title', () => {
     const hit = rule('C03').evaluate(withEntry('<title>Same</title><h1>Same</h1>')) as RuleHitDraft
-    expect(hit.title).toBe('入口页 H1 与 title 完全重复')
+    expect(hit.title).toBe('入口页 H1 与 title 完全相同')
+  })
+  it('H1 与 title 相同只是说明（notice / hypothesis）：不是错误；缺 H1、多个 H1 仍是 warning（SP-A §5.2）', () => {
+    const same = rule('C03').evaluate(withEntry('<title>Same</title><h1>Same</h1>')) as RuleHitDraft
+    expect(same.severity).toBe('notice')
+    expect(same.claimType).toBe('hypothesis')
+    expect(same.description).toContain('这不是错误')
+    const missing = rule('C03').evaluate(withEntry('<title>t</title>')) as RuleHitDraft
+    const multiple = rule('C03').evaluate(withEntry('<h1>a</h1><h1>b</h1>')) as RuleHitDraft
+    expect(missing.severity ?? rule('C03').severity).toBe('warning')
+    expect(multiple.severity ?? rule('C03').severity).toBe('warning')
   })
   it('single distinct h1 null', () => {
     expect(rule('C03').evaluate(withEntry('<title>Title</title><h1>Heading</h1>'))).toBeNull()
@@ -208,24 +223,153 @@ describe('C05b JSON-LD syntax/@context', () => {
   })
 })
 
-describe('C05c required fields', () => {
-  it('flags missing Product required (image)', () => {
-    const ctx = baseCtx()
-    ctx.schemas = [schema({ id: 'scP', raw: [{ '@context': 'https://schema.org', '@type': 'Product', name: 'Widget' }] })]
-    const hit = asOne(rule('C05c').evaluate(ctx))
-    expect(hit.scope).toBe('schema:required')
-    expect(hit.evidenceRefs).toEqual(['scP'])
-    const missing = hit.detail!.missing as { missingFields: string[] }[]
-    expect(missing[0].missingFields).toContain('image')
+// 走真实链路：HTML → extractSchema → schema 证据行（collect-evidence 落库形状）→ buildRuleContext → 规则。
+const ctxFromPages = (pages: { url: string; html: string }[]): RuleContext =>
+  buildRuleContext({
+    project: { domain: 'example.com', industry: '', market: 'global-en', language: 'en', competitors: [] },
+    evidence: pages.map((p, i) => schemaEvidenceFromHtml(p.html, { id: `sc${i + 1}`, source: p.url })),
+    probe: null,
   })
+const pageWith = (url: string, jsonLd: unknown) => ({ url, html: jsonLdScript(JSON.stringify(jsonLd)) })
+const byScope = (hits: RuleHitDraft[], scope: string) => hits.filter((h) => h.scope === scope)
+
+describe('C05b @context（真实形态）', () => {
+  it('Yoast 单块 @graph（@context 只在外层）不误报', () => {
+    const ctx = ctxFromPages([{ url: YOAST_ARTICLE_PAGE_URL, html: jsonLdScript(YOAST_ARTICLE_JSONLD) }])
+    expect(ctx.schemas[0].types).toContain('Article')
+    expect(rule('C05b').evaluate(ctx)).toBeNull()
+  })
+  it('顶层数组里某个元素缺 @context → 命中', () => {
+    const ctx = ctxFromPages([pageWith('https://acme.example/', [
+      { '@context': 'https://schema.org', '@type': 'Organization', name: 'Acme', url: 'https://acme.example/' },
+      { '@type': 'WebSite', name: 'Acme', url: 'https://acme.example/' },
+    ])])
+    const hit = asOne(rule('C05b').evaluate(ctx))
+    expect(hit.evidenceRefs).toEqual(['sc1'])
+    expect(hit.detail!.contextErrors).toBe(1)
+  })
+  it('只说坏块被忽略、不夸大成"整体失效"，并写明页面 URL（真实形态：评分挂件单独输出无 @context 的块）', () => {
+    const url = 'https://shop.example/products/runner'
+    const html = jsonLdScript(JSON.stringify({ '@context': 'https://schema.org/', '@type': 'ProductGroup', name: 'Runner', productGroupID: '1' }))
+      + jsonLdScript(JSON.stringify({ aggregateRating: { '@type': 'AggregateRating', ratingValue: 4.5, reviewCount: 120 } }))
+    const hit = asOne(rule('C05b').evaluate(ctxFromPages([{ url, html }])))
+    expect(hit.description).toContain(url)
+    expect(hit.description).toContain('被 Google 忽略')
+    expect(hit.description).not.toContain('整体失效')
+  })
+})
+
+describe('C05c 必填 / 推荐拆分（Google 结构化数据文档 2026-09 版）', () => {
+  it('Yoast 真实文章页：字段齐全，不产生任何命中', () => {
+    const ctx = ctxFromPages([{ url: YOAST_ARTICLE_PAGE_URL, html: jsonLdScript(YOAST_ARTICLE_JSONLD) }])
+    expect(rule('C05c').evaluate(ctx)).toBeNull()
+  })
+
+  it('Article 只有 headline + author：不算不符合要求，只出一条推荐字段 notice（带页面 URL）', () => {
+    const url = 'https://blog.example/post-1/'
+    const ctx = ctxFromPages([pageWith(url, { '@context': 'https://schema.org', '@type': 'Article', headline: 'How to x', author: { '@type': 'Person', name: 'Jane' } })])
+    const hits = asArr(rule('C05c').evaluate(ctx))
+    expect(byScope(hits, 'schema:required')).toHaveLength(0)
+    const rec = byScope(hits, 'schema:recommended')
+    expect(rec).toHaveLength(1)
+    expect(rec[0].severity).toBe('notice')
+    expect(rec[0].title).toBe('缺少 Google 推荐字段')
+    expect(rec[0].description).toContain(url)
+    expect(rec[0].description).toContain('datePublished')
+    expect(rec[0].description).toContain('image')
+    expect(rec[0].detail!.examples).toEqual([{ url, type: 'Article', missing: ['image', 'datePublished', 'dateModified'] }])
+    expect(JSON.stringify(hits)).not.toContain('无法生成')
+  })
+
+  it('Product 只有 name + image：缺三选一 → warning（不符合 Google 富媒体结果要求）', () => {
+    const url = 'https://shop.example/p/widget'
+    const ctx = ctxFromPages([pageWith(url, { '@context': 'https://schema.org', '@type': 'Product', name: 'Widget', image: 'https://shop.example/w.jpg' })])
+    const req = byScope(asArr(rule('C05c').evaluate(ctx)), 'schema:required')
+    expect(req).toHaveLength(1)
+    expect(req[0].severity).toBe('warning')
+    expect(req[0].title).toBe('不符合 Google 富媒体结果要求')
+    expect(req[0].description).toContain(url)
+    expect(req[0].description).toContain('review、aggregateRating 或 offers 至少一项')
+    expect(req[0].evidenceRefs).toEqual(['sc1'])
+  })
+
+  it('自家修复模板 JSONLD_SNIPPET（Product：name + offers.price）不触发必填命中', () => {
+    const snippet = templates.C05c.fixSnippet!
+    const ctx = ctxFromPages([{ url: 'https://shop.example/p/sample', html: snippet }])
+    expect(ctx.schemas[0].types).toEqual(['Product'])
+    expect(byScope(asArr(rule('C05c').evaluate(ctx)), 'schema:required')).toHaveLength(0)
+  })
+
+  it('SoftwareApplication 有 name + offers.price，但没有评分或评论 → warning', () => {
+    const ctx = ctxFromPages([pageWith('https://app.example/', {
+      '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'Scrubber', applicationCategory: 'UtilitiesApplication', operatingSystem: 'Web',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    })])
+    const req = byScope(asArr(rule('C05c').evaluate(ctx)), 'schema:required')
+    expect(req).toHaveLength(1)
+    expect(req[0].description).toContain('aggregateRating 或 review 至少一项')
+  })
+
+  it('Restaurant（LocalBusiness 子类型）缺 address → warning', () => {
+    const ctx = ctxFromPages([pageWith('https://eat.example/', { '@context': 'https://schema.org', '@type': 'Restaurant', name: 'Pasta Place' })])
+    const req = byScope(asArr(rule('C05c').evaluate(ctx)), 'schema:required')
+    expect(req).toHaveLength(1)
+    expect(req[0].description).toContain('（Restaurant）：缺 address')
+  })
+
+  it('全远程 JobPosting 用 applicantLocationRequirements 代替 jobLocation，不算缺必填', () => {
+    const ctx = ctxFromPages([pageWith('https://jobs.example/1', {
+      '@context': 'https://schema.org', '@type': 'JobPosting', title: 'Engineer', description: '<p>Build things</p>', datePosted: '2026-09-01',
+      hiringOrganization: { '@type': 'Organization', name: 'Acme' }, jobLocationType: 'TELECOMMUTE',
+      applicantLocationRequirements: { '@type': 'Country', name: 'USA' },
+    })])
+    expect(byScope(asArr(rule('C05c').evaluate(ctx)), 'schema:required')).toHaveLength(0)
+  })
+
+  it('超过 5 处只列前 5 条并注明总数', () => {
+    const pages = Array.from({ length: 6 }, (_, i) => pageWith(`https://shop.example/p/${i + 1}`, { '@context': 'https://schema.org', '@type': 'Product', name: `P${i + 1}` }))
+    const req = byScope(asArr(rule('C05c').evaluate(ctxFromPages(pages))), 'schema:required')
+    expect(req[0].description).toContain('https://shop.example/p/5')
+    expect(req[0].description).not.toContain('https://shop.example/p/6')
+    expect(req[0].description).toContain('等 6 处')
+    expect(req[0].evidenceRefs).toHaveLength(6)
+  })
+
+  it('真实 WooCommerce 产品页（offers 为数组、价格在 priceSpecification 数组里）→ 不误报', () => {
+    const ctx = ctxFromPages([{ url: WOOCOMMERCE_PRODUCT_PAGE_URL, html: jsonLdScript(WOOCOMMERCE_PRODUCT_JSONLD) }])
+    expect(ctx.schemas[0].types).toContain('Product')
+    expect(rule('C05c').evaluate(ctx)).toBeNull()
+  })
+
+  // JSON-LD 节点引用：{"@id": X} 指向同页另一个节点（JSON-LD 1.1 §4.3 node identifiers）。第二波审查 I6。
+  const appWithOfferRef = (offerId: string) => ({
+    '@type': 'SoftwareApplication', '@id': 'https://app.example/#app', name: 'Scrubber', applicationCategory: 'UtilitiesApplication', operatingSystem: 'Web',
+    offers: { '@id': offerId }, aggregateRating: { '@type': 'AggregateRating', ratingValue: 4.8, ratingCount: 120 },
+  })
+  const offerNode = { '@type': 'Offer', '@id': 'https://app.example/#offer', price: '0', priceCurrency: 'USD' }
+
+  it('offers 用 {"@id"} 引用同一 @graph 里的 Offer 节点 → 按被引用节点判断，不报缺 offers.price', () => {
+    const ctx = ctxFromPages([pageWith('https://app.example/', { '@context': 'https://schema.org', '@graph': [appWithOfferRef('https://app.example/#offer'), offerNode] })])
+    expect(byScope(asArr(rule('C05c').evaluate(ctx)), 'schema:required')).toHaveLength(0)
+  })
+
+  it('被引用节点在同页另一个 JSON-LD 块里 → 同样能解析', () => {
+    const html = jsonLdScript(JSON.stringify({ '@context': 'https://schema.org', ...appWithOfferRef('https://app.example/#offer') })) +
+      jsonLdScript(JSON.stringify({ '@context': 'https://schema.org', ...offerNode }))
+    const ctx = ctxFromPages([{ url: 'https://app.example/', html }])
+    expect(byScope(asArr(rule('C05c').evaluate(ctx)), 'schema:required')).toHaveLength(0)
+  })
+
+  it('引用的 @id 在本页找不到（悬空引用）→ 仍报缺 offers.price', () => {
+    const ctx = ctxFromPages([pageWith('https://app.example/', { '@context': 'https://schema.org', '@graph': [appWithOfferRef('https://app.example/#missing'), offerNode] })])
+    const req = byScope(asArr(rule('C05c').evaluate(ctx)), 'schema:required')
+    expect(req).toHaveLength(1)
+    expect(req[0].description).toContain('offers.price')
+  })
+
   it('ignores deprecated FAQPage (not in vocab)', () => {
     const ctx = baseCtx()
     ctx.schemas = [schema({ raw: [{ '@context': 'https://schema.org', '@type': 'FAQPage' }] })]
-    expect(rule('C05c').evaluate(ctx)).toBeNull()
-  })
-  it('null when required fields present', () => {
-    const ctx = baseCtx()
-    ctx.schemas = [schema({ raw: [{ '@context': 'https://schema.org', '@type': 'Product', name: 'x', image: 'https://example.com/a.jpg' }] })]
     expect(rule('C05c').evaluate(ctx)).toBeNull()
   })
 })
@@ -294,6 +438,39 @@ describe('C07 GEO content features', () => {
   })
 })
 
+describe('C06/C07 让位给文章级规则（spec S4 §5；Review Focus 5）', () => {
+  const articlePage = (url: string, isArticle: boolean) => ({
+    url, discoveredVia: 'crawl', depth: 1, httpStatus: 200, finalUrl: null, canonicalUrl: null, metaRobots: null, mainTextChars: 500,
+    inboundLinkCount: 1, checkStatus: 'checked', errorReason: null, isKeyPage: false,
+    lightCheckExtra: {
+      hasViewport: true, hreflangEntries: [], imgCount: 0, imgAltMissing: 0, listCount: 0, tableCount: 0, avgParagraphLen: 0, h2QuestionRate: 0,
+      isHttps: true, mixedContentCount: 0, redirected: false,
+      article: { isArticle, articleReasons: [], author: null, authorSource: null, authorUrl: null, datePublished: null, dateModified: null, mainWords: 500, stats: { total: 0, attributed: 0 }, citations: { total: 0, authoritative: 0 }, quotes: 0, tables: 0, hasReferencesSection: false },
+    },
+  })
+  const withArticles = (n: number) => {
+    const ctx = withEntry('<p>just some plain prose with no data</p>')
+    ctx.siteAudit = { id: 'sa1', payload: { pages: Array.from({ length: n }, (_, i) => articlePage(`https://example.com/blog/${i}`, true)) } } as never
+    return ctx
+  }
+  it('文章页 ≥ 3：只让出被 AR 规则接管的项——C06 保留关于/联系（无链接图时 TR06 不运行），C07 保留引述（第三轮独立审查 P2-12）', () => {
+    const c06 = asOne(rule('C06').evaluate(withArticles(3)))
+    expect(c06.detail).toMatchObject({ missing: ['about_contact'], supersededBy: ['AR01', 'AR03'] })
+    const c07 = asOne(rule('C07').evaluate(withArticles(3)))
+    expect(c07.detail).toMatchObject({ missing: ['quotes'], supersededBy: ['AR04', 'AR05'] })
+  })
+  it('文章页 ≥ 3 且有可用链接图（TR06 能运行）：C06 的关于/联系也让位', () => {
+    const ctx = withArticles(3)
+    const pages = (ctx.siteAudit!.payload as { pages: unknown[] }).pages
+    ctx.siteAudit = { id: 'sa1', payload: { pages, linkGraph: buildLinkGraph({ entryUrl: 'https://example.com/', pages: [{ url: 'https://example.com/', checkStatus: 'checked', httpStatus: 200, metaRobots: null, discoveredVia: 'entry', contentKind: 'html', linkDetails: [{ url: 'https://example.com/blog/0', count: 1, anchors: [], regions: ['main'], nofollow: false }], externalLinks: [] }] }) } } as never
+    expect(rule('C06').evaluate(ctx)).toBeNull()
+  })
+  it('文章页 < 3：C06/C07 照常按首页口径工作', () => {
+    expect(rule('C06').evaluate(withArticles(2))).not.toBeNull()
+    expect(rule('C07').evaluate(withArticles(2))).not.toBeNull()
+  })
+})
+
 describe('C08 answer-first', () => {
   it('flags when front lacks self-contained answer', () => {
     const hit = asOne(rule('C08').evaluate(withEntry('<p>Welcome!</p><p>Hi</p><p>ok</p>')))
@@ -306,27 +483,62 @@ describe('C08 answer-first', () => {
   })
 })
 
-describe('C10 exact duplicate content', () => {
-  it('flags pages sharing a contentHash', () => {
+// 走真实轻检：fetchLightCheck（只假 fetch）产出 textHash / redirected / finalUrl，再按 collect-evidence 的落库映射组成页行。
+async function crawled(url: string, html: string, finalUrl = url): Promise<SiteAuditPage> {
+  const fetchImpl = (async () => {
+    const res = new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } })
+    Object.defineProperty(res, 'url', { value: finalUrl })
+    return res
+  }) as unknown as typeof import('@/lib/security/safe-fetch').safeFetch
+  const r = await fetchLightCheck(url, 'example.com', fetchImpl)
+  return page({ url: r.url, finalUrl: r.finalUrl !== r.url ? r.finalUrl : null, contentHash: r.contentHash || null, lightCheckExtra: r.extra })
+}
+const body = (text: string, nonce: string, title: string) =>
+  `<html><head><title>${title}</title><script nonce="${nonce}">window.x=1</script></head><body><main><p>${text}</p></main></body></html>`
+
+describe('C10 正文文本完全相同（SP-A §5.2：按可见正文哈希，不按整页 HTML）', () => {
+  it('正文相同、只是 nonce 与 title 不同 → 命中，描述写"正文文本完全相同"', async () => {
     const ctx = baseCtx()
     ctx.siteAudit = audit([
-      page({ url: 'https://example.com/a', contentHash: 'h1' }),
-      page({ url: 'https://example.com/b', contentHash: 'h1' }),
-      page({ url: 'https://example.com/c', contentHash: 'h2' }),
+      await crawled('https://example.com/a', body('Same body text for both pages.', 'n1', 'A')),
+      await crawled('https://example.com/b', body('Same body text for both pages.', 'n2', 'B')),
+      await crawled('https://example.com/c', body('Different body text.', 'n3', 'C')),
     ])
     const hit = asOne(rule('C10').evaluate(ctx))
     expect(hit.scope).toBe('content:duplicate')
+    expect(hit.description).toContain('正文文本完全相同')
     expect(hit.detail!.duplicateGroups).toBe(1)
     expect(hit.detail!.duplicatePageCount).toBe(2)
   })
-  it('null when no shared hashes', () => {
+  it('其中一页是跳转过去的（redirected）→ 不计入', async () => {
     const ctx = baseCtx()
-    ctx.siteAudit = audit([page({ url: 'https://example.com/a', contentHash: 'h1' }), page({ url: 'https://example.com/b', contentHash: 'h2' })])
+    ctx.siteAudit = audit([
+      await crawled('https://example.com/old', body('Same body text.', 'n1', 'A'), 'https://example.com/new'),
+      await crawled('https://example.com/new', body('Same body text.', 'n2', 'A')),
+    ])
+    expect(ctx.siteAudit.payload.pages[0].lightCheckExtra?.redirected).toBe(true)
     expect(rule('C10').evaluate(ctx)).toBeNull()
   })
-  it('ignores null contentHash', () => {
+  it('跳转行一律不计入，即使跳转目标没被单独抓到（spec §5.2 #5：排除 redirected=true 的行）', async () => {
     const ctx = baseCtx()
-    ctx.siteAudit = audit([page({ url: 'https://example.com/a', contentHash: null }), page({ url: 'https://example.com/b', contentHash: null })])
+    ctx.siteAudit = audit([
+      await crawled('https://example.com/old', body('Same body text.', 'n1', 'A'), 'https://example.com/landing'),
+      await crawled('https://example.com/other', body('Same body text.', 'n2', 'B')),
+    ])
+    expect(rule('C10').evaluate(ctx)).toBeNull()
+  })
+  it('两行最终 URL 相同（带跟踪参数 / www 的同一页）→ 只算一页', async () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit([
+      await crawled('https://example.com/a', body('Same body text.', 'n1', 'A')),
+      await crawled('https://www.example.com/a/?utm_source=x', body('Same body text.', 'n2', 'A')),
+    ])
+    expect(ctx.siteAudit.payload.pages[1].finalUrl).toBe('https://example.com/a')
+    expect(rule('C10').evaluate(ctx)).toBeNull()
+  })
+  it('旧数据没有 textHash（只有整页 contentHash）→ null', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit([page({ url: 'https://example.com/a', contentHash: 'h1' }), page({ url: 'https://example.com/b', contentHash: 'h1' })])
     expect(rule('C10').evaluate(ctx)).toBeNull()
   })
   it('null without siteAudit', () => {
@@ -393,7 +605,8 @@ describe('TA01 主题覆盖浅 / 话题群割裂', () => {
     expect(hit).not.toBeNull()
     expect(hit.evidenceRefs).toEqual(['sa1'])
     const detail = hit.detail as { shallowClusters: unknown[]; isolatedClusters: unknown[] }
-    expect(detail.shallowClusters.length).toBeGreaterThanOrEqual(1) // /about 1 页
+    // /about/x 是字面单页、不是话题模板，且无链接图无法确认抓取穷尽 → 不判浅（2026-10-03 噪音修复，见文件末尾用例）
+    expect(detail.shallowClusters).toEqual([])
     expect(detail.isolatedClusters.length).toBeGreaterThanOrEqual(1) // /blog 入度 0
     expect(hit.description).toContain('非严格群内邻接')
   })
@@ -506,5 +719,127 @@ describe('TA02 话题群缺 Hub 页', () => {
   it('无 siteAudit 时 no-op', () => {
     const ctx = baseCtx()
     expect(rule('TA02').evaluate(ctx)).toBeNull()
+  })
+})
+
+describe('旧规则噪音修复（2026-10-03 真实站点核验：metadocu/jac/troyhunt/ruanyifeng）', () => {
+  const H = 'https://example.com'
+  const art = (isArticle: boolean) => ({
+    isArticle, articleReasons: [], author: null, authorSource: null, authorUrl: null, datePublished: null, dateModified: null, mainWords: 500,
+    stats: { total: 0, attributed: 0 }, citations: { total: 0, authoritative: 0 }, quotes: 0, tables: 0, hasReferencesSection: false,
+  })
+  // 站点页 → 真实 buildLinkGraph（链接取 internalLinks；全部为已抓 HTML，抓取穷尽）
+  const withGraph = (pages: SiteAuditPage[]) => {
+    const a = audit(pages)
+    a.payload.linkGraph = buildLinkGraph({
+      entryUrl: `${H}/`,
+      pages: pages.map((p) => ({
+        url: p.url, finalUrl: p.finalUrl, checkStatus: p.checkStatus, httpStatus: p.httpStatus, metaRobots: null, discoveredVia: p.discoveredVia,
+        contentKind: p.lightCheckExtra?.contentKind ?? 'html',
+        linkDetails: (p.internalLinks ?? []).map((url) => ({ url, count: 1, anchors: [], regions: ['main' as const], nofollow: false })),
+        externalLinks: [],
+      })),
+    })
+    return a
+  }
+
+  describe('C02：多个 meta description 标签', () => {
+    it('首个为空、另有非空（troyhunt 主题重复输出）→ 不报「缺少」，报重复标签（notice）', () => {
+      const hit = asOne(rule('C02').evaluate(withEntry('<meta name="description" content=""><meta name="description" content="Hi, I write this blog">')))
+      expect([hit.title, hit.severity, hit.detail]).toEqual(['入口页存在重复的 meta description 标签', 'notice', { tags: 2, empty: 1 }])
+    })
+    it('只有空标签 → 仍报缺少，并说明标签存在但内容为空', () => {
+      const hit = asOne(rule('C02').evaluate(withEntry('<meta name="description" content="  ">')))
+      expect(hit.title).toBe('入口页缺少 meta description')
+      expect(hit.description).toContain('内容为空')
+    })
+    it('name 大小写不敏感', () => {
+      expect(rule('C02').evaluate(withEntry('<meta name="Description" content="hello">'))).toBeNull()
+    })
+  })
+
+  describe('C05a：嵌套类型与子类型', () => {
+    it('Organization 嵌套在 WebSite.publisher 里（troyhunt）→ 不报缺推荐类型', () => {
+      const ctx = baseCtx()
+      ctx.schemas = [schema({ types: ['WebSite'], raw: [{ '@type': 'WebSite', publisher: { '@type': 'Organization', name: 'Troy' } }] })]
+      expect(rule('C05a').evaluate(ctx)).toBeNull()
+    })
+    it('BlogPosting / LocalBusiness 等子类型算推荐类型', () => {
+      for (const t of ['BlogPosting', 'NewsArticle', 'LocalBusiness', 'Corporation']) {
+        const ctx = baseCtx()
+        ctx.schemas = [schema({ types: [t] })]
+        expect(rule('C05a').evaluate(ctx)).toBeNull()
+      }
+    })
+  })
+
+  describe('C06：作者/日期只对「入口页本身是文章」才要求', () => {
+    const entryCtx = (isArticle: boolean) => {
+      const ctx = withEntry('<title>Tool</title><h1>Clean metadata</h1><a href="/about">About</a>')
+      ctx.siteAudit = audit([page({ url: `${H}/`, discoveredVia: 'entry', lightCheckExtra: { ...ext(), contentKind: 'html', article: art(isArticle) } })])
+      return ctx
+    }
+    it('工具/企业首页（非文章）有关于入口 → 不报（metadocu）', () => {
+      expect(rule('C06').evaluate(entryCtx(false))).toBeNull()
+    })
+    it('入口页就是文章 → 仍要求作者与日期', () => {
+      expect(asOne(rule('C06').evaluate(entryCtx(true))).detail).toMatchObject({ missing: ['author', 'date'] })
+    })
+  })
+
+  describe('C09：只按内容图片计 alt 缺失', () => {
+    it('每页只有页眉里的装饰 logo（alt=""）→ 不报（metadocu「100% 缺失」）', () => {
+      const ctx = baseCtx()
+      ctx.siteAudit = audit(Array.from({ length: 21 }, (_, i) => page({ url: `${H}/p${i}`, lightCheckExtra: ext({ imgCount: 1, imgAltMissing: 1, contentImgCount: 0, contentImgAltMissing: 0 }) })))
+      expect(rule('C09').evaluate(ctx)).toBeNull()
+    })
+    it('正文配图缺 alt → 按内容图片口径报', () => {
+      const ctx = baseCtx()
+      ctx.siteAudit = audit([page({ url: `${H}/a`, lightCheckExtra: ext({ imgCount: 12, imgAltMissing: 9, contentImgCount: 10, contentImgAltMissing: 8 }) })])
+      expect(asOne(rule('C09').evaluate(ctx)).detail).toMatchObject({ imgs: 10, missing: 8 })
+    })
+  })
+
+  describe('TA01/TA02：话题群只由内容页组成', () => {
+    const noisePages = () => [
+      page({ url: `${H}/`, discoveredVia: 'entry', internalLinks: [`${H}/about`] }),
+      page({ url: `${H}/about`, internalLinks: [] }), // 单页字面路径不是话题群
+      ...[1, 2, 3, 4, 5].map((i) => page({ url: `${H}/u/cms/${i}.pdf`, internalLinks: null, lightCheckExtra: ext({ contentKind: 'document' }) })),
+      ...[1, 2, 3, 4, 5].map((i) => page({ url: `${H}/old/${i}`, finalUrl: `${H}/new-${i}`, internalLinks: [] })), // 跳转源
+      ...['a', 'b', 'c', 'd', 'e'].map((s) => page({ url: `${H}/tag/${s}`, internalLinks: [] })), // 标签归档
+      ...[2, 3, 4].map((i) => page({ url: `${H}/page/${i}`, internalLinks: [] })), // 分页
+      ...[1, 2, 3, 4].map((i) => page({ url: `${H}/limited/${i}`, httpStatus: 429, internalLinks: null })),
+    ]
+    it('首页、单页、PDF、跳转源、标签/分页、错误页都不成群 → TA01/TA02 不报', () => {
+      const ctx = baseCtx()
+      ctx.siteAudit = audit(noisePages())
+      expect([rule('TA01').evaluate(ctx), rule('TA02').evaluate(ctx)]).toEqual([null, null])
+    })
+    it('「浅」只认 URL 模板群（含 {id}/{slug} 等占位），且须抓取穷尽；未穷尽时样本少不代表话题浅', () => {
+      const pages = [
+        page({ url: `${H}/`, discoveredVia: 'entry', internalLinks: [`${H}/news/1`, `${H}/news/2`] }),
+        page({ url: `${H}/news/1`, internalLinks: [`${H}/news/2`] }),
+        page({ url: `${H}/news/2`, internalLinks: [`${H}/news/1`] }),
+      ]
+      const ctx = baseCtx()
+      ctx.siteAudit = withGraph(pages)
+      expect((rule('TA01').evaluate(ctx) as RuleHitDraft).detail).toMatchObject({ shallowClusters: [{ pattern: '/news/{id}', pageCount: 2 }], isolatedClusters: [] })
+      ctx.siteAudit = audit(pages) // 无链接图（无法确认穷尽）
+      expect(rule('TA01').evaluate(ctx)).toBeNull()
+    })
+    it('「孤立」至少 3 页才判（1–2 页的群内邻接天然为 0）', () => {
+      const ctx = baseCtx()
+      ctx.siteAudit = audit([page({ url: `${H}/news/1`, internalLinks: [] }), page({ url: `${H}/news/2`, internalLinks: [] })])
+      expect(rule('TA01').evaluate(ctx)).toBeNull()
+    })
+    it('TA02：上级栏目页（/news 列表）被群内成员普遍链接即为 Hub（jac 新闻群）', () => {
+      const members = Array.from({ length: 6 }, (_, i) => `${H}/news/${2026}0${i + 1}/${100 + i}.html`)
+      const ctx = baseCtx()
+      ctx.siteAudit = audit([
+        page({ url: `${H}/news`, internalLinks: members }),
+        ...members.map((url) => page({ url, internalLinks: [`${H}/news`] })),
+      ])
+      expect(rule('TA02').evaluate(ctx)).toBeNull()
+    })
   })
 })

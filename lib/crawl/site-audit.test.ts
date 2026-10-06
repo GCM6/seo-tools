@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildSiteAudit, type SiteAuditPage } from './site-audit'
+import { buildLinkGraph } from './link-graph'
 
 const page = (over: Partial<SiteAuditPage>): SiteAuditPage => ({
   url: 'https://a.com/x', discoveredVia: 'crawl', depth: 1, httpStatus: 200, finalUrl: null,
@@ -42,5 +43,23 @@ describe('buildSiteAudit', () => {
     })
     expect(out.citations).toEqual([{ url: 'https://a.com/p', count: 2 }])
     expect(out.stats.citedPages).toBe(1)
+  })
+
+  it('挂载 linkGraph：pages[].depth 取图谱深度，协议记录抓取策略（spec S1 §6）', () => {
+    const graph = buildLinkGraph({
+      entryUrl: 'https://a.com/',
+      pages: [
+        { url: 'https://a.com/', checkStatus: 'checked', httpStatus: 200, metaRobots: null, discoveredVia: 'entry', linkDetails: [{ url: 'https://a.com/x', count: 1, anchors: [], regions: ['main'], nofollow: false }], externalLinks: [] },
+        { url: 'https://a.com/x', checkStatus: 'checked', httpStatus: 200, metaRobots: null, discoveredVia: 'both', linkDetails: [], externalLinks: [] },
+      ],
+    })
+    const out = buildSiteAudit({
+      pages: [page({ url: 'https://a.com/', discoveredVia: 'entry', depth: 0 }), page({ url: 'https://a.com/x', discoveredVia: 'both', depth: null })],
+      templates: [], citedUrls: [], entryHost: 'a.com', maxPages: 200, maxDepth: 3,
+      linkGraph: graph, crawlStrategy: 'link_first_v1', sitemapReserveRatio: 0.2,
+    })
+    expect(out.pages.map((p) => p.depth)).toEqual([0, 1])
+    expect(out.protocol).toEqual({ maxPages: 200, maxDepth: 3, crawlStrategy: 'link_first_v1', sitemapReserveRatio: 0.2 })
+    expect(out.linkGraph).toBe(graph)
   })
 })

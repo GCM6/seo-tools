@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { isPsiConfigured, fetchPageSpeedInsights } from './psi'
+import { PSI_429_QUOTA_BODY } from '@/lib/test-fixtures/real-shapes'
+
+// 成功时取出解析结果；失败直接让用例失败并带上原因。
+async function okValue(p: ReturnType<typeof fetchPageSpeedInsights>) {
+  const r = await p
+  if (!r.ok) throw new Error(`expected ok, got ${r.reason}`)
+  return r.value
+}
 
 // 代表性 PSI v5 响应：有 CrUX 字段数据 + Lighthouse 实验室数据。
 const psiWithFieldData = {
@@ -61,7 +69,7 @@ describe('isPsiConfigured', () => {
 describe('fetchPageSpeedInsights', () => {
   it('解析 CrUX 字段数据与 Lighthouse 诊断（有字段数据）', async () => {
     const fetchImpl = mockFetch(psiWithFieldData)
-    const result = await fetchPageSpeedInsights('https://example.com', 'mobile', fetchImpl)
+    const result = await okValue(fetchPageSpeedInsights('https://example.com', 'mobile', fetchImpl))
 
     expect(result.strategy).toBe('mobile')
     expect(result.crux.hasFieldData).toBe(true)
@@ -80,7 +88,7 @@ describe('fetchPageSpeedInsights', () => {
 
   it('无 CrUX 时 hasFieldData=false 且各指标 null，仍保留实验室数据', async () => {
     const fetchImpl = mockFetch(psiNoFieldData)
-    const result = await fetchPageSpeedInsights('https://tiny-site.com', 'desktop', fetchImpl)
+    const result = await okValue(fetchPageSpeedInsights('https://tiny-site.com', 'desktop', fetchImpl))
 
     expect(result.crux.hasFieldData).toBe(false)
     expect(result.crux.lcpMs).toBeNull()
@@ -90,19 +98,28 @@ describe('fetchPageSpeedInsights', () => {
     expect(result.lighthouse.ttfbMs).toBe(500)
   })
 
-  it('字段缺失时全部返回 null / 空数组，不抛错', async () => {
-    const fetchImpl = mockFetch({})
-    const result = await fetchPageSpeedInsights('https://example.com', 'mobile', fetchImpl)
-
-    expect(result.crux).toEqual({ lcpMs: null, inpMs: null, cls: null, hasFieldData: false })
-    expect(result.lighthouse).toEqual({ performanceScore: null, opportunities: [], ttfbMs: null })
+  // SP-A §4.1：采集失败不得变成"测得全空"——失败如实返回原因，并带上原始响应供存档。
+  it('真实 429 配额错误 → 失败 http_429，带原始响应', async () => {
+    const fetchImpl = vi.fn(async () => new Response(PSI_429_QUOTA_BODY, { status: 429, headers: { 'content-type': 'application/json; charset=UTF-8' } }))
+    const r = await fetchPageSpeedInsights('https://metadocu.com/', 'mobile', fetchImpl)
+    expect(r).toMatchObject({ ok: false, reason: 'http_429', httpStatus: 429 })
+    expect(r.raw?.status).toBe(429)
+    expect(r.raw?.body).toContain('Quota exceeded')
   })
 
-  it('响应非 JSON 时降级为全 null，不抛错', async () => {
-    const fetchImpl = vi.fn(async () => new Response('quota exceeded', { status: 429 }))
-    const result = await fetchPageSpeedInsights('https://example.com', 'mobile', fetchImpl)
-    expect(result.crux.hasFieldData).toBe(false)
-    expect(result.lighthouse.performanceScore).toBeNull()
+  it('200 但不是 JSON → invalid_json', async () => {
+    const fetchImpl = vi.fn(async () => new Response('<html>maintenance</html>', { status: 200 }))
+    expect(await fetchPageSpeedInsights('https://example.com', 'mobile', fetchImpl)).toMatchObject({ ok: false, reason: 'invalid_json' })
+  })
+
+  it('200 但既无 Lighthouse 分数也无 CrUX 现场数据 → empty_result，不当成测得全空', async () => {
+    const r = await fetchPageSpeedInsights('https://example.com', 'mobile', mockFetch({}))
+    expect(r).toMatchObject({ ok: false, reason: 'empty_result' })
+  })
+
+  it('fetch 抛错 → network_error', async () => {
+    const fetchImpl = vi.fn(async () => { throw new TypeError('fetch failed') })
+    expect(await fetchPageSpeedInsights('https://example.com', 'mobile', fetchImpl)).toMatchObject({ ok: false, reason: 'network_error', raw: null })
   })
 
   it('带 category=performance 与 strategy 请求，配置 key 时附加 key 参数', async () => {

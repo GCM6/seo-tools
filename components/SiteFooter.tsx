@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server'
 import Link from 'next/link'
 import { RULES_VERSION } from '@/lib/diagnosis/types'
-import { version as APP_VERSION } from '@/package.json'
+import packageInfo from '@/package.json'
 import { Logo } from './Logo'
 
 // 协议版本（探针协议 provider/model/params/prompts 的整体版本，spec §3 / plan-ux §5.2）；
@@ -33,7 +33,7 @@ export async function SiteFooter({ locale }: { locale: string }) {
       }}
       rulesVersion={RULES_VERSION}
       protocolVersion={PROTOCOL_VERSION}
-      appVersion={APP_VERSION}
+      appVersion={packageInfo.version}
     />
   )
 }

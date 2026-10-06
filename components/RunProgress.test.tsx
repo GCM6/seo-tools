@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { NextIntlClientProvider } from 'next-intl'
 import { RunProgress } from './RunProgress'
@@ -67,5 +67,22 @@ describe('RunProgress 失败态操作按钮（D5：重试按钮补样式）', ()
 
     const retryBtn = screen.getByRole('button', { name: '重试采集' })
     expect(retryBtn).toHaveClass('rp-action-retry')
+  })
+  it('回测 run 不能直接重试（409 retest_retry_unsupported）：说明原因并链到项目页重新发起回测（最终审查 F5-1）', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'retest_retry_unsupported', projectId: 'proj_1' }), { status: 409 })))
+    renderProgress({ initialStatus: 'failed', initialFailureReason: 'timeout' })
+    fireEvent.click(screen.getByRole('button', { name: '重试采集' }))
+    const link = await screen.findByRole('link', { name: /回测不能直接重试/ })
+    expect(link).toHaveAttribute('href', '/zh/projects/proj_1')
+    expect(screen.queryByText('重试失败，请稍后再试。')).toBeNull()
+    vi.unstubAllGlobals()
+  })
+  it('重试被建 run 闸门拒绝（422 market_required，SP-A §3.5）：链到向导补充项目设置', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'market_required', projectId: 'proj_1' }), { status: 422 })))
+    renderProgress({ initialStatus: 'failed', initialFailureReason: 'timeout' })
+    fireEvent.click(screen.getByRole('button', { name: '重试采集' }))
+    const link = await screen.findByRole('link', { name: /品类\/市场未设置/ })
+    expect(link).toHaveAttribute('href', '/zh/new?projectId=proj_1')
+    vi.unstubAllGlobals()
   })
 })

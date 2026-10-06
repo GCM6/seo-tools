@@ -2,6 +2,7 @@ import type { DiagnosisEvidenceRow, RuleContext } from './types'
 import type { SiteAuditPayload } from '@/lib/crawl/site-audit'
 import type { ProbeSummary } from '@/lib/probes/summary'
 import type { PsiResult } from '@/lib/collection/psi'
+import type { ThirdPartyPayload, ThirdPartyPayloadV1 } from '@/lib/collection/third-party-presence'
 import type { GscDimension } from '@/lib/gsc/search-analytics'
 import type {
   DataforseoSerpPayload,
@@ -141,15 +142,11 @@ interface UaProbePayload {
   crawlers?: { ua?: string; kind?: 'search' | 'training'; url?: string; status?: number | null; blocked?: boolean }[]
   llmsTxt?: { exists?: boolean; url?: string }
 }
-interface ThirdPartyPayload {
-  wikipedia?: { exists?: boolean; title?: string | null; url?: string | null }
-  reddit?: { mentions?: number; windowDays?: number }
-}
 // 社媒/第三方评价站前台存在度（G11/SP01/SP02）：evidence type 'social_presence'（L2，前台检索
 // 结果，非平台 API 全量数据）。防御性解析——字段缺失一律给空/0，不猜测。
 interface SocialPresencePayload {
   brand?: string
-  platforms?: { platform?: 'youtube' | 'g2' | 'trustpilot' | 'capterra'; query?: string; resultCount?: number; topResults?: { title?: string; url?: string }[] }[]
+  platforms?: { platform?: 'youtube' | 'g2' | 'trustpilot' | 'capterra'; query?: string; status?: 'ok' | 'failed'; reason?: string; resultCount?: number; topResults?: { title?: string; url?: string }[] }[]
   checkedAt?: string
 }
 
@@ -170,13 +167,23 @@ function buildUaProbe(evidence: DiagnosisEvidenceRow[]): RuleContext['uaProbe'] 
   }
 }
 
+// v2（SP-A §4.4）原样透传。v1 旧载荷不能当测得值回放：维基"存在"来自全文搜索（不是同名词条），
+// Reddit 失败被记成 0（10-03 metadocu 实测即 403→0）——维基一律标"无法核实"；Reddit 只有正数提及可信。
 function buildThirdParty(evidence: DiagnosisEvidenceRow[]): RuleContext['thirdParty'] {
   const e = evidence.find((ev) => ev.type === 'third_party_presence')
   if (!e) return null
-  const p = (e.payload ?? {}) as ThirdPartyPayload
+  const p = (e.payload ?? {}) as Partial<ThirdPartyPayload> & ThirdPartyPayloadV1
+  if (p.version === 2 && p.wikipedia && p.reddit && 'status' in p.wikipedia && 'status' in p.reddit) {
+    return { wikipedia: p.wikipedia, reddit: p.reddit, evidenceId: e.id }
+  }
+  const legacy = p as ThirdPartyPayloadV1
+  const windowDays = num(legacy.reddit?.windowDays)
+  const mentions = num(legacy.reddit?.mentions)
   return {
-    wikipedia: { exists: !!p.wikipedia?.exists, title: p.wikipedia?.title ?? null, url: p.wikipedia?.url ?? null },
-    reddit: { mentions: num(p.reddit?.mentions), windowDays: num(p.reddit?.windowDays) },
+    wikipedia: { status: 'failed', httpStatus: null, reason: 'legacy_unverified' },
+    reddit: mentions > 0
+      ? { status: 'ok', mentions, windowDays }
+      : { status: 'failed', httpStatus: null, reason: 'legacy_unverified', windowDays },
     evidenceId: e.id,
   }
 }
@@ -193,12 +200,20 @@ function buildSocialPresence(evidence: DiagnosisEvidenceRow[]): RuleContext['soc
       .filter((pl): pl is NonNullable<typeof pl> & { platform: 'youtube' | 'g2' | 'trustpilot' | 'capterra' } =>
         pl?.platform === 'youtube' || pl?.platform === 'g2' || pl?.platform === 'trustpilot' || pl?.platform === 'capterra',
       )
-      .map((pl) => ({
-        platform: pl.platform,
-        query: pl.query ?? '',
-        resultCount: num(pl.resultCount),
-        topResults: (pl.topResults ?? []).map((r) => ({ title: r?.title ?? '', url: r?.url ?? '' })),
-      })),
+      .map((pl) => {
+        const resultCount = num(pl.resultCount)
+        // 旧载荷没有 status：当年查询失败也记 0 条——有结果的可信（ok），0 条无法核实（与 buildThirdParty 同一口径）。
+        const status = pl.status ?? (resultCount > 0 ? 'ok' : 'failed')
+        const reason = pl.status ? pl.reason : status === 'failed' ? 'legacy_unverified' : undefined
+        return {
+          platform: pl.platform,
+          query: pl.query ?? '',
+          status,
+          ...(reason ? { reason } : {}),
+          resultCount,
+          topResults: (pl.topResults ?? []).map((r) => ({ title: r?.title ?? '', url: r?.url ?? '' })),
+        }
+      }),
     checkedAt: p.checkedAt ?? '',
     evidenceId: e.id,
   }

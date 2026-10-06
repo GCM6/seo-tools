@@ -20,7 +20,7 @@ const probe = (o: Partial<ProbeSummary>): ProbeSummary => ({
   sentiment: { positive: 0, neutral: 0, negative: 0, comparison: 0, total: 0 }, sampleEvidenceId: null,
   // D5（Wave 2-A）：brand_presence 已切到 unbranded 层口径，测试按用例显式传 unbranded；
   // 不传时给中性默认值（present/total 均 0，代表「未标注 unbranded 分母」）。
-  unbranded: { present: 0, total: 0, wilsonLow: 0 }, branded: { perEngine: [] }, citationRate: 0, citedDomains: [], ugcCitationShare: null, ...o,
+  unbranded: { present: 0, total: 0, wilsonLow: 0 }, branded: { perEngine: [] }, citationRate: 0, citedDomains: [], ugcCitationShare: null, samplesPerPromptPerEngine: 1, ...o,
 })
 // 缺省 brandedPromptCount/parserVersions 给中性默认值（两轮一致 → 不触发缺陷1 口径不可比守卫）；
 // aio 缺省 null——代表「本轮未采集 AIO」（旧 run / 未配置 DataForSEO 的常见状态）。
@@ -183,7 +183,7 @@ describe('buildProbeMetricRows', () => {
     const r = run({ probe: probe({ unbranded: { present: 2, total: 22, wilsonLow: 0 } }) })
     const rows = buildProbeMetricRows(b, r)
     const byName = Object.fromEntries(rows.map((x) => [x.metricName, x]))
-    expect(byName['probe.brand_presence'].interpretation).toBe('方向性波动，未超噪声（推断，n=5 方向性）')
+    expect(byName['probe.brand_presence'].interpretation).toBe('方向性波动，未超噪声（推断，n=1 方向性）')
     expect(byName['probe.brand_presence'].interpretation).not.toMatch(/上升|下降/)
   })
 

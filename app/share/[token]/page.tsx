@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { NextIntlClientProvider } from 'next-intl'
 import { setRequestLocale, getTranslations } from 'next-intl/server'
 import { ReportView } from '@/components/ReportView'
 import { getReportShareByToken } from '@/lib/repositories'
@@ -19,12 +20,16 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
   setRequestLocale(share.locale)
   const t = await getTranslations('report')
 
+  // 分享页不在 [locale] 布局下，没有外层 Provider；ReportView 内含 useTranslations 的
+  // client 组件（如 KeywordTable），缺 Provider 会整页 500。按 share 行的语言在此注入。
   return (
-    <main className="share-page">
-      <div className="share-body">
-        <ReportView runId={share.runId} />
-      </div>
-      <footer className="share-footer">{t('generatedBy')}</footer>
-    </main>
+    <NextIntlClientProvider>
+      <main className="share-page">
+        <div className="share-body">
+          <ReportView runId={share.runId} />
+        </div>
+        <footer className="share-footer">{t('generatedBy')}</footer>
+      </main>
+    </NextIntlClientProvider>
   )
 }

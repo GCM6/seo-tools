@@ -3,7 +3,7 @@
 import { useEffect, useReducer, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import type { RunStatus } from '@/lib/types'
 import { PHASES, initialStagelineState, reduceProgress, type ProgressMessage } from '@/lib/runs/stageline'
 import { CountUp } from '@/components/fx/CountUp'
@@ -26,11 +26,15 @@ export function RunProgress({
   reviewGate?: { pendingCount: number; totalCount: number; href: string }
 }) {
   const t = useTranslations('screen2.run')
+  const locale = useLocale()
   const router = useRouter()
   const [state, dispatch] = useReducer(reduceProgress, initialStagelineState(initialStatus, initialFailureReason))
   const [stream, setStream] = useState<{ key: string; type: string }[]>([])
   const [retrying, setRetrying] = useState(false)
   const [retryErr, setRetryErr] = useState(false)
+  // SP-A §3.5：重试被建 run 闸门拒绝（项目品类/市场未设置）→ 链到向导补充。
+  const [retrySetupProjectId, setRetrySetupProjectId] = useState<string | null>(null)
+  const [retryRetestProjectId, setRetryRetestProjectId] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const [cancelErr, setCancelErr] = useState(false)
 
@@ -57,10 +61,21 @@ export function RunProgress({
   async function retry() {
     setRetrying(true)
     setRetryErr(false)
+    setRetrySetupProjectId(null)
+    setRetryRetestProjectId(null)
     const res = await fetch(`/api/runs/${runId}/retry`, { method: 'POST' })
     setRetrying(false)
-    if (res.ok) router.refresh()
-    else setRetryErr(true)
+    if (res.ok) return router.refresh()
+    const body = (await res.json().catch(() => ({}))) as { error?: string; projectId?: string }
+    if (res.status === 422 && (body.error === 'category_required' || body.error === 'market_required') && body.projectId) {
+      setRetrySetupProjectId(body.projectId)
+      return
+    }
+    if (res.status === 409 && body.error === 'retest_retry_unsupported' && body.projectId) {
+      setRetryRetestProjectId(body.projectId)
+      return
+    }
+    setRetryErr(true)
   }
 
   async function cancel() {
@@ -225,6 +240,16 @@ export function RunProgress({
             <span role="status" className="ml-2 text-xs">
               {t('retryFailed')}
             </span>
+          )}
+          {retrySetupProjectId && (
+            <Link href={`/${locale}/new?projectId=${retrySetupProjectId}`} className="ml-2 text-xs">
+              {t('retryNeedsSetup')}
+            </Link>
+          )}
+          {retryRetestProjectId && (
+            <Link href={`/${locale}/projects/${retryRetestProjectId}`} className="ml-2 text-xs">
+              {t('retryRetestUnsupported')}
+            </Link>
           )}
         </div>
       )}

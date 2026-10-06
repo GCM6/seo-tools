@@ -16,6 +16,7 @@ const entry = (keyword: string, items: SeedSerpEntry['items']): SeedSerpEntry =>
 const page = (o: Omit<Partial<LightCheckPage>, 'extra'> & { extra?: Partial<LightCheckPage['extra']> }): LightCheckPage => ({
   url: 'https://c.com/p', finalUrl: 'https://c.com/p', httpStatus: 200, title: 'T',
   canonicalUrl: null, metaRobots: null, mainTextChars: 1000, contentHash: 'h', internalLinks: [],
+  linkDetails: [], externalLinks: [],
   checkStatus: 'checked', errorReason: null,
   ...o,
   extra: {

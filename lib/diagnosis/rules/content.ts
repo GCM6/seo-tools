@@ -1,9 +1,20 @@
 import { parseHTML } from 'linkedom'
 import type { Rule, RuleContext, RuleHitDraft } from '../types'
-import { schemaRuleFor } from '../schema-vocab'
+import { SCHEMA_VOCAB_VERSION, buildSchemaIdIndex, hasField, schemaRuleFor } from '../schema-vocab'
 import { pagesWithExtra, C09_ALT_MISSING_RATIO, SCANNABILITY_PARA_WORDS, isLanguagePathTemplate } from './technical'
 import { clusterTemplates } from '@/lib/crawl/template-cluster'
 import type { SiteAuditPage } from '@/lib/crawl/site-audit'
+import { articlePagesOf } from './eeat'
+import { readLinkGraph } from '@/lib/crawl/link-graph'
+import { isUtilityPage } from '@/lib/crawl/link-integrity'
+
+const SUPERSEDE_MIN_ARTICLES = 3 // 文章页达到此数时 C06/C07 让位给文章级规则（spec S4 §5）
+
+// TR06 能否运行：需要链接图且入口有站内出链（与 TR06 自身守卫一致）。
+function tr06CanRun(ctx: RuleContext): boolean {
+  const graph = readLinkGraph(ctx.siteAudit?.payload)
+  return !!graph && (graph.nodeByUrl.get(graph.entryUrl)?.outInternal ?? 0) > 0
+}
 
 // P2 内容/SEO 规则组：解析入口页 rawHtml 判定 title/meta/h1/schema。
 // —— 阈值均为启发式经验值，随 RULES_VERSION 版本化 ——
@@ -28,17 +39,24 @@ const TA01_SHALLOW_MAX_PAGES = 2 // 话题群页数 ≤ 此值视为「有话题
 const TA01_ISOLATED_AVG_INBOUND = 1 // 群内页站内入度均值 < 此值视为孤立
 const TA02_HUB_CLUSTER_MIN_PAGES = 4 // 话题群 ≥ 此页数才谈得上需要 Hub
 const TA02_HUB_MIN_INBOUND = 5 // 群内最高入度 < 此值视为缺 Hub 页
+const TA01_ISOLATED_MIN_PAGES = 3 // 1–2 页的群内邻接天然为 0，不足此页数不判孤立
 
 // FAQ/HowTo 富摘要已弃用（2026-05 起谷歌全面停展），永不作为富摘要机会推荐新增。
 const DEPRECATED_SCHEMA = ['FAQPage', 'FAQ', 'HowTo']
 // 2026 年仍产出富摘要 / 利于机器理解的推荐类型。
-const RECOMMENDED_SCHEMA = ['Organization', 'Product', 'Article', 'BreadcrumbList', 'Breadcrumb']
+// 含常见子类型（BlogPosting/LocalBusiness 等）；嵌套节点（如 WebSite.publisher 里的 Organization）同样算（2026-10-03 troyhunt 误报）。
+const RECOMMENDED_SCHEMA = [
+  'Organization', 'Corporation', 'LocalBusiness', 'OnlineStore', 'NewsMediaOrganization',
+  'Product', 'ProductGroup', 'Article', 'BlogPosting', 'NewsArticle', 'TechArticle', 'BreadcrumbList', 'Breadcrumb',
+]
 
 interface ParsedEntry {
   title: string | null
   h1Count: number
   h1Texts: string[]
   metaDescription: string | null
+  descTags: number // name=description（大小写不敏感）的 <meta> 标签数
+  emptyDescTags: number
 }
 
 function parseEntry(html: string): ParsedEntry {
@@ -46,9 +64,12 @@ function parseEntry(html: string): ParsedEntry {
   const title = document.querySelector('title')?.textContent?.trim() || null
   const h1Els = [...document.querySelectorAll('h1')]
   const h1Texts = h1Els.map((h) => h.textContent?.trim() ?? '')
-  const metaDescription =
-    document.querySelector('meta[name="description"]')?.getAttribute('content')?.trim() || null
-  return { title, h1Count: h1Els.length, h1Texts, metaDescription }
+  // 主题重复输出时常见「先空后实」两个标签（2026-10-03 troyhunt）：取首个非空的作为描述。
+  const descs = [...document.querySelectorAll('meta[name]')]
+    .filter((m) => m.getAttribute('name')?.trim().toLowerCase() === 'description')
+    .map((m) => m.getAttribute('content')?.trim() ?? '')
+  const metaDescription = descs.find(Boolean) || null
+  return { title, h1Count: h1Els.length, h1Texts, metaDescription, descTags: descs.length, emptyDescTags: descs.filter((d) => !d).length }
 }
 
 const entryScope = (ctx: RuleContext): string => ctx.entryPage?.canonicalUrl ?? 'entry'
@@ -95,11 +116,21 @@ const C02: Rule = {
   claimType: 'measured_hard',
   evaluate(ctx): RuleHitDraft | null {
     if (!ctx.entryPage) return null
-    const { metaDescription } = parseEntry(ctx.entryPage.rawHtml)
+    const { metaDescription, descTags, emptyDescTags } = parseEntry(ctx.entryPage.rawHtml)
+    if (metaDescription && descTags > 1) {
+      return {
+        title: '入口页存在重复的 meta description 标签',
+        description: `入口页有 ${descTags} 个 meta description 标签${emptyDescTags ? `（其中 ${emptyDescTags} 个内容为空）` : ''}，多为模板重复输出；搜索引擎与社交平台取哪一个不确定，建议只保留一个。`,
+        evidenceRefs: [ctx.entryPage.id],
+        scope: entryScope(ctx),
+        severity: 'notice',
+        detail: { tags: descTags, empty: emptyDescTags },
+      }
+    }
     if (metaDescription) return null
     return {
       title: '入口页缺少 meta description',
-      description: '入口页未检测到 meta description，搜索引擎将自动摘取正文片段，摘要不可控且影响点击率。',
+      description: `${descTags ? '入口页的 meta description 标签存在但内容为空' : '入口页未检测到 meta description'}，搜索引擎将自动摘取正文片段，摘要不可控且影响点击率。`,
       evidenceRefs: [ctx.entryPage.id],
       scope: entryScope(ctx),
       detail: {},
@@ -137,12 +168,15 @@ const C03: Rule = {
         detail: { h1Count, h1Texts },
       }
     }
+    // H1 与 title 相同不违反任何 Google 规范，只是少覆盖一种说法：降为说明 + 假设（SP-A §5.2）。
     if (title && h1Texts[0] && h1Texts[0] === title) {
       return {
-        title: '入口页 H1 与 title 完全重复',
-        description: 'H1 与 title 文案完全一致，未能覆盖更多相关语义，建议差异化表达。',
+        title: '入口页 H1 与 title 完全相同',
+        description: '入口页 H1 与 title 完全相同。可考虑差异化表达以覆盖更多相关说法，这不是错误。',
         evidenceRefs: ev,
         scope,
+        severity: 'notice',
+        claimType: 'hypothesis',
         detail: { title, h1: h1Texts[0] },
       }
     }
@@ -178,7 +212,7 @@ const C05a: Rule = {
       })
     }
 
-    const presentTypes = new Set(schemas.flatMap((s) => s.types))
+    const presentTypes = new Set(schemas.flatMap((s) => [...s.types, ...nestedTypes(s.raw)]))
     const hasRecommended = RECOMMENDED_SCHEMA.some((t) => presentTypes.has(t))
     if (!hasRecommended) {
       hits.push({
@@ -196,6 +230,21 @@ const C05a: Rule = {
 }
 
 // —— 通用小工具 ——
+// JSON-LD 里任意层级的 @type（含 @graph 与属性值里的嵌套节点）。
+function nestedTypes(node: unknown, out: string[] = [], depth = 0): string[] {
+  if (depth > 12 || node === null || typeof node !== 'object') return out
+  if (Array.isArray(node)) {
+    node.forEach((n) => nestedTypes(n, out, depth + 1))
+    return out
+  }
+  const obj = node as Record<string, unknown>
+  const t = obj['@type']
+  if (typeof t === 'string') out.push(t)
+  else if (Array.isArray(t)) out.push(...t.filter((v): v is string => typeof v === 'string'))
+  for (const [k, v] of Object.entries(obj)) if (k !== '@type') nestedTypes(v, out, depth + 1)
+  return out
+}
+
 const norm = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').trim()
 
 // 稳健正文文本：优先 <body>，为空时回退到 documentElement（linkedom 对无 body 的片段把内容挂在根上）。
@@ -241,6 +290,12 @@ function entityRoots(raw: unknown[]): Record<string, unknown>[] {
     }
   }
   return roots
+}
+
+// 携带 @context 的顶层对象：每块本身，顶层数组展开一层；不展开 @graph——@graph 子节点继承外层块的
+// @context（Yoast 等插件的标准输出），逐个子节点查 @context 会误报（spec §5.1）。
+function contextCarriers(raw: unknown[]): Record<string, unknown>[] {
+  return raw.flatMap((el) => (Array.isArray(el) ? el : [el])).filter(isObj)
 }
 
 // @context 是否指向 schema.org（缺失或非 schema.org 视为无效）。
@@ -290,6 +345,10 @@ const C04: Rule = {
   },
 }
 
+// C05b / C05c 描述与 detail 的列举上限。
+const SCHEMA_LIST_MAX = 5 // 描述里最多列出的条目数
+const SCHEMA_EXAMPLES_MAX = 20 // detail 列表上限（总数另记）
+
 // C05b：JSON-LD 语法 / @context 词汇校验（块解析失败或根对象 @context 非 schema.org）。
 const C05b: Rule = {
   id: 'C05b',
@@ -299,6 +358,7 @@ const C05b: Rule = {
   claimType: 'measured_hard',
   evaluate(ctx): RuleHitDraft | null {
     const offending: string[] = []
+    const offendingUrls: string[] = []
     let syntaxErrors = 0
     let contextErrors = 0
     for (const sc of ctx.schemas) {
@@ -309,63 +369,92 @@ const C05b: Rule = {
           syntaxErrors++
         }
       }
-      for (const root of entityRoots(sc.raw)) {
-        if (!contextIsSchemaOrg(root)) {
+      for (const carrier of contextCarriers(sc.raw)) {
+        if (!contextIsSchemaOrg(carrier)) {
           bad = true
           contextErrors++
         }
       }
-      if (bad) offending.push(sc.id)
+      if (bad) {
+        offending.push(sc.id)
+        offendingUrls.push(sc.source)
+      }
     }
     if (offending.length === 0) return null
+    // 只有出错的块会被忽略，同页其他有效块照常生效——不说"整体失效"。
+    const pages = [...new Set(offendingUrls)]
+    const listed = pages.slice(0, SCHEMA_LIST_MAX).join('、') + (pages.length > SCHEMA_LIST_MAX ? ` 等 ${pages.length} 个页面` : '')
     return {
       title: 'JSON-LD 语法 / @context 无效',
-      description: `检测到结构化数据块 JSON 解析失败或 @context 未指向 schema.org（语法错误 ${syntaxErrors} 处、@context 错误 ${contextErrors} 处），该结构化数据整体失效。`,
+      description: `${listed} 的 JSON-LD 块有问题：JSON 解析失败 ${syntaxErrors} 处、@context 缺失或未指向 schema.org ${contextErrors} 处。这些块会被 Google 忽略，其中标注的信息不会生效；同页其他有效块不受影响。`,
       evidenceRefs: offending,
       scope: 'schema:syntax',
-      detail: { syntaxErrors, contextErrors, offendingSchemaCount: offending.length },
+      detail: { syntaxErrors, contextErrors, offendingSchemaCount: offending.length, pages: pages.slice(0, SCHEMA_EXAMPLES_MAX) },
     }
   },
 }
 
-// C05c：Google 富摘要必填字段缺失（仅校验富摘要词表内类型）。
+// C05c：按 Google 结构化数据文档逐实体校验字段（仅词表内类型），拆成两条（spec §5.1）：
+//   - 缺 Google 要求的字段（或三选一一项都没有）→ warning「不符合 Google 富媒体结果要求」；
+//   - 只缺推荐字段 → notice「缺少 Google 推荐字段」。
+// 两条各用独立 scope，描述写明页面 URL、类型、缺失字段。
+interface SchemaFieldGap { schemaId: string; url: string; type: string; missing: string[] }
+
+// 三选一组的展示文案：[a,b,c] → "a、b 或 c 至少一项"。
+const oneOfLabel = (group: string[]): string =>
+  group.length > 1 ? `${group.slice(0, -1).join('、')} 或 ${group[group.length - 1]} 至少一项` : group[0]
+
+function schemaGapDraft(gaps: SchemaFieldGap[], kind: 'required' | 'recommended'): RuleHitDraft {
+  const listed = gaps.slice(0, SCHEMA_LIST_MAX).map((g) => `${g.url}（${g.type}）：缺 ${g.missing.join('，')}`).join('；')
+  const more = gaps.length > SCHEMA_LIST_MAX ? `；等 ${gaps.length} 处` : ''
+  const required = kind === 'required'
+  return {
+    title: required ? '不符合 Google 富媒体结果要求' : '缺少 Google 推荐字段',
+    description: required
+      ? `${gaps.length} 个结构化数据实体缺少 Google 要求的字段，不具备对应富媒体结果的资格：${listed}${more}。`
+      : `${gaps.length} 个结构化数据实体缺少 Google 推荐字段（补齐可提升富媒体结果的完整度，不是硬性要求；只在页面确有对应可见内容时添加）：${listed}${more}。`,
+    evidenceRefs: [...new Set(gaps.map((g) => g.schemaId))],
+    scope: required ? 'schema:required' : 'schema:recommended',
+    severity: required ? 'warning' : 'notice',
+    detail: {
+      examples: gaps.slice(0, SCHEMA_EXAMPLES_MAX).map(({ url, type, missing }) => ({ url, type, missing })),
+      total: gaps.length,
+      vocabVersion: SCHEMA_VOCAB_VERSION,
+    },
+  }
+}
+
 const C05c: Rule = {
   id: 'C05c',
   pillar: 'P2',
   side: 'seo',
   severity: 'warning',
   claimType: 'measured_hard',
-  evaluate(ctx): RuleHitDraft | null {
-    const offendingIds = new Set<string>()
-    const missing: { schemaId: string; type: string; missingFields: string[] }[] = []
+  evaluate(ctx): RuleHitDraft[] | null {
+    const requiredGaps: SchemaFieldGap[] = []
+    const recommendedGaps: SchemaFieldGap[] = []
     for (const sc of ctx.schemas) {
+      // 同页节点索引：offers / reviewRating 用 {"@id"} 引用同页另一个节点时按被引用节点判断（第二波审查 I6）。
+      const refs = buildSchemaIdIndex(sc.raw)
       for (const root of entityRoots(sc.raw)) {
         for (const type of typeList(root)) {
           const rule = schemaRuleFor(type)
           if (!rule) continue
-          const lack = rule.required.filter((f) => {
-            const v = root[f]
-            if (v == null) return true
-            if (typeof v === 'string') return v.trim() === ''
-            if (Array.isArray(v)) return v.length === 0
-            return false
-          })
-          if (lack.length > 0) {
-            offendingIds.add(sc.id)
-            missing.push({ schemaId: sc.id, type, missingFields: lack })
-          }
+          const missingRequired = [
+            ...rule.required.filter((f) => !hasField(root, f, refs)),
+            ...(rule.oneOf ?? []).filter((group) => !group.some((f) => hasField(root, f, refs))).map(oneOfLabel),
+          ]
+          const missingRecommended = rule.recommended.filter((f) => !hasField(root, f, refs))
+          // source = 该 schema 证据的来源页 URL（collect-evidence 写入 entryUrl / 深检页 URL）。
+          if (missingRequired.length > 0) requiredGaps.push({ schemaId: sc.id, url: sc.source, type, missing: missingRequired })
+          if (missingRecommended.length > 0) recommendedGaps.push({ schemaId: sc.id, url: sc.source, type, missing: missingRecommended })
         }
       }
     }
-    if (missing.length === 0) return null
-    const typesAffected = [...new Set(missing.map((m) => m.type))]
-    return {
-      title: 'Google 富摘要必填字段缺失',
-      description: `检测到 ${missing.length} 个结构化数据实体缺少 Google 富摘要必填字段（涉及类型：${typesAffected.join('、')}），富摘要无法生成。`,
-      evidenceRefs: [...offendingIds],
-      scope: 'schema:required',
-      detail: { missing, typesAffected, vocabVersion: 'google_rich_results_2026-07' },
-    }
+    const drafts: RuleHitDraft[] = []
+    if (requiredGaps.length > 0) drafts.push(schemaGapDraft(requiredGaps, 'required'))
+    if (recommendedGaps.length > 0) drafts.push(schemaGapDraft(recommendedGaps, 'recommended'))
+    return drafts.length ? drafts : null
   },
 }
 
@@ -460,10 +549,25 @@ const C06: Rule = {
       return /about|contact|关于|联系|关於|聯系|聯絡/.test(s)
     }) || /about|contact|关于|联系/.test(text)
 
-    const missing: string[] = []
-    if (!hasAuthor) missing.push('author')
-    if (!hasDate) missing.push('date')
+    // 作者/日期是文章级信号：入口页有文章信号且判为非文章（工具首页、企业首页）时不要求（2026-10-03 metadocu 噪音）；
+    // 历史证据无文章信号时照旧要求。
+    const entryArticle = (ctx.siteAudit?.payload.pages ?? []).find((p) => p.discoveredVia === 'entry')?.lightCheckExtra?.article
+    const needsByline = entryArticle ? entryArticle.isArticle : true
+    let missing: string[] = []
+    if (needsByline && !hasAuthor) missing.push('author')
+    if (needsByline && !hasDate) missing.push('date')
     if (!hasAboutContact) missing.push('about_contact')
+    // 有 ≥3 个文章页时只让出被接管的项（spec S4 §5；第三轮独立审查 P2-12）：作者/日期 → AR01/AR03；
+    // 关于/联系 → TR06，但仅当 TR06 能运行（有链接图且入口有站内出链），否则仍由 C06 报，避免无人报。
+    const supersededBy: string[] = []
+    if (articlePagesOf(ctx.siteAudit?.payload.pages).length >= SUPERSEDE_MIN_ARTICLES) {
+      missing = missing.filter((m) => m !== 'author' && m !== 'date')
+      supersededBy.push('AR01', 'AR03')
+      if (tr06CanRun(ctx)) {
+        missing = missing.filter((m) => m !== 'about_contact')
+        supersededBy.push('TR06')
+      }
+    }
     if (missing.length === 0) return null
 
     return {
@@ -471,7 +575,7 @@ const C06: Rule = {
       description: `入口页缺少作者署名 / 可见日期 / 关于·联系入口中的：${missing.join('、')}。注意：这些是可信度的代理指标，并非 Google 官方排名因子，仅作为经验层参考。`,
       evidenceRefs: [ctx.entryPage.id],
       scope: entryScope(ctx),
-      detail: { missing, hasAuthor, hasDate, hasAboutContact },
+      detail: { missing, hasAuthor, hasDate, hasAboutContact, ...(supersededBy.length ? { supersededBy } : {}) },
     }
   },
 }
@@ -498,10 +602,16 @@ const C07: Rule = {
     const hasBlockquote = document.querySelector('blockquote, q') !== null
     const quoteChars = (text.match(/["“”„‟'‘’]/g) ?? []).length
 
-    const missing: string[] = []
+    let missing: string[] = []
     if (statsCount < GEO_STATS_MIN) missing.push('statistics')
     if (externalLinks === 0) missing.push('citations')
     if (!hasBlockquote && quoteChars < 2) missing.push('quotes')
+    // 有 ≥3 个文章页时，统计与引用由文章级 AR04/AR05 按正文口径接管；引述没有文章级规则，保留（第三轮独立审查 P2-12）。
+    const supersededBy: string[] = []
+    if (articlePagesOf(ctx.siteAudit?.payload.pages).length >= SUPERSEDE_MIN_ARTICLES) {
+      missing = missing.filter((m) => m !== 'statistics' && m !== 'citations')
+      supersededBy.push('AR04', 'AR05')
+    }
     if (missing.length === 0) return null
 
     return {
@@ -509,7 +619,7 @@ const C07: Rule = {
       description: `入口页正文缺少利于 AI 引擎提取的特征：${missing.join('、')}（KDD 2024 三强项启发式：统计数据、来源引用、引述）。属机制性推断，非对照实验结论。`,
       evidenceRefs: [ctx.entryPage.id],
       scope: entryScope(ctx),
-      detail: { missing, statsCount, externalLinks, hasBlockquote, quoteChars },
+      detail: { missing, statsCount, externalLinks, hasBlockquote, quoteChars, ...(supersededBy.length ? { supersededBy } : {}) },
     }
   },
 }
@@ -555,22 +665,25 @@ const C10: Rule = {
   evaluate(ctx): RuleHitDraft | null {
     const audit = ctx.siteAudit
     if (!audit) return null
-    const byHash = new Map<string, string[]>()
+    // 按可见正文哈希（textHash，不含 script/style 等）判重：整页 HTML 哈希会被 nonce、title 差异打散（SP-A §5.2）。
+    // 跳转过去的页不计入（内容属于目标页）；同一最终 URL 只算一页（带跟踪参数 / www 的同一页）。旧证据没有 textHash → 不判。
+    const byHash = new Map<string, Set<string>>()
     for (const p of audit.payload.pages) {
-      const h = p.contentHash
-      if (!h) continue
-      if (!byHash.has(h)) byHash.set(h, [])
-      byHash.get(h)!.push(p.url)
+      const extra = p.lightCheckExtra
+      const h = extra?.textHash
+      if (!h || extra?.redirected === true) continue
+      if (!byHash.has(h)) byHash.set(h, new Set())
+      byHash.get(h)!.add(p.finalUrl ?? p.url)
     }
     const groups = [...byHash.entries()]
-      .filter(([, urls]) => urls.length >= 2)
-      .map(([hash, urls]) => ({ hash, urls }))
+      .map(([hash, urls]) => ({ hash, urls: [...urls] }))
+      .filter((g) => g.urls.length >= 2)
     if (groups.length === 0) return null
 
     const dupPageCount = groups.reduce((n, g) => n + g.urls.length, 0)
     return {
       title: '存在内容精确重复页',
-      description: `检测到 ${groups.length} 组正文逐字重复的页面（共 ${dupPageCount} 个页面），会分散权重并引发内部竞争。`,
+      description: `检测到 ${groups.length} 组正文文本完全相同的页面（共 ${dupPageCount} 个页面），会分散权重并引发内部竞争。`,
       evidenceRefs: [audit.id],
       scope: 'content:duplicate',
       detail: {
@@ -594,17 +707,21 @@ const C09: Rule = {
     const audit = ctx.siteAudit
     if (!audit) return null
     const withExtra = pagesWithExtra(ctx)
+    // 内容图片口径（不计模板区/装饰小图，2026-10-03 metadocu 噪音）；历史证据无该字段时回退全部图片。
+    const imgsOf = (x: (typeof withExtra)[number]['x']) => x.contentImgCount ?? x.imgCount
+    const missingOf = (x: (typeof withExtra)[number]['x']) => x.contentImgAltMissing ?? x.imgAltMissing
     const totals = withExtra.reduce(
-      (acc, p) => ({ imgs: acc.imgs + p.x.imgCount, missing: acc.missing + p.x.imgAltMissing }),
+      (acc, p) => ({ imgs: acc.imgs + imgsOf(p.x), missing: acc.missing + missingOf(p.x) }),
       { imgs: 0, missing: 0 },
     )
     if (totals.imgs === 0) return null
     const ratio = totals.missing / totals.imgs
     if (ratio <= C09_ALT_MISSING_RATIO) return null
-    const examples = withExtra.filter((p) => p.x.imgCount > 0 && p.x.imgAltMissing / p.x.imgCount > C09_ALT_MISSING_RATIO)
+    const examples = withExtra.filter((p) => imgsOf(p.x) > 0 && missingOf(p.x) / imgsOf(p.x) > C09_ALT_MISSING_RATIO)
+    const contentBasis = withExtra.some((p) => p.x.contentImgCount !== undefined)
     return {
       title: '图片 alt 缺失率过高',
-      description: `全站图片 alt 缺失率约 ${Math.round(ratio * 100)}%（${totals.missing}/${totals.imgs}）；alt 影响图片搜索与可访问性，也是 AI 理解图片内容的入口。`,
+      description: `全站${contentBasis ? '内容' : ''}图片 alt 缺失率约 ${Math.round(ratio * 100)}%（${totals.missing}/${totals.imgs}${contentBasis ? '，不含页眉/页脚/导航里的模板图与装饰小图' : ''}）；alt 影响图片搜索与可访问性，也是 AI 理解图片内容的入口。`,
       evidenceRefs: [audit.id],
       scope: 'site',
       detail: { ratio: Number(ratio.toFixed(2)), missing: totals.missing, imgs: totals.imgs, examples: examples.map((p) => p.url).slice(0, 10) },
@@ -658,6 +775,28 @@ function clusterInbound(pages: SiteAuditPage[]): { faithful: boolean; countOf: (
   return { faithful, countOf: (p) => (faithful ? inbound.get(strip(p.url)) ?? 0 : p.inboundLinkCount) }
 }
 
+// 话题群只由内容页组成（2026-10-03 真实站点核验：首页、单页、PDF、跳转源、标签/分页页、429 页被当成话题群）：
+// 已抓 2xx HTML、非入口、非跳转源、非功能页、非标签/分类/作者/归档列表与分页。
+const ARCHIVE_SEGMENT = /^(tag|tags|category|categories|author|authors|archive|archives)$/i
+const PAGINATION = /\/page\/\d+(\/|$)|[?&](page|pg|paged)=\d+/i
+function topicPages(pages: SiteAuditPage[]): SiteAuditPage[] {
+  return pages.filter((p) => {
+    if (p.checkStatus !== 'checked' || p.discoveredVia === 'entry') return false
+    if (p.httpStatus != null && (p.httpStatus < 200 || p.httpStatus >= 300)) return false
+    if ((p.lightCheckExtra?.contentKind ?? 'html') !== 'html') return false
+    if (p.finalUrl && p.finalUrl !== p.url) return false
+    let path: string
+    try {
+      path = new URL(p.url).pathname
+    } catch {
+      return false
+    }
+    if (path === '/' || isUtilityPage(p.url) || PAGINATION.test(p.url)) return false
+    return !path.split('/').some((seg) => ARCHIVE_SEGMENT.test(seg))
+  })
+}
+const isTemplated = (pattern: string) => /\{(slug|id|date|uuid)\}/.test(pattern)
+
 // TA01：主题覆盖浅/话题群割裂。用 clusterTemplates 从页面 URL 重建话题群（排除语言路径群），
 // 群内密度用忠实群内有向邻接（历史证据回退站内入度近似）。恒结构性建议、不作排名断言。
 const TA01: Rule = {
@@ -669,11 +808,14 @@ const TA01: Rule = {
   evaluate(ctx): RuleHitDraft | null {
     const auditCtx = ctx.siteAudit
     if (!auditCtx) return null
-    const byUrl = new Map(auditCtx.payload.pages.map((p) => [p.url, p]))
-    const clusters = clusterTemplates(auditCtx.payload.pages.map((p) => p.url)).filter(
+    const content = topicPages(auditCtx.payload.pages)
+    const byUrl = new Map(content.map((p) => [p.url, p]))
+    const clusters = clusterTemplates(content.map((p) => p.url)).filter(
       (c) => !isLanguagePathTemplate(c.pattern),
     )
     if (clusters.length === 0) return null
+    // 「只有 1–2 页」须确认不是抽样没抓到：只在抓取穷尽（链接图 exhaustive）时判浅。
+    const exhaustive = readLinkGraph(auditCtx.payload)?.exhaustive === true
 
     const stripSlash = (u: string) => u.replace(/\/$/, '')
     const impressionOf = (url: string) =>
@@ -697,8 +839,9 @@ const TA01: Rule = {
         avgInbound: Number(avgInbound.toFixed(1)),
         gscImpressions: c.urls.reduce((s, u) => s + impressionOf(u), 0),
       }
-      if (pages.length <= TA01_SHALLOW_MAX_PAGES) shallow.push(row)
-      if (avgInbound < TA01_ISOLATED_AVG_INBOUND) isolated.push(row)
+      // 浅：独立话题模板（URL 带占位段）却只 1–2 页；字面单页（/about、/pricing）不是话题群。
+      if (exhaustive && isTemplated(c.pattern) && pages.length <= TA01_SHALLOW_MAX_PAGES) shallow.push(row)
+      if (pages.length >= TA01_ISOLATED_MIN_PAGES && avgInbound < TA01_ISOLATED_AVG_INBOUND) isolated.push(row)
     }
     if (shallow.length === 0 && isolated.length === 0) return null
 
@@ -717,6 +860,34 @@ const TA01: Rule = {
   },
 }
 
+// 上级栏目页（如 /news 列表之于 /news/{id}/{slug}）被群内成员普遍链接即为 Hub（2026-10-03 jac 新闻群误报）。
+// 门槛 min(TA02_HUB_MIN_INBOUND, 群页数)；历史证据（无 internalLinks）回退栏目页全站入度。根路径不算栏目。
+function hasSectionHub(members: SiteAuditPage[], all: SiteAuditPage[]): boolean {
+  const strip = (u: string) => u.replace(/\/$/, '')
+  const pageByUrl = new Map(all.filter((p) => p.checkStatus === 'checked' && p.httpStatus === 200).map((p) => [strip(p.url), p]))
+  const need = Math.min(TA02_HUB_MIN_INBOUND, members.length)
+  const faithful = members.some((p) => Array.isArray(p.internalLinks))
+  const ancestors = new Set<string>()
+  for (const m of members) {
+    try {
+      const u = new URL(m.url)
+      const segs = u.pathname.split('/').filter(Boolean)
+      for (let k = 1; k < segs.length; k++) ancestors.add(`${u.origin}/${segs.slice(0, k).join('/')}`)
+    } catch {
+      continue
+    }
+  }
+  for (const a of ancestors) {
+    const hub = pageByUrl.get(a)
+    if (!hub) continue
+    const linked = faithful
+      ? members.filter((m) => (m.internalLinks ?? []).some((l) => strip(l) === a)).length
+      : hub.inboundLinkCount
+    if (linked >= need) return true
+  }
+  return false
+}
+
 // TA02：话题群缺 Hub 页（Pillar-Cluster 结构缺失）。群内最大群内邻接入度 < 阈值即判缺中心页
 // （历史证据回退站内入度近似）。「主题权威」系行业经验框架、非官方排名因子，恒结构性建议、不作排名断言。
 const TA02: Rule = {
@@ -728,8 +899,9 @@ const TA02: Rule = {
   evaluate(ctx): RuleHitDraft | null {
     const auditCtx = ctx.siteAudit
     if (!auditCtx) return null
-    const byUrl = new Map(auditCtx.payload.pages.map((p) => [p.url, p]))
-    const clusters = clusterTemplates(auditCtx.payload.pages.map((p) => p.url)).filter(
+    const content = topicPages(auditCtx.payload.pages)
+    const byUrl = new Map(content.map((p) => [p.url, p]))
+    const clusters = clusterTemplates(content.map((p) => p.url)).filter(
       (c) => !isLanguagePathTemplate(c.pattern),
     )
     const noHub: { pattern: string; pageCount: number; maxInbound: number; representativeUrl: string }[] = []
@@ -738,7 +910,7 @@ const TA02: Rule = {
       if (pages.length < TA02_HUB_CLUSTER_MIN_PAGES) continue
       const { countOf } = clusterInbound(pages)
       const maxInbound = Math.max(...pages.map(countOf))
-      if (maxInbound < TA02_HUB_MIN_INBOUND) {
+      if (maxInbound < TA02_HUB_MIN_INBOUND && !hasSectionHub(pages, auditCtx.payload.pages)) {
         noHub.push({ pattern: c.pattern, pageCount: pages.length, maxInbound, representativeUrl: pages[0].url })
       }
     }

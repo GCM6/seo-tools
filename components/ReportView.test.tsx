@@ -77,6 +77,8 @@ interface Fixtures {
   promptRows: { id: string; text: string; priority: number; branded?: boolean }[]
   aioResultRows: { keyword: string; aioPresent: boolean; targetDomainCited: boolean; citedUrls: string[] }[]
   byokStatuses: { key: string; configured: boolean }[]
+  knowledgeSession: Record<string, unknown> | undefined
+  knowledgeArtifacts: Array<{ artifactType: string; payload: Record<string, unknown> }>
 }
 
 function baseFixtures(): Fixtures {
@@ -111,6 +113,8 @@ function baseFixtures(): Fixtures {
     promptRows: [],
     aioResultRows: [],
     byokStatuses: [{ key: 'dataforseo', configured: false }],
+    knowledgeSession: undefined,
+    knowledgeArtifacts: [],
   }
 }
 
@@ -136,6 +140,12 @@ vi.mock('@/lib/repositories', () => ({
 
 vi.mock('@/lib/settings/load-statuses', () => ({
   loadDataSourceStatuses: async () => state.fx.byokStatuses,
+}))
+
+vi.mock('@/lib/knowledge/read', () => ({
+  getAnalysisSessionSnapshot: async () => state.fx.knowledgeSession,
+  getAnalysisSessionArtifacts: async () => state.fx.knowledgeArtifacts,
+  getKnowledgeSourceUrls: async () => [],
 }))
 
 const { ReportView } = await import('./ReportView')
@@ -319,6 +329,78 @@ describe('ReportView §9 回测表 —— metricName 人类可读标签', () => 
   })
 })
 
+describe('ReportView §6 关键词现状 —— 意图承接地图', () => {
+  beforeEach(() => {
+    state.fx = baseFixtures()
+  })
+
+  it('workflow artifact 存在时渲染搜索意图到承接页面的结构化表格', async () => {
+    state.fx.run = { ...state.fx.run, analysisSessionId: 'session_1' }
+    state.fx.knowledgeArtifacts = [
+      {
+        artifactType: 'intent_page_fit_map',
+        payload: {
+          kind: 'intent_page_fit_map',
+          version: 1,
+          rowCount: 2,
+          issueRowCount: 2,
+          issueCounts: {
+            missing_landing_page: 1,
+            intent_page_mismatch: 1,
+            overbroad_landing_page: 0,
+            underlinked_landing_page: 0,
+            thin_landing_page: 0,
+            competing_pages: 0,
+          },
+          rows: [
+            {
+              query: 'enterprise crm pricing',
+              intent: 'transactional',
+              expectedPageRoles: ['pricing', 'product', 'service'],
+              currentUrl: null,
+              currentPageRole: null,
+              fitScore: 0,
+              impressions: null,
+              searchVolume: 700,
+              issueCodes: ['missing_landing_page'],
+              action: 'create_or_assign_landing_page',
+              evidenceIds: ['serp1', 'labs1'],
+              source: 'dataforseo',
+            },
+            {
+              query: 'crm pricing',
+              intent: 'transactional',
+              expectedPageRoles: ['pricing', 'product', 'service'],
+              currentUrl: 'https://example.com/blog/pricing-guide',
+              currentPageRole: 'blog',
+              fitScore: 38,
+              impressions: 240,
+              searchVolume: null,
+              issueCodes: ['intent_page_mismatch'],
+              action: 'reshape_landing_page',
+              evidenceIds: ['gsc1'],
+              source: 'gsc',
+            },
+          ],
+          overbroadPages: [],
+        },
+      },
+    ]
+
+    await renderReport()
+
+    const block = screen.getByTestId('intent-page-fit-map')
+    expect(within(block).getByText('搜索意图 → 承接页面')).toBeInTheDocument()
+    expect(within(block).getByText('enterprise crm pricing')).toBeInTheDocument()
+    expect(within(block).getByText('无明确承接页')).toBeInTheDocument()
+    expect(within(block).getByText('缺承接页')).toBeInTheDocument()
+    expect(within(block).getByText('创建或指定合适承接页')).toBeInTheDocument()
+    expect(within(block).getByText('https://example.com/blog/pricing-guide')).toBeInTheDocument()
+    expect(within(block).getByText('博客/文章')).toBeInTheDocument()
+    expect(within(block).getByText('意图不匹配')).toBeInTheDocument()
+  })
+})
+
 // P1-1「报告结论不先行」修复：把 9 段重排为「结论先行三段式」——第一屏读懂现状 + 下一步，
 // 优先级矩阵/行动路线图上移到五支柱明细之前，方法与范围下沉到回测之前。
 // 只验证重排顺序、新增的「接下来做的 3 件事」渲染/空态、以及 constraint.* 文案改写；
@@ -415,5 +497,37 @@ describe('ReportView §P1-1 结论先行重排', () => {
     await renderReport()
     expect(screen.queryByTestId('next-steps')).not.toBeInTheDocument()
     expect(screen.queryByText(resolveMessage('report', 'summary.nextStepsTitle'))).not.toBeInTheDocument()
+  })
+})
+
+describe('ReportView 数据源合同：子阶段分组（SP-A §4.2）', () => {
+  beforeEach(() => {
+    state.fx = baseFixtures()
+  })
+
+  const dss = (sourceKey: string, status: string, extra: Record<string, unknown> = {}) => ({
+    sourceKey, configured: true, authorized: true, attempted: status !== 'not_attempted', status, failureReason: null, capturedEvidenceCount: 0, protocolSnapshot: null, ...extra,
+  })
+
+  it('父项下逐条列出子阶段的中文名、状态与失败原因；未覆盖项里的子阶段也用中文名，不显示原始键名', async () => {
+    state.fx.dataSourceStatuses = [
+      dss('dataforseo', 'partial', { capturedEvidenceCount: 1 }),
+      dss('dataforseo:labs', 'failed', { failureReason: 'task_40101' }),
+      dss('dataforseo:backlinks', 'collected', { capturedEvidenceCount: 1 }),
+      dss('third_party', 'partial', { capturedEvidenceCount: 1 }),
+      dss('third_party:reddit', 'failed', { failureReason: 'http_403' }),
+    ]
+    await renderReport()
+    const zh = zhMessages.report.contract
+    const sources = screen.getByRole('heading', { name: zh.dataSourcesTitle }).nextElementSibling as HTMLElement
+    const labsRow = within(sources).getByText(new RegExp(zh.subSourceLabel.dataforseo_labs)).closest('li') as HTMLElement
+    expect(labsRow.textContent).toContain(zh.sourceStatus.failed)
+    expect(labsRow.textContent).toContain('task_40101')
+    expect(within(sources).getByText(new RegExp(zh.subSourceLabel.third_party_reddit)).closest('li')?.textContent).toContain('http_403')
+    const gapList = screen.getByRole('heading', { name: zh.gapsTitle }).parentElement as HTMLElement
+    expect(gapList.textContent).toContain(`${zh.sourceLabel.dataforseo} · ${zh.subSourceLabel.dataforseo_labs}`)
+    const page = document.body.textContent ?? ''
+    expect(page).not.toContain('dataforseo:labs')
+    expect(page).not.toContain('subSourceLabel')
   })
 })

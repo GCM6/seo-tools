@@ -40,6 +40,8 @@ export function RunHistory({
     retestStarting: string
     retestError: string
     retestInProgress: string
+    // SP-A §3.5：建 run 闸门拒绝时链到向导补充的文案（可选，缺省回落 retestError）。
+    retestNeedsSetup?: string
   }
   statusLabels: Record<string, string>
   runTypeLabels: Record<string, string>
@@ -97,6 +99,7 @@ export function RunHistory({
                         starting: labels.retestStarting,
                         error: labels.retestError,
                         inProgress: labels.retestInProgress,
+                        needsSetup: labels.retestNeedsSetup,
                       }}
                       className="ghost-btn run-btn-sm"
                       disabled={hasActiveRun}

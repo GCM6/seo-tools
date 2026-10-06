@@ -53,6 +53,26 @@ describe('querySearchAnalytics', () => {
   })
 })
 
+describe('querySearchAnalytics country filter（SP-A §3.1）', () => {
+  const opts = { startDate: '2026-06-01', endDate: '2026-06-28', dimensions: ['query'] as ('query' | 'page')[] }
+
+  it('传 country 时请求体带 country equals 过滤', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ rows: [] }))
+    await querySearchAnalytics('at_1', 's', { ...opts, country: 'gbr' }, fetchMock)
+    const [, init] = fetchMock.mock.calls[0] as unknown[] as [string, RequestInit]
+    expect(JSON.parse(init.body as string).dimensionFilterGroups).toEqual([
+      { filters: [{ dimension: 'country', operator: 'equals', expression: 'gbr' }] },
+    ])
+  })
+
+  it('country 为 null（全球英文）时不带任何过滤', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ rows: [] }))
+    await querySearchAnalytics('at_1', 's', { ...opts, country: null }, fetchMock)
+    const [, init] = fetchMock.mock.calls[0] as unknown[] as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).not.toHaveProperty('dimensionFilterGroups')
+  })
+})
+
 describe('listSites', () => {
   it('returns verified site urls', async () => {
     const fetchMock = vi.fn(async () =>

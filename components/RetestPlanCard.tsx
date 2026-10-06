@@ -55,6 +55,7 @@ export async function RetestPlanCard({
           starting: tRetest('starting'),
           error: tRetest('error'),
           inProgress: tRetest('inProgress'),
+          needsSetup: tRetest('needsSetup'),
         }}
       />
 

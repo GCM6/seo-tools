@@ -20,7 +20,8 @@ const SP01: Rule = {
     const { socialPresence } = ctx
     if (!socialPresence) return null
     const youtube = socialPresence.platforms.find((p) => p.platform === 'youtube')
-    if (!youtube) return null
+    // 查询失败（status !== 'ok'）等同没查：不能把失败当成"没有内容"（SP-A §4.4）。
+    if (!youtube || youtube.status !== 'ok') return null
     if (youtube.resultCount !== 0) return null
     return {
       title: '前台检索未发现品牌相关 YouTube 内容',
@@ -46,7 +47,7 @@ const SP02: Rule = {
     const { socialPresence } = ctx
     if (!socialPresence) return null
     const entries = SP02_PLATFORMS.map((platform) => socialPresence.platforms.find((p) => p.platform === platform))
-    if (entries.some((e) => !e)) return null // 任一站未检索：数据不完整，不判定
+    if (entries.some((e) => !e || e.status !== 'ok')) return null // 任一站未检索或查询失败：数据不完整，不判定
     const checked = entries as NonNullable<(typeof entries)[number]>[]
     if (checked.some((e) => e.resultCount !== 0)) return null
     return {

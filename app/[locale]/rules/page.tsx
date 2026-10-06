@@ -9,11 +9,12 @@ export default async function RulesPage({ params }: { params: Promise<{ locale: 
   const { locale } = await params
   setRequestLocale(locale)
 
-  const [pending, released] = await Promise.all([
+  const [pending, approved, released] = await Promise.all([
     getRuleChangeProposals('pending'),
+    getRuleChangeProposals('approved'),
     getReleasedProposals(),
   ])
   const changelog = groupChangelog(released as unknown as ChangelogInput[])
 
-  return <RulesAdminClient locale={locale} pending={pending} changelog={changelog} />
+  return <RulesAdminClient locale={locale} pending={pending} approvedCount={approved.length} changelog={changelog} />
 }

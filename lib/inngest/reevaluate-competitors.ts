@@ -61,7 +61,7 @@ interface ReevaluateDeps {
   createEvidenceArtifact: typeof createEvidenceArtifact
   fetchLightCheck: typeof fetchLightCheck
   allRules: () => Promise<Rule[]> | Rule[]
-  generateRecommendation: (hit: RuleHit, opts: { domain: string }) => Promise<RecommendationDraft> | RecommendationDraft
+  generateRecommendation: (hit: RuleHit, opts: { domain: string }) => Promise<RecommendationDraft | null> | RecommendationDraft | null
 }
 
 function errorReason(err: unknown, fallback = 'reevaluate_failed'): string {

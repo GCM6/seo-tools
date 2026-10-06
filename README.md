@@ -1,5 +1,7 @@
 # Veris
 
+SEO/GEO evidence-based diagnostic workbench with a versioned, human-reviewed knowledge brain. See [docs/knowledge-brain.md](docs/knowledge-brain.md) for source ingestion, claim review, release gates, workflow routing, and operations.
+
 Veris 是一个**以证据为先的 SEO + GEO（生成式引擎优化）诊断工作台**。它诊断网站在传统搜索（Google Search Console）与 AI 答案引擎（ChatGPT / Perplexity / Gemini / Claude）中的可见度，产出经人工确认的优化建议与可直接使用的执行 prompt，并支持 4–6 周的复测闭环。它**不是**排名追踪器，**不是**自动写作工具，**不是**「AI SEO 魔法」。
 
 **核心原则：证据先于结论。** 凡不可验证者只能标注为推断（inference）或假设（hypothesis），绝不可称为事实。UI 上的「实测」标签仅保留给 L3 / L4 级证据。事实、抽样测量、模型推断、产品建议在数据与界面中始终分层。
@@ -18,6 +20,10 @@ npx inngest-cli@latest dev   # 另开一个终端：启动 Inngest dev server（
 ```
 
 打开 http://localhost:3000，默认进入 `/zh`（中文为默认 locale），英文为 `/en`。
+
+> **端口固定为 3000：** `GOOGLE_OAUTH_REDIRECT_URI`（`http://localhost:3000/api/gsc/callback`）和 Inngest dev server 的自动发现都认 3000。
+> 若 3000 被其它项目占用，`npm run dev` 会直接报 `EADDRINUSE` 退出，而不是悄悄换到 3001——换端口后 GSC 授权成功会被 Google 送回 3000 上的**别的应用**（看到 404），采集任务也发不到本应用。
+> 需要与其它项目并存时：换一个专用端口，同时改 `package.json` 的 `dev` 端口、`.env` 的 `GOOGLE_OAUTH_REDIRECT_URI`，并在 Google Cloud Console 的「已获授权的重定向 URI」里登记新地址；Inngest 用 `npx inngest-cli@latest dev -u http://localhost:<端口>/api/inngest`。
 
 > **注意：** 新建分析会向 Inngest 派发采集事件，本地跑通需要两个条件：
 > 1. `.env` 中设置 `INNGEST_DEV=1`（否则 SDK 会把事件发往 Inngest 云端 API，因无 event key 而 401）；
@@ -51,7 +57,7 @@ drizzle-kit 的 `turso` dialect **不接受空的 `LIBSQL_AUTH_TOKEN`**。因此
 
 | 命令 | 说明 |
 | --- | --- |
-| `npm run dev` | 启动开发服务器（默认 http://localhost:3000） |
+| `npm run dev` | 启动开发服务器（固定 http://localhost:3000，端口被占时直接报错） |
 | `npm run build` | 生产构建 |
 | `npm run start` | 运行已构建的生产服务器 |
 | `npm run test` | 运行 Vitest 全量测试（`vitest run`） |

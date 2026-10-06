@@ -1,3 +1,4 @@
+import type { WikipediaCheck, RedditCheck } from '@/lib/collection/third-party-presence'
 import type { ClaimType, FindingSide, EvidenceType, EvidenceLevel } from '@/lib/types'
 import type { SiteAuditPayload } from '@/lib/crawl/site-audit'
 import type { ProbeSummary } from '@/lib/probes/summary'
@@ -11,7 +12,24 @@ import type { GscDimension } from '@/lib/gsc/search-analytics'
 // v3 → v4：新增社媒/第三方谈论面诊断规则 G11（品类回答引用大量来自社区/UGC 平台且未引用本站）、
 // SP01/SP02（YouTube 前台检索缺失 / 主流第三方评价站前台检索缺失），见 lib/diagnosis/rules/geo.ts
 // 与新增 lib/diagnosis/rules/reputation.ts。
-export const RULES_VERSION = 'rules_v4'
+// v4 → v5：新增 Intent-to-Page Fit（IPF01-IPF04），用 GSC query×page、crawl 与 DataForSEO
+// 判断搜索意图是否有清晰承接页、页型是否错位、泛页是否承接过多意图、承接页内链是否不足。
+// v5 → v6：S1 链接图谱地基——T12 改读图谱精确深度（修默认配置下永不触发），T05 抓取未穷尽时降级为
+// inferred、入口零出链时不判定（spec 2026-09-29-s1-link-graph-foundation §8）。
+// v6 → v7：S2 链接完整性——新增 L01–L07（站内断链/指向跳转/指向不可收录页/首页不可达孤岛/仅 nofollow 可达/
+// 死胡同页/站外链接失效），T12 只对已抓 HTML 页下实测、未抓超深目标降为 inferred；T02 不计 401/403/429 拒绝访问码、
+// T03 不计功能页 noindex，与 L01/L03 口径一致（spec 2026-09-29-s2-link-integrity + 第二轮独立审查 #16）。
+// v7 → v8：S3 内链权重——新增 W01–W04（高价值页权重偏低/权重集中在低价值页/锚文本泛化/缺正文上下文内链），
+// 站内 PageRank 为模型估算，W01/W02/W04 只标 inferred（spec 2026-09-29-s3-internal-link-equity）。
+// v8 → v9：S4 文章级 E-E-A-T 与博客数据支撑——新增 AR01–AR05、TR06、SO01、SO02；文章页 ≥3 时 C06/C07 让位
+// （spec 2026-09-29-s4-article-eeat-evidence-social）。第三轮独立审查后 AR01–AR03、TR06、SO01、SO02 改标 inferred（识别均为启发式），
+// W02 不再使用「零展现」与功能页，C06/C07 只让出被接管的项。
+// v9 → v10：SP-A 可信地基（spec 2026-10-04-sp-a-trustworthy-foundation）——C05c 按 Google 文档拆必填 / 推荐两条
+// （词表 google_rich_results_2026-10，同页 @id 引用按被引用节点判断），C05b 列页面、不再说"整体失效"；T14 改用 ISO 代码表；
+// T01 只禁抓非重点 URL 降为 notice；T08 只计会加载资源的元素；G01 把 Google-Extended 归训练 / 使用控制，G02 不再探测它；
+// C10 改按可见正文哈希并排除跳转行；C03 的 H1 = title 降为 notice + hypothesis；K03 域名归一；G05/G06/G09/G11/Q02 写实际 n；
+// G07 只用采集成功的子结果；G08 只记录不出建议。
+export const RULES_VERSION = 'rules_v10'
 
 export type Pillar = 'P1' | 'P2' | 'P3' | 'P4' | 'P5'
 // 规则域用 error|warning|notice（Ahrefs/Semrush 通用三级），落库时映射为 finding 的 high|mid|ok。
@@ -122,17 +140,19 @@ export interface RuleContext {
     llmsTxt: { exists: boolean; url: string }
     evidenceId: string
   } | null
-  // 第三方语料存在度（G07）：Wikipedia 条目 / Reddit 近 N 月讨论。品牌提及与 AI 可见性强相关（§2）。
+  // 第三方语料存在度（G07）：Wikipedia 同名词条 / Reddit 近 N 天讨论。品牌提及与 AI 可见性强相关（§2）。
+  // 两路各自 ok / failed（SP-A §4.4）：G07 只用 ok 的子结果，失败不当成"无词条 / 0 条"。
   thirdParty: {
-    wikipedia: { exists: boolean; title: string | null; url: string | null }
-    reddit: { mentions: number; windowDays: number }
+    wikipedia: WikipediaCheck
+    reddit: RedditCheck
     evidenceId: string
   } | null
   // 社媒/第三方评价站前台存在度（G11/SP01/SP02）：由 context 从 social_presence 证据解析（L2，
   // 前台检索结果，非平台 API 全量数据）。未采集时为 null，SP 规则组整组 no-op。
   socialPresence: {
     brand: string
-    platforms: { platform: 'youtube' | 'g2' | 'trustpilot' | 'capterra'; query: string; resultCount: number; topResults: { title: string; url: string }[] }[]
+    // status=failed 时 resultCount 恒 0、不可当"没有"解读（SP-A §4.4）；规则只认 ok。
+    platforms: { platform: 'youtube' | 'g2' | 'trustpilot' | 'capterra'; query: string; status: 'ok' | 'failed'; reason?: string; resultCount: number; topResults: { title: string; url: string }[] }[]
     checkedAt: string
     evidenceId: string
   } | null
@@ -168,6 +188,10 @@ export interface Rule {
   side: FindingSide
   severity: RuleSeverity
   claimType: ClaimType
+  // 知识脑元数据：复杂确定性检查仍由 TypeScript 执行，但由版本化工作流负责路由与溯源。
+  workflowStepIds?: string[]
+  knowledgeVersionRefs?: string[]
+  requiredSources?: string[]
   // 确定性代码（非 LLM）：命中返回草稿（可多条），不命中返回 null。抛错由引擎吞掉不沉没整轮。
   evaluate: (ctx: RuleContext) => RuleHitDraft | RuleHitDraft[] | null
 }

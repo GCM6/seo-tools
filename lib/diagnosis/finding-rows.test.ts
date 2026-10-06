@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { buildFindingRows } from './finding-rows'
+import { buildFindingRows, buildRecommendationRows } from './finding-rows'
+import { generateRecommendation } from './recommend'
 import type { RuleHit } from './types'
 
 const hit: RuleHit = {
@@ -37,5 +38,14 @@ describe('buildFindingRows metricTarget', () => {
   it('无关键词 detail → metricTarget null', () => {
     const rows = buildFindingRows('run1', [mkHit({ detail: { url: 'https://x' } })])
     expect(rows[0].metricTarget).toBeNull()
+  })
+})
+
+describe('buildRecommendationRows（SP-A §5.3：只记录型规则不出建议）', () => {
+  it('生成器返回 null 的命中不出建议行，其余行的 findingId 与命中一一对齐', async () => {
+    const hits = [mkHit({ ruleId: 'C01', side: 'seo', fingerprint: 'a' }), mkHit({ ruleId: 'G08', side: 'geo', pillar: 'P5', fingerprint: 'b' }), mkHit({ ruleId: 'C02', side: 'seo', fingerprint: 'c' })]
+    const findingRows = buildFindingRows('run1', hits)
+    const rows = await buildRecommendationRows('run1', hits, findingRows, generateRecommendation, 'example.com')
+    expect(rows.map((r) => r.findingId)).toEqual([findingRows[0].id, findingRows[2].id])
   })
 })

@@ -1,12 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import type { RuleHit } from './types'
 import {
-  generateRecommendation,
+  generateRecommendation as generateOrNull,
   priorityQuadrant,
   deriveAffectedPages,
   appendAffectedPagesSection,
   extractAffectedPagesSection,
 } from './recommend'
+
+// 非只记录型规则必有建议：取不到就让用例失败（G08 等只记录型规则的 null 断言直接用 generateOrNull）。
+const generateRecommendation = (...args: Parameters<typeof generateOrNull>) => {
+  const rec = generateOrNull(...args)
+  if (!rec) throw new Error('expected a recommendation draft')
+  return rec
+}
 
 function hit(partial: Partial<RuleHit> & { ruleId: string }): RuleHit {
   return {
@@ -36,6 +43,10 @@ describe('priorityQuadrant (Impact×Effort)', () => {
 })
 
 describe('generateRecommendation', () => {
+  it('recordOnly 模板（G08 llms.txt 仅记录）→ 不生成建议', () => {
+    expect(generateOrNull(hit({ ruleId: 'G08', side: 'geo', pillar: 'P5' }))).toBeNull()
+  })
+
   it('T04 error + low effort → quick_win, technical, carries fixSnippet in what', () => {
     const rec = generateRecommendation(hit({ ruleId: 'T04', severity: 'error' }))
     expect(rec.priority).toBe('quick_win')
@@ -115,6 +126,12 @@ describe('generateRecommendation', () => {
       const { why, affected: parsed } = extractAffectedPagesSection(appended)
       expect(why).toBe('原始 why 文本')
       expect(parsed).toEqual({ total: 1, shown: 1, urls: ['https://example.com/a'] })
+    })
+
+    it('AR 规则的 missingCount / unsupportedCount 作为受影响总数（第三轮独立审查 P2-10）', () => {
+      const urls = Array.from({ length: 10 }, (_, i) => `https://example.com/p${i}`)
+      expect(deriveAffectedPages(hit({ ruleId: 'AR01', detail: { articleCount: 30, missingCount: 25, sampleUrls: urls } }))?.total).toBe(25)
+      expect(deriveAffectedPages(hit({ ruleId: 'AR04', detail: { articleCount: 30, unsupportedCount: 17, sampleUrls: urls } }))?.total).toBe(17)
     })
 
     it('extractAffectedPagesSection 遇到没有清单的 why 时原样返回、affected 为 null', () => {

@@ -2,7 +2,7 @@
 // （K03/K04 选词，E03 品牌词搜索量）。字段缺失一律降级为 null，不臆造。
 
 import type { DataforseoClient } from './client'
-import { asArray, asNumber, asRecord, asString } from './client'
+import { asNumber, asRecord, asString, firstResultOrThrow, itemsOrThrow } from './client'
 import type { LabsKeywordDatum } from './types'
 
 // keyword_overview live：请求体是数组，单元素携带 keywords[] + 地区/语言。
@@ -21,8 +21,8 @@ export async function keywordData(
     },
   ]
   const tasks = await client.post('/v3/dataforseo_labs/google/keyword_overview/live', body)
-  const result = asRecord(tasks[0]?.result[0])
-  const items = result ? asArray(result.items) : []
+  // 没有 result 是失败（empty_result）；有 result 但 items 为空才是"这些词没有 Labs 数据"的测量结果。
+  const items = itemsOrThrow(firstResultOrThrow(tasks))
 
   return items
     .map((raw): LabsKeywordDatum | null => {

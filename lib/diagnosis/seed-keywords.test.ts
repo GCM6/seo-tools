@@ -1,54 +1,48 @@
 import { describe, it, expect } from 'vitest'
 import { gatherSeedKeywords } from './seed-keywords'
 
-describe('gatherSeedKeywords', () => {
-  it('GSC 词按展示量降序在前，探针词补后，去重截断', () => {
-    const out = gatherSeedKeywords({
+const base = { manualKeywords: [], gscQueries: [], historicalGsc: [], sitePhrases: [], brand: 'metadocu', aliases: [], limit: 100 }
+
+describe('gatherSeedKeywords（SP-A §3.3）', () => {
+  it('优先级 manual → 本期 gsc（按展示降序）→ 历史 gsc（按时间降序）→ 站点短语，带来源标签', () => {
+    const seeds = gatherSeedKeywords({
+      ...base,
+      manualKeywords: ['remove pdf metadata'],
       gscQueries: [
-        { keyText: 'cheap widgets', impressions: 10 },
-        { keyText: 'best widgets', impressions: 100 },
+        { keyText: 'remove author from word', impressions: 3 },
+        { keyText: 'remove metadata excel', impressions: 9 },
       ],
-      promptTexts: ['widget reviews', 'best widgets'], // 'best widgets' 与 GSC 重复
-      brand: 'acme',
-      limit: 10,
+      historicalGsc: [
+        { keyText: 'old query', lastSeenAt: '2026-07-01T00:00:00.000Z' },
+        { keyText: 'newer query', lastSeenAt: '2026-09-01T00:00:00.000Z' },
+      ],
+      sitePhrases: ['remove gps exif from document images'],
     })
-    expect(out).toEqual(['best widgets', 'cheap widgets', 'widget reviews'])
+    expect(seeds.map((s) => [s.text, s.source])).toEqual([
+      ['remove pdf metadata', 'manual'],
+      ['remove metadata excel', 'gsc'],
+      ['remove author from word', 'gsc'],
+      ['newer query', 'gsc_history'],
+      ['old query', 'gsc_history'],
+      ['remove gps exif from document images', 'site_phrase'],
+    ])
+    expect(seeds.find((s) => s.text === 'newer query')?.lastSeenAt).toBe('2026-09-01T00:00:00.000Z')
+    expect(seeds.find((s) => s.text === 'remove pdf metadata')).not.toHaveProperty('lastSeenAt')
   })
 
-  it('去品牌导航词（归一后包含品牌串即剔除）', () => {
-    const out = gatherSeedKeywords({
-      gscQueries: [
-        { keyText: 'Acme login', impressions: 50 },
-        { keyText: 'widget guide', impressions: 20 },
-      ],
-      promptTexts: ['acme pricing', 'how to choose widgets'],
-      brand: 'Acme',
-      limit: 10,
+  it('去品牌（含别名，忽略大小写与空白/符号）、去重（大小写/空白）、按 limit 截断', () => {
+    const seeds = gatherSeedKeywords({
+      ...base,
+      aliases: ['Meta Docu'],
+      manualKeywords: ['MetaDocu review', 'meta-docu pricing', 'Remove  PDF metadata'],
+      gscQueries: [{ keyText: 'remove pdf metadata', impressions: 5 }],
+      limit: 1,
     })
-    expect(out).toEqual(['widget guide', 'how to choose widgets'])
+    expect(seeds).toEqual([{ text: 'Remove  PDF metadata', source: 'manual' }])
   })
 
-  it('空品牌不过滤；limit 截断', () => {
-    const out = gatherSeedKeywords({
-      gscQueries: [
-        { keyText: 'a', impressions: 3 },
-        { keyText: 'b', impressions: 2 },
-        { keyText: 'c', impressions: 1 },
-      ],
-      promptTexts: [],
-      brand: '',
-      limit: 2,
-    })
-    expect(out).toEqual(['a', 'b'])
-  })
-
-  it('大小写/空白归一去重', () => {
-    const out = gatherSeedKeywords({
-      gscQueries: [{ keyText: '  Best   Widgets ', impressions: 5 }],
-      promptTexts: ['best widgets'],
-      brand: 'x',
-      limit: 10,
-    })
-    expect(out).toEqual(['Best   Widgets'])
+  it('探针问句不再是种子来源：入参里根本没有 promptTexts', () => {
+    // 类型层面保证；这里锁住全空输入 → 空数组（调用方据此标 no_seeds）。
+    expect(gatherSeedKeywords(base)).toEqual([])
   })
 })

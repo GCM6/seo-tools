@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { RuleContext, RuleHitDraft } from '../types'
+import type { SiteAuditPage, SiteAuditPayload } from '@/lib/crawl/site-audit'
 import { keywordRules } from './keywords'
 
 const rule = (id: string) => keywordRules.find((r) => r.id === id)!
@@ -34,6 +35,37 @@ const qpm = (o: Partial<RuleContext['queryPageMetrics'][number]>): RuleContext['
 
 const gap = (o: Partial<RuleContext['keywordGaps'][number]>): RuleContext['keywordGaps'][number] => ({
   keyword: 'kw', gapType: 'missing', ourPosition: null, opportunityScore: null, searchVolume: null, evidenceId: 'gap1', ...o,
+})
+
+const page = (p: Partial<SiteAuditPage>): SiteAuditPage => ({
+  url: 'https://example.com/',
+  discoveredVia: 'crawl',
+  depth: 1,
+  httpStatus: 200,
+  finalUrl: null,
+  title: null,
+  canonicalUrl: null,
+  metaRobots: null,
+  mainTextChars: 900,
+  inboundLinkCount: 5,
+  checkStatus: 'checked',
+  errorReason: null,
+  isKeyPage: false,
+  ...p,
+})
+
+const audit = (pages: SiteAuditPage[]): { id: string; payload: SiteAuditPayload } => ({
+  id: 'sa1',
+  payload: {
+    protocol: { maxPages: 100, maxDepth: 3 },
+    stats: {
+      totalDiscovered: pages.length, checked: pages.length, truncated: 0, http4xx: 0, http5xx: 0,
+      errors: 0, blockedByRobots: 0, noindex: 0, canonicalOffsite: 0, orphanPages: 0, citedPages: 0,
+    },
+    pages,
+    templates: [],
+    citations: [],
+  },
 })
 
 describe('K01 opportunity keywords', () => {
@@ -215,5 +247,65 @@ describe('K07 intent mismatch', () => {
       { keyword: 'buy widgets', searchVolume: 500, difficulty: 30, cpc: 2, intent: 'transactional', evidenceId: 'kd1' },
     ]
     expect(rule('K07').evaluate(ctx)).toBeNull()
+  })
+})
+
+describe('IPF Intent-to-Page Fit rules', () => {
+  it('IPF01 flags demand with no clear landing page', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit([page({ url: 'https://example.com/about', title: 'About Example' })])
+    ctx.dataforseo.serpByKeyword = [
+      { keyword: 'enterprise crm pricing', items: [{ domain: 'competitor.com', url: 'https://competitor.com/pricing', rank: 1 }], evidenceId: 'serp1' },
+    ]
+    ctx.dataforseo.keywordData = [
+      { keyword: 'enterprise crm pricing', searchVolume: 700, difficulty: 35, cpc: 8, intent: 'transactional', evidenceId: 'labs1' },
+    ]
+    const hit = rule('IPF01').evaluate(ctx) as RuleHitDraft
+    expect(hit).toBeTruthy()
+    expect(hit.evidenceRefs).toEqual(['serp1', 'labs1'])
+    const kws = hit.detail!.keywords as { text: string; currentUrl: string | null }[]
+    expect(kws[0]).toMatchObject({ text: 'enterprise crm pricing', currentUrl: null })
+  })
+
+  it('IPF02 flags GSC intent-page mismatch', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit([
+      page({ url: 'https://example.com/blog/pricing-guide', title: 'CRM pricing guide' }),
+    ])
+    ctx.queryPageMetrics = [
+      qpm({ query: 'crm pricing', page: 'https://example.com/blog/pricing-guide', impressions: 240, position: 7 }),
+    ]
+    const hit = rule('IPF02').evaluate(ctx) as RuleHitDraft
+    expect(hit).toBeTruthy()
+    const kws = hit.detail!.keywords as { currentPageRole: string; intent: string }[]
+    expect(kws[0]).toMatchObject({ currentPageRole: 'blog', intent: 'transactional' })
+  })
+
+  it('IPF03 flags overbroad pages carrying multiple intents', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit([page({ url: 'https://example.com/', title: 'Example' })])
+    ctx.queryPageMetrics = [
+      qpm({ query: 'crm pricing', page: 'https://example.com/', impressions: 200 }),
+      qpm({ query: 'how to setup crm', page: 'https://example.com/', impressions: 120 }),
+      qpm({ query: 'best crm alternatives', page: 'https://example.com/', impressions: 90 }),
+    ]
+    const hit = rule('IPF03').evaluate(ctx) as RuleHitDraft
+    expect(hit).toBeTruthy()
+    const pages = hit.detail!.pages as { url: string; queryCount: number }[]
+    expect(pages[0]).toMatchObject({ url: 'https://example.com/', queryCount: 3 })
+  })
+
+  it('IPF04 flags matching landing pages with weak inbound links', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit([
+      page({ url: 'https://example.com/services/seo', title: 'SEO services', inboundLinkCount: 0 }),
+    ])
+    ctx.queryPageMetrics = [
+      qpm({ query: 'seo services', page: 'https://example.com/services/seo', impressions: 180 }),
+    ]
+    const hit = rule('IPF04').evaluate(ctx) as RuleHitDraft
+    expect(hit).toBeTruthy()
+    const kws = hit.detail!.keywords as { currentUrl: string; currentPageRole: string }[]
+    expect(kws[0]).toMatchObject({ currentUrl: 'https://example.com/services/seo', currentPageRole: 'service' })
   })
 })

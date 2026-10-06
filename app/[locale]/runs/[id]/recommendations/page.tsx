@@ -2,7 +2,8 @@ import { getTranslations, setRequestLocale } from 'next-intl/server'
 import Link from 'next/link'
 import { Shell } from '@/components/Shell'
 import { RecCard, type RecStatus } from '@/components/RecCard'
-import { getRecommendations } from '@/lib/repositories'
+import { notFound } from 'next/navigation'
+import { getRun, getRecommendations } from '@/lib/repositories'
 
 const PRIORITY_ORDER: Record<string, number> = {
   quick_win: 0,
@@ -30,6 +31,7 @@ export default async function RecommendationsPage({
   setRequestLocale(locale)
 
   const t = await getTranslations('screen3')
+  if (!(await getRun(id))) notFound()
   const recs = [...await getRecommendations(id)].sort(
     (a, b) => (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99),
   )

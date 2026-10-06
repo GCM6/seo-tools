@@ -18,6 +18,7 @@ export async function SiteHeader({ locale }: { locale: string }) {
       labels={{
         projects: t('projects'),
         rules: t('rules'),
+        knowledge: t('knowledge'),
         settings: t('settings'),
         newAnalysis: t('newAnalysis'),
         menuTitle: t('menuTitle'),
@@ -37,6 +38,7 @@ export function SiteHeaderView({
   labels: {
     projects: string
     rules: string
+    knowledge?: string
     settings: string
     newAnalysis: string
     menuTitle: string
@@ -55,6 +57,9 @@ export function SiteHeaderView({
           </Link>
           <Link href={`/${locale}/rules`} className="nav-link">
             {labels.rules}
+          </Link>
+          <Link href={`/${locale}/knowledge`} className="nav-link">
+            {labels.knowledge ?? 'Knowledge'}
           </Link>
           <Link href={`/${locale}/settings`} className="nav-link">
             {labels.settings}

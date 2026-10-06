@@ -15,8 +15,10 @@ vi.mock('@/db/client', () => ({
   },
 }))
 
-const getProjectMock = vi.fn(async (id: string) =>
-  id === 'proj_1' ? { id: 'proj_1', domain: 'https://example.com/' } : null,
+// 默认项目品类/市场合规（SP-A §3.5 闸门放行）；闸门用例里用 mockImplementationOnce 覆盖。
+type ProjectStub = { id: string; domain: string; industry: string; market: string }
+const getProjectMock = vi.fn(async (id: string): Promise<ProjectStub | null> =>
+  id === 'proj_1' ? { id: 'proj_1', domain: 'https://example.com/', industry: 'document metadata removal tool', market: 'global-en' } : null,
 )
 const markRunStatusMock = vi.fn(async (...args: unknown[]) => {
   void args
@@ -105,6 +107,38 @@ describe('POST /api/runs', () => {
   })
 
   // 同项目并发保护（spec §2.3）：已有进行中 run 时拒绝创建，不插入不派发。
+  describe('SP-A §3.5 建 run 闸门：品类/市场无效不得启动（也就不触发任何付费采集）', () => {
+    const legacy = (over: Partial<ProjectStub>) =>
+      getProjectMock.mockImplementationOnce(async () => ({
+        id: 'proj_1', domain: 'https://example.com/', industry: 'document metadata removal tool', market: 'global-en', ...over,
+      }))
+
+    it.each([
+      ['旧下拉默认行业', { industry: 'B2B SaaS · 项目协作' }],
+      ['其他…', { industry: '其他…' }],
+      ['空品类', { industry: '' }],
+    ])('%s → 422 category_required，不建 run、不派发', async (_label, over) => {
+      legacy(over)
+      const res = await post({ projectId: 'proj_1' })
+      expect(res.status).toBe(422)
+      expect(await res.json()).toEqual({ error: 'category_required' })
+      expect(insertedRuns).toHaveLength(0)
+      expect(sendMock).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['旧英文显示文案', { market: 'English · Global' }],
+      ['旧中文市场', { market: '中文 · 中国大陆' }],
+      ['空市场', { market: '' }],
+    ])('%s → 422 market_required', async (_label, over) => {
+      legacy(over)
+      const res = await post({ projectId: 'proj_1' })
+      expect(res.status).toBe(422)
+      expect(await res.json()).toEqual({ error: 'market_required' })
+      expect(insertedRuns).toHaveLength(0)
+    })
+  })
+
   it('returns 409 run_in_progress when the project already has an active run', async () => {
     findActiveRunMock.mockResolvedValue({ id: 'run_active', status: 'collecting' })
     const res = await post({ projectId: 'proj_1', runType: 'baseline' })

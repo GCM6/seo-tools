@@ -23,8 +23,17 @@ const TOP10 = 10 // Top10 阈值：竞品是否"占位"的判定线
 const WEAK_MAX = 30 // 弱势区间上界：本站 11-30 名算 weak（>30 视同基本无效曝光，不计缺口）
 
 // 域名归一：小写 + 去 www.（比较口径全链一致）。
+// 域名归一（SP-A §5.2 #7）：项目域名来自 normalizeDomain()，形如 https://metadocu.com/——先按 URL 取 hostname
+// 再去 www，否则本站永远匹配不上 SERP 里的裸域名，排第 1 也会被判成 missing。
 function normDomain(domain: string): string {
-  return domain.trim().toLowerCase().replace(/^www\./, '')
+  const d = domain.trim().toLowerCase()
+  let host = d
+  try {
+    host = new URL(/^[a-z][a-z0-9+.-]*:\/\//.test(d) ? d : `https://${d}`).hostname
+  } catch {
+    /* 非法输入保留原值 */
+  }
+  return host.replace(/^www\./, '')
 }
 
 // 求某域在一条 SERP items 中的最优（最小）rank，未出现返回 null。

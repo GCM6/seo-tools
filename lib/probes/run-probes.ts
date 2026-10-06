@@ -24,6 +24,8 @@ interface ProbeStageArgs {
   runId: string
   projectId: string
   entryUrl: string
+  // 回测：基线 run id。有值且基线有问句时原样复用基线问句集（同协议回测，第一波审查 I4）。
+  baselineRunId?: string
 }
 
 interface ProjectLike {
@@ -42,11 +44,15 @@ interface ProjectSettingsLike {
   brandAliases?: string[]
 }
 
+// 落库问句行：source 用库里的 string——回测复用的基线问句按原值保存（库里只有本阶段写入的模板版本号）。
+type StagePrompt = Omit<ProbePrompt, 'source'> & { source: string }
+
 export interface ProbeStageDeps {
   getProject: (id: string) => Promise<ProjectLike | undefined>
   getProjectSettings: (projectId: string) => Promise<ProjectSettingsLike | undefined>
   buildProviders: () => AiProbeProvider[]
-  createPrompts: (rows: (ProbePrompt & { id: string; runId: string })[]) => Promise<unknown>
+  createPrompts: (rows: (StagePrompt & { id: string; runId: string })[]) => Promise<unknown>
+  getRunPrompts: (runId: string) => Promise<(StagePrompt & { id: string; runId: string })[]>
   createEvidenceArtifact: typeof createEvidenceArtifact
   createAiProbeResult: (row: {
     id: string
@@ -83,7 +89,7 @@ function probeN(settings: ProjectSettingsLike | undefined): number {
 // 探针阶段：每 prompt × provider × 样本一次调用 = 一个 Inngest step（幂等重放）。
 // 单次失败不摧毁 run：错误留 error_code 证据现场，继续其余探针。
 export async function collectProbesStage(
-  { step, emit, runId, projectId }: ProbeStageArgs,
+  { step, emit, runId, projectId, baselineRunId }: ProbeStageArgs,
   deps: ProbeStageDeps,
 ): Promise<{ probedProviders: string[]; promptCount: number; attemptedCount: number; successfulCount: number }> {
   const config = await step.run('probe-config', async () => {
@@ -109,7 +115,7 @@ export async function collectProbesStage(
         domain: project.domain,
         industry: project.industry,
         market: project.market,
-        language: project.language || 'zh',
+        language: project.language || 'en',
         competitors: project.competitors ?? [],
         aliases,
       },
@@ -124,7 +130,13 @@ export async function collectProbesStage(
   const providers = deps.buildProviders().filter((p) => config.activeProviderIds.includes(p.id))
 
   const prompts = await step.run('probe-persist-prompts', async () => {
-    const rows = buildPromptSetV2(config.promptInput).map((p) => ({
+    // 同协议回测（spec：前后对比必须同一问句集）：回测原样复用基线问句——项目品类/竞品此后改过也不重建，
+    // 否则 delta 会把问句集变化归因成站点变化。基线没跑过探针（无问句）时才按当前项目新建。
+    const baseline = baselineRunId ? await deps.getRunPrompts(baselineRunId) : []
+    const promptSet: StagePrompt[] = baseline.length > 0
+      ? baseline.map(({ text, intent, source, market, language, priority, branded }) => ({ text, intent, source, market, language, priority, branded }))
+      : buildPromptSetV2(config.promptInput)
+    const rows = promptSet.map((p) => ({
       ...p,
       id: `pr_${crypto.randomUUID()}`,
       runId,

@@ -3,6 +3,7 @@ import { Shell } from '@/components/Shell'
 import { ReportView } from '@/components/ReportView'
 import { PrintButton } from './PrintButton'
 import { ShareButton } from './ShareButton'
+import { notFound } from 'next/navigation'
 import { getRun, getProject } from '@/lib/repositories'
 
 // 报告页 = Shell + 工具栏 + 共享 ReportView（与只读分享页共用同一套渲染，spec §SP-G1e-1）。
@@ -18,7 +19,8 @@ export default async function ReportPage({
 
   // Shell 顶栏 domain：轻量取 run→project（ReportView 会各自完整取数，此处仅 chrome）。
   const run = await getRun(id)
-  const project = run ? await getProject(run.projectId) : undefined
+  if (!run) notFound()
+  const project = await getProject(run.projectId)
 
   return (
     <Shell runId={id} domain={project?.domain}>

@@ -12,6 +12,7 @@ export function MobileNav({
   labels: {
     projects: string
     rules: string
+    knowledge?: string
     settings: string
     newAnalysis: string
     menuTitle: string
@@ -47,13 +48,17 @@ export function MobileNav({
       {isOpen && (
         <>
           {/* 背景遮罩 */}
-          <div
+          <button
+            type="button"
+            aria-label="Close Menu"
             onClick={() => setIsOpen(false)}
             style={{
               position: 'fixed',
               inset: 0,
               zIndex: 90,
               background: 'rgba(0, 0, 0, 0.4)',
+              border: 0,
+              padding: 0,
               backdropFilter: 'blur(4px)',
               animation: 'ds-fade-in var(--transition-fast) forwards'
             }}
@@ -140,6 +145,16 @@ export function MobileNav({
                 }}
               >
                 {labels.settings}
+              </Link>
+              <Link
+                href={`/${locale}/knowledge`}
+                onClick={() => setIsOpen(false)}
+                style={{
+                  fontSize: '15px', fontWeight: 600, color: 'var(--ds-ink)', textDecoration: 'none',
+                  padding: '8px 0', borderBottom: '1px solid var(--ds-border-subtle)'
+                }}
+              >
+                {labels.knowledge ?? 'Knowledge'}
               </Link>
             </nav>
 

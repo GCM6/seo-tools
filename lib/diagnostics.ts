@@ -23,6 +23,8 @@ export interface EvidenceLike {
   type: string
   claimLevel: string
   payload: unknown
+  // 深检页证据挂 sitePageId；入口页（首页）证据为空。
+  sitePageId?: string | null
 }
 
 function pick(evidence: EvidenceLike[], type: string): EvidenceLike | undefined {
@@ -95,9 +97,10 @@ function deriveCrawlableText(evidence: EvidenceLike[], sources?: DataSourceFlags
   return { key: 'crawlableText', state: 'pending', reason: 'uncollected' }
 }
 
-// 结构化数据覆盖 = JSON-LD/schema.org 类型数（schema 实测）。同样：缺证据 = 本轮未采集。
+// 首页结构化数据类型数（schema 实测，SP-A §5.3）：卡名写「首页」，就只取入口页（无 sitePageId）那条，不依赖证据顺序；
+// 旧调用方不传 sitePageId 时回落第一条。缺证据 = 本轮未采集。
 function deriveSchemaCoverage(evidence: EvidenceLike[]): StatCard {
-  const sc = pick(evidence, 'schema')
+  const sc = evidence.find((e) => e.type === 'schema' && !e.sitePageId) ?? pick(evidence, 'schema')
   const types = (sc?.payload as { types?: unknown } | null | undefined)?.types
   if (sc && Array.isArray(types))
     return { key: 'schemaCoverage', state: 'measured', value: String(types.length), level: sc.claimLevel as EvidenceLevel, evidenceId: sc.id }

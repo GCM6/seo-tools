@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import type { GscConnectError } from '@/lib/gsc/oauth'
 
 // 项目级 GSC 连接卡（SP-G1b）：连接/重连按钮 + 已连接后已授权 property 选择。
 // GSC 令牌数据层本就 per-project；授权走既有 /api/gsc/auth，returnTo 回到本项目详情页闭环。
-type SiteLoadState = 'idle' | 'loading' | 'ready' | 'empty' | 'error'
+// reauth：refresh_token 已失效（invalid_grant），只能重新授权。
+type SiteLoadState = 'idle' | 'loading' | 'ready' | 'empty' | 'error' | 'reauth'
 
 export function GscConnectCard({
   projectId,
@@ -15,6 +17,8 @@ export function GscConnectCard({
   gscSiteUrl,
   gscAppConfigured = true,
   connectionReturnTo,
+  connectError = null,
+  redirectOrigin = null,
 }: {
   projectId: string
   locale: string
@@ -22,8 +26,12 @@ export function GscConnectCard({
   gscSiteUrl: string | null
   gscAppConfigured?: boolean
   connectionReturnTo?: string
+  // 授权往返失败时由页面从 ?gsc_error= 白名单解析后传入；redirectOrigin 来自服务端 env。
+  connectError?: GscConnectError | null
+  redirectOrigin?: string | null
 }) {
   const t = useTranslations('projectDetail')
+  const tg = useTranslations('gscConnect')
   const router = useRouter()
   const [siteUrl, setSiteUrl] = useState(gscSiteUrl ?? '')
   const [savedSiteUrl, setSavedSiteUrl] = useState(gscSiteUrl ?? '')
@@ -41,11 +49,18 @@ export function GscConnectCard({
     let live = true
     fetch(`/api/gsc/sites?projectId=${encodeURIComponent(projectId)}`)
       .then(async (r) => {
+        if (r.status === 409 && (await r.clone().json().catch(() => ({}))).error === 'gsc_reauth_required') {
+          return { reauth: true }
+        }
         if (!r.ok) throw new Error('gsc_sites_failed')
         return r.json()
       })
-      .then((d: { sites?: string[] }) => {
+      .then((d: { sites?: string[]; reauth?: boolean }) => {
         if (!live) return
+        if (d.reauth) {
+          setSiteLoadState('reauth')
+          return
+        }
         const nextSites = Array.isArray(d.sites) ? [...new Set(d.sites.filter(Boolean))] : []
         setSites(nextSites)
         setSiteLoadState(nextSites.length ? 'ready' : 'empty')
@@ -114,6 +129,13 @@ export function GscConnectCard({
         )}
       </div>
 
+      {/* 文案都以「GSC 未连接」为前提；已连接时（如取消了一次重连）旧令牌仍有效，不提示。 */}
+      {connectError && !gscConnected && (
+        <p role="alert" className="mb-4 p-3.5 rounded-xl bg-error/5 border border-error/10 text-error text-xs leading-relaxed">
+          {tg(`error.${connectError}`, { expected: redirectOrigin ?? 'GOOGLE_OAUTH_REDIRECT_URI' })}
+        </p>
+      )}
+
       {!gscConnected && (
         <div className="flex flex-col gap-4">
           {statusDesc && (
@@ -162,6 +184,8 @@ export function GscConnectCard({
               <p className="text-xs text-warning leading-relaxed">{t('siteSelectionEmpty')}</p>
             ) : siteLoadState === 'error' ? (
               <p className="text-xs text-error leading-relaxed">{t('siteSelectionError')}</p>
+            ) : siteLoadState === 'reauth' ? (
+              <p role="alert" className="text-xs text-error leading-relaxed">{tg('reauth')}</p>
             ) : (
               <select
                 className="w-full px-3 py-2 rounded-lg border border-border bg-surface-1 text-ink focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm transition-all duration-150"

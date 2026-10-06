@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createGoogleCseSearchVisibilityProvider } from './search-visibility-provider'
+import { reasonOf } from '@/lib/collection/result'
+import { CSE_403_NO_KEY_BODY } from '@/lib/test-fixtures/real-shapes'
 
 describe('createGoogleCseSearchVisibilityProvider', () => {
   it('is disabled when credentials are missing', () => {
@@ -61,7 +63,46 @@ describe('createGoogleCseSearchVisibilityProvider', () => {
       resultCount: 1,
       results: [{ title: 'Acme channel', link: 'https://youtube.com/acme', snippet: 's' }],
       checkedAt: expect.any(String),
+      // SP-A §4.3：原文随结果返回，由采集段存档。
+      raw: expect.objectContaining({ status: 200 }),
     })
+  })
+
+  it('search() 真实 403（无 key）→ 抛出的错误带 http_403 原因与原文', async () => {
+    const fetchImpl = vi.fn(async () => new Response(CSE_403_NO_KEY_BODY, { status: 403, headers: { 'content-type': 'application/json; charset=UTF-8' } }))
+    const provider = createGoogleCseSearchVisibilityProvider({ apiKey: 'key', cx: 'cx', fetchImpl: fetchImpl as never })
+    const err = await provider.search('site:youtube.com "metadocu"').catch((e: unknown) => e)
+    expect(reasonOf(err)).toBe('http_403')
+    expect((err as { raw?: { status: number; body: string } }).raw).toMatchObject({ status: 403 })
+    expect((err as { raw: { body: string } }).raw.body).toContain('unregistered callers')
+  })
+
+  it('search() 200 但不是 JSON → 抛出的错误原因为 invalid_json，带原文', async () => {
+    const fetchImpl = vi.fn(async () => new Response('<html>blocked</html>', { status: 200, headers: { 'content-type': 'text/html' } }))
+    const provider = createGoogleCseSearchVisibilityProvider({ apiKey: 'key', cx: 'cx', fetchImpl: fetchImpl as never })
+    const err = await provider.search('anything').catch((e: unknown) => e)
+    expect(reasonOf(err)).toBe('invalid_json')
+    expect((err as { raw?: { status: number } }).raw?.status).toBe(200)
+  })
+
+  it('search() 200 + 错误信封 {"error":{"code":429}} → 抛错 api_429（最终审查 F1-1）', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{"error":{"code":429,"message":"rate"}}', { status: 200, headers: { 'content-type': 'application/json' } }))
+    const provider = createGoogleCseSearchVisibilityProvider({ apiKey: 'key', cx: 'cx', fetchImpl: fetchImpl as never })
+    expect(reasonOf(await provider.search('anything').catch((e: unknown) => e))).toBe('api_429')
+  })
+
+  it('search() 200 但缺 searchInformation（{} 或只有 kind）→ 抛错 invalid_shape，不当成 0 条结果', async () => {
+    for (const body of ['{}', '{"kind":"customsearch#search"}']) {
+      const fetchImpl = vi.fn(async () => new Response(body, { status: 200, headers: { 'content-type': 'application/json' } }))
+      const provider = createGoogleCseSearchVisibilityProvider({ apiKey: 'key', cx: 'cx', fetchImpl: fetchImpl as never })
+      expect(reasonOf(await provider.search('anything').catch((e: unknown) => e)), body).toBe('invalid_shape')
+    }
+  })
+
+  it('search() 合法的零结果（有 searchInformation、没有 items）→ 0 条', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{"kind":"customsearch#search","searchInformation":{"totalResults":"0"}}', { status: 200, headers: { 'content-type': 'application/json' } }))
+    const provider = createGoogleCseSearchVisibilityProvider({ apiKey: 'key', cx: 'cx', fetchImpl: fetchImpl as never })
+    expect(await provider.search('anything')).toMatchObject({ resultCount: 0, totalResults: 0 })
   })
 
   it('search() 未配置时抛出', async () => {

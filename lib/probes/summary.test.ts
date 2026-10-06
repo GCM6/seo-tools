@@ -497,3 +497,48 @@ describe('aggregateProbeSummary — ugcCitationShare', () => {
     expect(s.ugcCitationShare).toBe(1)
   })
 })
+
+describe('samplesPerPromptPerEngine（SP-A §5.3：文案写实际 n，而不是写死 n=5）', () => {
+  const prompts30 = Array.from({ length: 30 }, (_, i) => ({ id: `q${i}`, text: `question ${i}`, priority: i }))
+  const sample = (promptId: string, provider: string, k = 0) => ({
+    promptId, provider, brandPresent: false, competitorsMentioned: [], evidenceId: `ev_${provider}_${promptId}_${k}`,
+  })
+  const summarize = (results: ReturnType<typeof sample>[], ps = prompts30) =>
+    aggregateProbeSummary({ prompts: ps, results, brand: 'metadocu', competitors: [] })!
+
+  it('2 个引擎 × 30 条问题 × 每条 1 次 → 1', () => {
+    const results = prompts30.flatMap((p) => [sample(p.id, 'openai'), sample(p.id, 'deepseek')])
+    expect(summarize(results).samplesPerPromptPerEngine).toBe(1)
+  })
+  it('引擎 A 每条 2 次、引擎 B 每条 1 次 → 取最小值 1', () => {
+    const results = prompts30.flatMap((p) => [sample(p.id, 'openai', 0), sample(p.id, 'openai', 1), sample(p.id, 'deepseek')])
+    expect(summarize(results).samplesPerPromptPerEngine).toBe(1)
+  })
+  it('部分问题采集失败（30 条里只有 28 条有样本）→ 仍按每条 1 次计，不是 0', () => {
+    const results = prompts30.slice(0, 28).map((p) => sample(p.id, 'deepseek'))
+    expect(summarize(results).samplesPerPromptPerEngine).toBe(1)
+  })
+  it('没有 prompt → 0', () => {
+    expect(summarize([sample('orphan', 'deepseek')], []).samplesPerPromptPerEngine).toBe(0)
+  })
+  it('同一引擎内每条样本数不一（29 条各 1 次、1 条重试成 3 次）→ 取众数 1，不是最大值 3（第二波审查 T1）', () => {
+    const results = prompts30.flatMap((p, i) => (i === 0 ? [0, 1, 2].map((k) => sample(p.id, 'deepseek', k)) : [sample(p.id, 'deepseek')]))
+    expect(summarize(results).samplesPerPromptPerEngine).toBe(1)
+  })
+  it('频次并列（15 条各 1 次、15 条各 2 次）→ 取较小的 1（保守）', () => {
+    const results = prompts30.flatMap((p, i) => (i < 15 ? [sample(p.id, 'deepseek')] : [sample(p.id, 'deepseek', 0), sample(p.id, 'deepseek', 1)]))
+    expect(summarize(results).samplesPerPromptPerEngine).toBe(1)
+  })
+})
+
+describe('界面文案描述本次采样时写实际 n（SP-A §5.3）', () => {
+  it('情感分布说明带 {n} 占位符；报告 GEO 区块说明不再写死 n=5', async () => {
+    const { readFileSync } = await import('node:fs')
+    for (const locale of ['zh', 'en']) {
+      const m = JSON.parse(readFileSync(`messages/${locale}.json`, 'utf8'))
+      expect(m.screen2.sentimentMeta, locale).toContain('{n}')
+      expect(m.screen2.sentimentMeta, locale).not.toContain('n=5')
+      expect(m.report.geo.meta, locale).not.toContain('n=5')
+    }
+  })
+})

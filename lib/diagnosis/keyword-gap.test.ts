@@ -141,3 +141,19 @@ describe('computeKeywordGaps', () => {
     expect(out).toHaveLength(2)
   })
 })
+
+describe('ownDomain 归一（SP-A §5.2 #7：输入是 normalizeDomain 的真实输出）', () => {
+  it('项目域名带协议与结尾斜杠，本站在 SERP 第 1 名 → winning，而不是 missing', async () => {
+    const { normalizeDomain } = await import('@/lib/analysis/normalize-domain')
+    const ownDomain = normalizeDomain('metadocu.com')!
+    expect(ownDomain).toMatch(/^https?:\/\//) // 前提：真实生产者确实带协议
+    const out = computeKeywordGaps({
+      serp: [seed('remove pdf metadata', [item('metadocu.com', 1), item('c1.com', 3), item('c2.com', 5)])],
+      ownDomain,
+      confirmedCompetitorDomains: ['c1.com', 'c2.com'],
+    })
+    expect(out).toHaveLength(1)
+    expect(out[0].gapType).toBe('winning')
+    expect(out[0].ourPosition).toBe(1)
+  })
+})

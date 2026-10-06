@@ -1,6 +1,7 @@
 import { setRequestLocale, getTranslations } from 'next-intl/server'
 import { ProjectList } from '@/components/ProjectList'
 import { listProjectsWithSummary } from '@/lib/repositories'
+import { marketLabel } from '@/lib/markets'
 
 // 项目列表随 DB 实时变化：动态渲染，避免 build 时固化项目集（多项目下新建后不可见）。
 export const dynamic = 'force-dynamic'
@@ -14,7 +15,8 @@ export default async function ProjectsPage({ params }: { params: Promise<{ local
   // retest 三态（starting/error/inProgress）复用 retest 命名空间，避免文案重复（spec §4/i18n）。
   const tr = await getTranslations('retest')
 
-  const projects = await listProjectsWithSummary()
+  // 市场存的是 code（SP-A §3.1）：展示前换成显示名，旧文案/空值显示「未设置」。
+  const projects = (await listProjectsWithSummary()).map((p) => ({ ...p, market: marketLabel(p.market, locale) ?? t('marketUnset') }))
 
   return (
     <section className="shell screen show">
@@ -41,6 +43,7 @@ export default async function ProjectsPage({ params }: { params: Promise<{ local
           retestStarting: tr('starting'),
           retestError: tr('error'),
           retestInProgress: tr('inProgress'),
+          retestNeedsSetup: tr('needsSetup'),
           projectManagement: t('projectManagement'),
           searchPlaceholder: t('searchPlaceholder'),
           marketLabel: t('marketLabel'),

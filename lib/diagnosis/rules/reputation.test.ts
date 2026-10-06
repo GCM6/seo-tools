@@ -25,11 +25,13 @@ const baseCtx = (): RuleContext => ({
   socialPresence: null,
 })
 
+type SpPlatform = NonNullable<RuleContext['socialPresence']>['platforms'][number]
+// 未写 status 的条目默认 ok（采集成功）；失败用例显式传 status: 'failed'。
 const socialPresence = (
-  platforms: NonNullable<RuleContext['socialPresence']>['platforms'],
+  platforms: (Omit<SpPlatform, 'status'> & Partial<Pick<SpPlatform, 'status' | 'reason'>>)[],
 ): NonNullable<RuleContext['socialPresence']> => ({
   brand: 'Acme',
-  platforms,
+  platforms: platforms.map((p) => ({ status: 'ok' as const, ...p })),
   checkedAt: '2026-07-15T00:00:00.000Z',
   evidenceId: 'sp1',
 })
@@ -57,6 +59,11 @@ describe('SP01 未发现品牌相关 YouTube 内容', () => {
     ctx.socialPresence = socialPresence([
       { platform: 'youtube', query: 'Acme review', resultCount: 3, topResults: [{ title: 'Acme demo', url: 'https://youtube.com/x' }] },
     ])
+    expect(rule('SP01').evaluate(ctx)).toBeNull()
+  })
+  it('youtube 查询失败 → null（不把失败当成"没有内容"）', () => {
+    const ctx = baseCtx()
+    ctx.socialPresence = socialPresence([{ platform: 'youtube', query: 'site:youtube.com "Acme"', resultCount: 0, topResults: [], status: 'failed', reason: 'http_403' }])
     expect(rule('SP01').evaluate(ctx)).toBeNull()
   })
   it('null when youtube not checked (platform absent)', () => {
@@ -90,6 +97,15 @@ describe('SP02 未发现品牌在主流第三方评价站的收录', () => {
     ctx.socialPresence = socialPresence([
       { platform: 'g2', query: 'Acme', resultCount: 1, topResults: [{ title: 'Acme on G2', url: 'https://g2.com/x' }] },
       { platform: 'trustpilot', query: 'Acme', resultCount: 0, topResults: [] },
+      { platform: 'capterra', query: 'Acme', resultCount: 0, topResults: [] },
+    ])
+    expect(rule('SP02').evaluate(ctx)).toBeNull()
+  })
+  it('三站中任一查询失败 → null', () => {
+    const ctx = baseCtx()
+    ctx.socialPresence = socialPresence([
+      { platform: 'g2', query: 'Acme', resultCount: 0, topResults: [] },
+      { platform: 'trustpilot', query: 'Acme', resultCount: 0, topResults: [], status: 'failed', reason: 'http_429' },
       { platform: 'capterra', query: 'Acme', resultCount: 0, topResults: [] },
     ])
     expect(rule('SP02').evaluate(ctx)).toBeNull()

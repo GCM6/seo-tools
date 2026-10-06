@@ -19,7 +19,7 @@ afterAll(() => rmSync(TEST_DB, { force: true }))
 // schema 灌好后再 import，@/db/client 才会绑到已建表的临时库。
 const repo = await import('./index')
 const { db } = await import('@/db/client')
-const { projects, runs, evidenceArtifacts, keywords, keywordMetrics, keywordGaps } = await import('@/db/schema')
+const { projects, projectSettings, runs, evidenceArtifacts, keywords, keywordMetrics, keywordGaps } = await import('@/db/schema')
 
 async function seed() {
   await db.delete(keywordGaps)
@@ -27,6 +27,7 @@ async function seed() {
   await db.delete(keywords)
   await db.delete(evidenceArtifacts)
   await db.delete(runs)
+  await db.delete(projectSettings)
   await db.delete(projects)
   await db.insert(projects).values({ id: 'proj_1', domain: 'example.com' })
   await db.insert(runs).values({ id: 'run_1', projectId: 'proj_1' })
@@ -95,5 +96,74 @@ describe('getRunKeywordGaps — P1-8 默认序=opportunityScore 降序、次级 
     expect(row).toMatchObject({ id: 'kg_shape', runId: 'run_1', keywordId: 'kw_low', gapType: 'missing' })
     expect(row).not.toHaveProperty('searchVolume')
     expect(row).not.toHaveProperty('text')
+  })
+})
+
+describe('种子词来源（SP-A §3.3）：getGscKeywordHistory', () => {
+  beforeEach(async () => {
+    await seed()
+    await db.insert(runs).values([
+      { id: 'run_old', projectId: 'proj_1', startedAt: '2026-07-13T07:05:02.556Z' },
+      { id: 'run_new', projectId: 'proj_1', startedAt: '2026-09-01T00:00:00.000Z' },
+      { id: 'run_nostart', projectId: 'proj_1', startedAt: null, finishedAt: '2026-08-15T00:00:00.000Z' },
+    ])
+    await db.insert(keywords).values([
+      { id: 'kw_a', projectId: 'proj_1', text: 'remove author from word', source: 'gsc' },
+      { id: 'kw_b', projectId: 'proj_1', text: 'remove metadata excel', source: 'gsc', createdAt: '2026-07-18 10:00:00' },
+      { id: 'kw_c', projectId: 'proj_1', text: 'pdf metadata remover', source: 'gsc' },
+      { id: 'kw_m1', projectId: 'proj_1', text: 'remove pdf metadata', source: 'manual', market: 'global-en' },
+      { id: 'kw_m2', projectId: 'proj_1', text: 'clean document metadata', source: 'manual', market: 'global-en' },
+    ])
+    await db.insert(keywordMetrics).values([
+      { id: 'km_a_old', runId: 'run_old', keywordId: 'kw_a', source: 'gsc' },
+      { id: 'km_a_new', runId: 'run_new', keywordId: 'kw_a', source: 'gsc' },
+      { id: 'km_c', runId: 'run_nostart', keywordId: 'kw_c', source: 'gsc' },
+    ])
+  })
+
+  it('getGscKeywordHistory：取最近一次所属 run 的开始时间；无 started_at 用 finished_at；无指标回落 created_at（统一 ISO）', async () => {
+    const hist = await repo.getGscKeywordHistory('proj_1')
+    const byText = Object.fromEntries(hist.map((h) => [h.keyText, h.lastSeenAt]))
+    expect(byText['remove author from word']).toBe('2026-09-01T00:00:00.000Z')
+    expect(byText['pdf metadata remover']).toBe('2026-08-15T00:00:00.000Z')
+    expect(byText['remove metadata excel']).toBe('2026-07-18T10:00:00.000Z')
+    expect(byText).not.toHaveProperty('remove pdf metadata')
+  })
+})
+
+describe('目标关键词（SP-A §3.3，审查 C1/I1）：存项目设置，不写关键词测量表', () => {
+  beforeEach(async () => {
+    await seed()
+    await db.insert(projectSettings).values({ projectId: 'proj_1' })
+    // 已有一条 GSC 词及其本轮指标——目标词与它同文同市场是常态。
+    await db.insert(keywords).values({ id: 'kw_gsc', projectId: 'proj_1', text: 'remove pdf metadata', source: 'gsc', market: 'global-en' })
+    await db.insert(keywordMetrics).values({ id: 'km_gsc', runId: 'run_1', keywordId: 'kw_gsc', source: 'gsc', clicks: 7, impressions: 120 })
+  })
+  const keywordIds = async () => (await db.select().from(keywords)).map((r) => r.id).sort()
+
+  it('目标词与已有 GSC 词同文同市场：不报错、不增删关键词行、GSC 指标保留', async () => {
+    const before = await keywordIds()
+    await repo.setTargetKeywords('proj_1', ['remove pdf metadata', 'clean docx metadata'])
+    expect(await repo.getTargetKeywords('proj_1')).toEqual(['remove pdf metadata', 'clean docx metadata'])
+    expect(await keywordIds()).toEqual(before)
+    expect(await db.select().from(keywordMetrics)).toHaveLength(1)
+  })
+
+  it('清空目标词不删除任何关键词行或指标', async () => {
+    await repo.setTargetKeywords('proj_1', ['remove pdf metadata'])
+    await repo.setTargetKeywords('proj_1', [])
+    expect(await repo.getTargetKeywords('proj_1')).toEqual([])
+    expect(await db.select().from(keywordMetrics)).toHaveLength(1)
+    expect(await keywordIds()).toContain('kw_gsc')
+  })
+
+  it('去首尾空白、去重、丢空行；项目没有设置行时自动建行', async () => {
+    await db.delete(projectSettings)
+    await repo.setTargetKeywords('proj_1', ['  strip exif ', 'strip exif', ''])
+    expect(await repo.getTargetKeywords('proj_1')).toEqual(['strip exif'])
+  })
+
+  it('没有设置行或未知项目 → []', async () => {
+    expect(await repo.getTargetKeywords('proj_unknown')).toEqual([])
   })
 })

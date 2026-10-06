@@ -12,12 +12,16 @@ const METRIC_KEYS = [
   'canonicalOffsite', 'orphanPages', 'citedPages',
 ] as const
 
-// 同协议重测对比：参数不同（maxPages/maxDepth）时只标记不硬比；
+// 同协议重测对比：参数不同（maxPages/maxDepth/crawlStrategy）时只标记不硬比；
 // 新出现的模板不参与本次对比结论（标 new 由 UI 呈现）。
+// 旧快照无 crawlStrategy：视为 S1 之前的 sitemap 优先抓取（spec S1 §8 重测兼容）。
+const strategyOf = (a: SiteAuditPayload) => a.protocol.crawlStrategy ?? 'sitemap_first_v0'
+
 export function diffSiteAudits(baseline: SiteAuditPayload, retest: SiteAuditPayload): SiteAuditDiff {
   const protocolMismatch =
     baseline.protocol.maxPages !== retest.protocol.maxPages ||
-    baseline.protocol.maxDepth !== retest.protocol.maxDepth
+    baseline.protocol.maxDepth !== retest.protocol.maxDepth ||
+    strategyOf(baseline) !== strategyOf(retest)
   const basePatterns = new Set(baseline.templates.map((t) => t.pattern))
   const retestPatterns = new Set(retest.templates.map((t) => t.pattern))
   return {

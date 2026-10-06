@@ -48,6 +48,23 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     // 引擎/上下文构造注入 fake：evaluateRules 直接返回预置 hits，忽略 ctx。
     buildRuleContext: vi.fn(() => ({}) as never),
     evaluateRules: vi.fn(() => [makeHit(), makeHit({ ruleId: 'C01', side: 'seo', claimType: 'inferred', title: '标题缺失', evidenceRefs: ['ev_1'] })]),
+    buildIntentPageFitMap: vi.fn(() => ({ rows: [], overbroadPages: [] })),
+    buildIntentPageFitArtifactPayload: vi.fn(() => ({
+      kind: 'intent_page_fit_map',
+      version: 1,
+      rowCount: 0,
+      issueRowCount: 0,
+      issueCounts: {
+        missing_landing_page: 0,
+        intent_page_mismatch: 0,
+        overbroad_landing_page: 0,
+        underlinked_landing_page: 0,
+        thin_landing_page: 0,
+        competing_pages: 0,
+      },
+      rows: [],
+      overbroadPages: [],
+    })),
     aggregateProbeSummary: vi.fn(() => null),
     allRules: async () => [],
     generateRecommendation: vi.fn(async (hit: RuleHit) => ({
@@ -121,6 +138,8 @@ describe('generateFindingsHandler', () => {
     const recRows = deps.createRecommendations.mock.calls[0][0] as Array<Record<string, unknown>>
     expect(recRows).toHaveLength(2)
     recRows.forEach((r) => expect(r.status).toBe('draft'))
+    expect(deps.buildIntentPageFitMap).toHaveBeenCalledOnce()
+    expect(deps.buildIntentPageFitArtifactPayload).toHaveBeenCalledOnce()
 
     // done 帧广播 + 诊断阶段带 findings 计数
     expect(published.some((m) => dataOf(m).type === 'done')).toBe(true)

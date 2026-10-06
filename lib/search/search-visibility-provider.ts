@@ -1,3 +1,5 @@
+import { readRaw, type RawResponse } from '@/lib/collection/result'
+
 export interface SearchVisibilityResult {
   provider: 'google_custom_search'
   query: string
@@ -18,6 +20,16 @@ export interface RawSearchResult {
   resultCount: number
   results: { title: string; link: string; snippet: string }[]
   checkedAt: string
+  // 响应原文（SP-A §4.3），由采集段存入 evidence_raw。
+  raw?: RawResponse
+}
+
+// CSE 请求失败：带原因码（http_<status> / invalid_json）与响应原文，调用方可存档后如实记失败。
+export class CseSearchError extends Error {
+  constructor(readonly reason: string, readonly raw: RawResponse) {
+    super(`Google Custom Search failed: ${reason.startsWith('http_') ? reason.slice(5) : reason}`)
+    this.name = 'CseSearchError'
+  }
 }
 
 export interface SearchVisibilityProvider {
@@ -68,10 +80,19 @@ async function performSearch(
   url.searchParams.set('q', query)
   url.searchParams.set('num', '10')
 
-  const res = await fetchImpl(url)
-  if (!res.ok) throw new Error(`Google Custom Search failed: ${res.status}`)
+  const raw = await readRaw(await fetchImpl(url))
+  if (raw.status < 200 || raw.status >= 300) throw new CseSearchError(`http_${raw.status}`, raw)
 
-  const body = (await res.json()) as GoogleCseResponse
+  let body: GoogleCseResponse
+  try {
+    body = JSON.parse(raw.body) as GoogleCseResponse
+  } catch {
+    throw new CseSearchError('invalid_json', raw)
+  }
+  // 200 也可能是错误信封或别的形态：合法响应（含零结果）都带 searchInformation（最终审查 F1-1）。
+  const envelope = body as GoogleCseResponse & { error?: { code?: unknown } }
+  if (envelope.error) throw new CseSearchError(`api_${String(envelope.error.code ?? 'error')}`, raw)
+  if (!body.searchInformation || typeof body.searchInformation !== 'object') throw new CseSearchError('invalid_shape', raw)
   const results = (body.items ?? []).map((item) => ({
     title: item.title ?? '',
     link: item.link ?? '',
@@ -84,6 +105,7 @@ async function performSearch(
     resultCount: results.length,
     results,
     checkedAt: new Date().toISOString(),
+    raw,
   }
 }
 

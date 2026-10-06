@@ -2,9 +2,13 @@
 
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { useState } from 'react'
-import { guessMarketLanguage } from '@/lib/analysis/locale-guess'
+import type { GscConnectError } from '@/lib/gsc/oauth'
+import { useEffect, useState } from 'react'
 import { estimateRun } from '@/lib/analysis/estimate'
+import { MARKETS, findMarket, guessMarketCode, type MarketCode } from '@/lib/markets'
+import { isValidCategory, isValidKeyword } from '@/lib/repositories/validators'
+import { PreflightPanel, type PreflightPanelLabels } from './PreflightPanel'
+import type { Dimension, PreflightItem } from '@/lib/runs/preflight'
 
 // 探测引擎是专有名词（品牌名），不翻译。ChatGPT/Perplexity/Gemini/DeepSeek 默认开，都走开发者
 // API 采样（代理指标口径）。Google AI Overviews 默认关：它是 DataForSEO 实测曝光口径（消费者
@@ -38,7 +42,31 @@ export interface WizardProject {
   market: string
   language: string
   competitors: string[]
+  targetKeywords?: string[]
 }
+
+// 站点预读（SP-A §3.2）：候选只作为可点选的芯片，品类框不自动填，必须用户确认。
+// forDomain：这份预读对应的域名；渲染时只展示与当前输入一致的预读（避免在 effect 里同步清空 state）。
+interface SitePreviewState {
+  forDomain: string
+  loading: boolean
+  candidates: string[]
+  facts: { title: string | null; h1: string | null; metaDescription: string | null } | null
+}
+const EMPTY_PREVIEW: SitePreviewState = { forDomain: '', loading: false, candidates: [], facts: null }
+// 域名实时格式验证（模块级常量：effect 依赖里无需出现）。
+const DOMAIN_REGEX = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([\/\w .-]*)*\/?$/
+const SITE_PREVIEW_DEBOUNCE_MS = 500
+const PREFLIGHT_REASONS = [
+  'category_invalid', 'market_invalid', 'gsc_not_configured', 'gsc_not_connected', 'gsc_site_missing', 'gsc_token_invalid', 'gsc_unreachable',
+  'dfs_no_credentials', 'dfs_auth_failed', 'dfs_unreachable', 'psi_no_key', 'render_not_configured', 'ai_not_configured', 'ai_memory_only',
+] as const
+const PREFLIGHT_DIMENSIONS: Dimension[] = [
+  'eeat', 'content', 'structured_data', 'site_type', 'rich_results', 'rankings', 'keywords', 'technical', 'geo', 'competitors', 'backlinks',
+]
+const MAX_TARGET_KEYWORDS = 20
+
+const keywordLines = (text: string) => text.split('\n').map((k) => k.trim()).filter(Boolean)
 
 interface ProjectSettingsSnapshot {
   gscConnected?: boolean
@@ -68,6 +96,8 @@ export function NewAnalysisForm({
   dataforseoConfigured = false,
   initialStep = 1,
   savedEngines = null,
+  gscConnectError = null,
+  gscRedirectOrigin = null,
 }: {
   locale: string
   project?: WizardProject | null
@@ -80,29 +110,46 @@ export function NewAnalysisForm({
   dataforseoConfigured?: boolean
   initialStep?: 1 | 2 | 3
   savedEngines?: string[] | null
+  // GSC 授权往返失败时由页面从 ?gsc_error= 白名单解析后传入；回调 origin 来自服务端 env。
+  gscConnectError?: GscConnectError | null
+  gscRedirectOrigin?: string | null
 }) {
   const t = useTranslations('screen1')
+  const tg = useTranslations('gscConnect')
+  const tp = useTranslations('preflight')
   const router = useRouter()
-  const industryOptions = t.raw('industryOptions') as string[]
-  const marketOptions = t.raw('marketOptions') as string[]
 
   const [step, setStep] = useState<1 | 2 | 3>(initialStep)
   const [projectId, setProjectId] = useState<string | null>(project?.id ?? null)
   const [domain, setDomain] = useState(project?.domain ?? '')
-  const [industryIndex, setIndustryIndex] = useState(() => {
-    const i = industryOptions.indexOf(project?.industry ?? '')
-    return i >= 0 ? i : 0
-  })
-  const [marketIndex, setMarketIndex] = useState(() => {
-    const i = marketOptions.indexOf(project?.market ?? '')
-    return i >= 0 ? i : 0
-  })
+  // 品类：旧下拉值等不合规的历史数据不回显（迫使用户确认一次真实品类）。
+  const [category, setCategory] = useState(() => (project?.industry && isValidCategory(project.industry) ? project.industry : ''))
+  const [market, setMarket] = useState<MarketCode>(() => findMarket(project?.market ?? '')?.code ?? guessMarketCode(project?.domain ?? ''))
+  const [marketTouched, setMarketTouched] = useState(Boolean(project && findMarket(project.market)))
+  const [targetKeywordsText, setTargetKeywordsText] = useState((project?.targetKeywords ?? []).join('\n'))
+  const [previewState, setPreview] = useState<SitePreviewState>(EMPTY_PREVIEW)
   const [competitors, setCompetitors] = useState((project?.competitors ?? []).join(', '))
   const [engines, setEngines] = useState<Record<string, boolean>>(() => enginesFromSavedModels(savedEngines))
   const [activeGscConnected, setActiveGscConnected] = useState(gscConnected)
   const [activeGscSiteUrl, setActiveGscSiteUrl] = useState<string | null>(gscSiteUrl)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  // 运行前预检（SP-A §4.5）：进入第 2 步时对当前项目请求一次；按项目 id 标记，换项目后旧结果不显示。
+  const [preflight, setPreflight] = useState<{ forProject: string; items: PreflightItem[] | null } | null>(null)
+
+  useEffect(() => {
+    if (step !== 2 || !projectId) return
+    const controller = new AbortController()
+    fetch(`/api/projects/${projectId}/preflight`, { method: 'POST', signal: controller.signal })
+      .then(async (res) => {
+        const body = res.ok ? ((await res.json()) as { items?: unknown }) : null
+        setPreflight({ forProject: projectId, items: Array.isArray(body?.items) ? (body.items as PreflightItem[]) : null })
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setPreflight({ forProject: projectId, items: null })
+      })
+    return () => controller.abort()
+  }, [step, projectId])
 
   const selectedEngines = ENGINES.filter((name) => engines[name])
   const estimate = estimateRun({
@@ -113,29 +160,108 @@ export function NewAnalysisForm({
     render: true,
   })
 
-  // 域名实时格式验证
-  const DOMAIN_REGEX = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([\/\w .-]*)*\/?$/
   const isDomainValid = domain.trim() !== '' && DOMAIN_REGEX.test(domain.trim())
+  const preview = step === 1 && previewState.forDomain === domain.trim() ? previewState : EMPTY_PREVIEW
+
+  const categoryValid = isValidCategory(category)
+  const targetKeywords = keywordLines(targetKeywordsText)
+  const keywordsValid = targetKeywords.length <= MAX_TARGET_KEYWORDS && targetKeywords.every(isValidKeyword)
+  const step1Ready = categoryValid && keywordsValid
 
   function onDomainChange(v: string) {
     setDomain(v)
-    if (v.trim()) setMarketIndex(guessMarketLanguage(v).marketIndex)
+    // 用户手动选过市场就不再被域名推断覆盖。
+    if (v.trim() && !marketTouched) setMarket(guessMarketCode(v.trim()))
   }
+
+  // 域名停止输入后读取首页，给出品类候选（失败只是没有候选，不阻断手填）。
+  useEffect(() => {
+    const target = domain.trim()
+    if (step !== 1 || !DOMAIN_REGEX.test(target)) return
+    const controller = new AbortController()
+    const timer = setTimeout(async () => {
+      setPreview({ ...EMPTY_PREVIEW, forDomain: target, loading: true })
+      try {
+        const res = await fetch('/api/site-preview', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ domain: target }),
+          signal: controller.signal,
+        })
+        const body = (await res.json().catch(() => ({}))) as Partial<SitePreviewState> & { candidates?: unknown }
+        if (controller.signal.aborted) return
+        setPreview({
+          forDomain: target,
+          loading: false,
+          candidates: Array.isArray(body.candidates) ? body.candidates.filter((c): c is string => typeof c === 'string') : [],
+          facts: body.facts ?? null,
+        })
+      } catch {
+        if (!controller.signal.aborted) setPreview({ ...EMPTY_PREVIEW, forDomain: target })
+      }
+    }, SITE_PREVIEW_DEBOUNCE_MS)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [domain, step])
 
   function toggleEngine(name: string) {
     setEngines((prev) => ({ ...prev, [name]: !prev[name] }))
   }
 
-  async function toErrorMessage(res: Response): Promise<string> {
+  async function toErrorMessage(res: Response): Promise<{ code: string | undefined; message: string }> {
     const body = (await res.json().catch(() => ({}))) as { error?: string }
     switch (body.error) {
       case 'invalid_domain':
       case 'domain_required':
-        return t('errorInvalidDomain')
+        return { code: body.error, message: t('errorInvalidDomain') }
       case 'dispatch_failed':
-        return t('errorDispatchFailed')
+        return { code: body.error, message: t('errorDispatchFailed') }
+      // SP-A §3.5 建 run 闸门：品类/市场无效 → 回到第 1 步补充。
+      case 'category_required':
+      case 'invalid_category':
+        return { code: body.error, message: t('errorCategoryRequired') }
+      case 'market_required':
+      case 'invalid_market':
+        return { code: body.error, message: t('errorMarketRequired') }
+      case 'invalid_keywords':
+        return { code: body.error, message: t('targetKeywordsInvalid') }
       default:
-        return t('submitError')
+        return { code: body.error, message: t('submitError') }
+    }
+  }
+
+  const preflightView = preflight && preflight.forProject === projectId ? preflight : null
+  const listSep = locale === 'zh' ? '、' : ', '
+  const preflightLabels: PreflightPanelLabels = {
+    title: tp('title'),
+    loading: tp('loading'),
+    failed: tp('failed'),
+    allReady: tp('allReady'),
+    unavailableSummary: (dims) => tp('unavailableSummary', { dims: dims.join(listSep) }),
+    degradedSummary: (dims) => tp('degradedSummary', { dims: dims.join(listSep) }),
+    balance: (balance) => tp('balance', { balance: balance.toFixed(2) }),
+    states: { ready: tp('state.ready'), degraded: tp('state.degraded'), unavailable: tp('state.unavailable') },
+    sources: Object.fromEntries(['project', 'gsc', 'dataforseo', 'psi', 'render', 'ai_probe'].map((k) => [k, tp(`source.${k}`)])),
+    reasons: Object.fromEntries(PREFLIGHT_REASONS.map((k) => [k, tp(`reason.${k}`)])),
+    fixes: { reauth_gsc: tp('fix.reauth_gsc'), select_gsc_site: tp('fix.select_gsc_site'), configure_key: tp('fix.configure_key'), edit_project: tp('fix.edit_project') },
+    dimensions: Object.fromEntries(PREFLIGHT_DIMENSIONS.map((d) => [d, tp(`dimension.${d}`)])) as Record<Dimension, string>,
+  }
+  // 修复入口按 locale / 当前项目拼好；改项目信息回第 1 步处理，不给链接。
+  function preflightFixHref(item: PreflightItem): string | null {
+    if (!item.fix || !projectId) return null
+    switch (item.fix.action) {
+      case 'reauth_gsc':
+        return gscAppConfigured
+          ? `/api/gsc/auth?projectId=${encodeURIComponent(projectId)}&returnTo=${encodeURIComponent(`/${locale}/new?step=connect&projectId=${projectId}`)}`
+          : null
+      case 'select_gsc_site':
+        return `/${locale}/projects/${projectId}#gsc`
+      case 'configure_key':
+        return `/${locale}/settings`
+      default:
+        return null
     }
   }
 
@@ -150,24 +276,23 @@ export function NewAnalysisForm({
     setActiveGscSiteUrl(settings?.gscSiteUrl ?? null)
     setEngines(enginesFromSavedModels(settings?.defaultModels))
     if (response.domain) setDomain(response.domain)
-    if (typeof response.industry === 'string') {
-      const index = industryOptions.indexOf(response.industry)
-      if (index >= 0) setIndustryIndex(index)
-    }
-    if (typeof response.market === 'string') {
-      const index = marketOptions.indexOf(response.market)
-      if (index >= 0) setMarketIndex(index)
+    if (typeof response.industry === 'string' && isValidCategory(response.industry)) setCategory(response.industry)
+    const savedMarket = findMarket(response.market ?? '')
+    if (savedMarket) {
+      setMarket(savedMarket.code)
+      setMarketTouched(true)
     }
     if (Array.isArray(response.competitors)) setCompetitors(response.competitors.join(', '))
+    if (Array.isArray(response.targetKeywords)) setTargetKeywordsText(response.targetKeywords.join('\n'))
   }
 
   async function upsertProject(): Promise<string | null> {
     const shared = {
       domain,
-      industry: industryOptions[industryIndex],
-      market: marketOptions[marketIndex],
-      language: guessMarketLanguage(domain).language,
+      industry: category.trim(),
+      market,
       competitors,
+      targetKeywords,
     }
     const res = projectId
       ? await fetch(`/api/projects/${projectId}`, { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify(shared) })
@@ -177,7 +302,7 @@ export function NewAnalysisForm({
           body: JSON.stringify({ ...shared, gscConnected: activeGscConnected, defaultModels: selectedEngines }),
         })
     if (!res.ok) {
-      setError(await toErrorMessage(res))
+      setError((await toErrorMessage(res)).message)
       return null
     }
     const p = (await res.json()) as ProjectUpsertResponse
@@ -191,6 +316,7 @@ export function NewAnalysisForm({
       setError(t('errorInvalidDomain'))
       return
     }
+    if (!step1Ready) return
     setError(null)
     setPending(true)
     const id = await upsertProject()
@@ -225,7 +351,9 @@ export function NewAnalysisForm({
     })
     setPending(false)
     if (!runRes.ok) {
-      setError(await toErrorMessage(runRes))
+      const { code, message } = await toErrorMessage(runRes)
+      setError(message)
+      if (code === 'category_required' || code === 'market_required') setStep(1)
       return
     }
     const run = (await runRes.json()) as { id: string }
@@ -312,35 +440,75 @@ export function NewAnalysisForm({
                 </div>
               </div>
 
-              <div className="row2">
-                <div className="field">
-                  <label htmlFor="wiz-industry">{t('industryLabel')}</label>
-                  <select
-                    id="wiz-industry"
-                    className="sel"
-                    aria-label={t('industryLabel')}
-                    value={industryOptions[industryIndex]}
-                    onChange={(e) => setIndustryIndex(Math.max(0, industryOptions.indexOf(e.target.value)))}
-                  >
-                    {industryOptions.map((opt) => (
-                      <option key={opt}>{opt}</option>
+              <div className="field">
+                <label htmlFor="wiz-category">{t('categoryLabel')}</label>
+                {preview.candidates.length > 0 && (
+                  <div className="chips" role="group" aria-label={t('categoryCandidates')}>
+                    {preview.candidates.map((c) => (
+                      <button key={c} type="button" className={`chip${category === c ? ' on' : ''}`} onClick={() => setCategory(c)}>
+                        {c}
+                      </button>
                     ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="wiz-market">{t('marketLabel')}</label>
-                  <select
-                    id="wiz-market"
-                    className="sel"
-                    aria-label={t('marketLabel')}
-                    value={marketOptions[marketIndex]}
-                    onChange={(e) => setMarketIndex(Math.max(0, marketOptions.indexOf(e.target.value)))}
-                  >
-                    {marketOptions.map((opt) => (
-                      <option key={opt}>{opt}</option>
-                    ))}
-                  </select>
-                </div>
+                  </div>
+                )}
+                <input
+                  id="wiz-category"
+                  className="txt"
+                  placeholder={t('categoryPlaceholder')}
+                  value={category}
+                  aria-invalid={category.trim() !== '' && !categoryValid}
+                  onChange={(e) => setCategory(e.target.value)}
+                />
+                <p className="wizard-hint">{preview.loading ? t('sitePreviewLoading') : t('categoryHint')}</p>
+                {category.trim() !== '' && !categoryValid && (
+                  <p role="alert" className="wizard-hint" style={{ color: 'var(--gap)' }}>{t('categoryInvalid')}</p>
+                )}
+                {preview.facts && (preview.facts.title || preview.facts.h1 || preview.facts.metaDescription) && (
+                  <details className="wizard-hint">
+                    <summary>{t('siteFactsTitle')}</summary>
+                    <ul>
+                      {[preview.facts.title, preview.facts.h1, preview.facts.metaDescription].filter(Boolean).map((v) => (
+                        <li key={v as string}>{v}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+
+              <div className="field">
+                <label htmlFor="wiz-market">{t('marketLabel')}</label>
+                <select
+                  id="wiz-market"
+                  className="sel"
+                  value={market}
+                  onChange={(e) => {
+                    setMarket(e.target.value as MarketCode)
+                    setMarketTouched(true)
+                  }}
+                >
+                  {MARKETS.map((m) => (
+                    <option key={m.code} value={m.code}>
+                      {locale === 'zh' ? m.labelZh : m.labelEn}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field">
+                <label htmlFor="wiz-target-keywords">{t('targetKeywordsLabel')}</label>
+                <textarea
+                  id="wiz-target-keywords"
+                  className="txt"
+                  rows={3}
+                  placeholder={t('targetKeywordsPlaceholder')}
+                  value={targetKeywordsText}
+                  aria-invalid={!keywordsValid}
+                  onChange={(e) => setTargetKeywordsText(e.target.value)}
+                />
+                <p className="wizard-hint">{t('targetKeywordsHint')}</p>
+                {!keywordsValid && (
+                  <p role="alert" className="wizard-hint" style={{ color: 'var(--gap)' }}>{t('targetKeywordsInvalid')}</p>
+                )}
               </div>
 
               <div className="field">
@@ -356,7 +524,7 @@ export function NewAnalysisForm({
               </div>
 
               <div className="wizard-nav">
-                <button type="button" className="run-btn" onClick={goToConnect} disabled={pending}>
+                <button type="button" className="run-btn" onClick={goToConnect} disabled={pending || !step1Ready}>
                   {pending ? t('starting') : t('next')}
                 </button>
               </div>
@@ -367,6 +535,15 @@ export function NewAnalysisForm({
             <div className="wizard-panel">
               <h2 className="wizard-h">{t('stepConnect')}</h2>
               <p className="wizard-sub">{t('step2Sub')}</p>
+
+              {projectId && (
+                <PreflightPanel
+                  status={preflightView ? (preflightView.items ? 'done' : 'error') : 'loading'}
+                  items={preflightView?.items ?? null}
+                  labels={preflightLabels}
+                  fixHref={preflightFixHref}
+                />
+              )}
 
               <div className={`connect-card${gscReady ? ' connected' : ''}`}>
                 <div className="cc-body">
@@ -386,6 +563,11 @@ export function NewAnalysisForm({
                 )}
               </div>
               {!activeGscConnected && !gscAppConfigured && <p className="wizard-hint">{t('gscNotConfiguredHint')}</p>}
+              {gscConnectError && !activeGscConnected && (
+                <p role="alert" className="note" style={{ color: 'var(--ds-error, red)' }}>
+                  {tg(`error.${gscConnectError}`, { expected: gscRedirectOrigin ?? 'GOOGLE_OAUTH_REDIRECT_URI' })}
+                </p>
+              )}
 
               <div className={`connect-card${aiProbeConfigured ? ' connected' : ''}`}>
                 <div className="cc-body">
@@ -457,11 +639,11 @@ export function NewAnalysisForm({
                 </div>
                 <div>
                   <dt>{t('scopeIndustry')}</dt>
-                  <dd>{industryOptions[industryIndex]}</dd>
+                  <dd>{category.trim() || '—'}</dd>
                 </div>
                 <div>
                   <dt>{t('scopeMarket')}</dt>
-                  <dd>{marketOptions[marketIndex]}</dd>
+                  <dd>{(() => { const m = findMarket(market); return m ? (locale === 'zh' ? m.labelZh : m.labelEn) : '—' })()}</dd>
                 </div>
                 <div>
                   <dt>{t('scopeEngines')}</dt>

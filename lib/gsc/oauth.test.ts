@@ -7,6 +7,10 @@ import {
   encodeOAuthState,
   decodeOAuthState,
   sanitizeReturnTo,
+  checkLoopbackRedirectPort,
+  appendGscResult,
+  parseGscConnectError,
+  GscAuthExpiredError,
 } from './oauth'
 
 const fullEnv = {
@@ -87,6 +91,13 @@ describe('refreshAccessToken', () => {
     const fetchMock = vi.fn(async () => jsonResponse({ error: 'invalid_grant' }, 400))
     await expect(refreshAccessToken('rt_1', fullEnv, fetchMock)).rejects.toThrow('gsc token refresh failed')
   })
+
+  it('invalid_grant（授权被撤销/过期）抛出可识别的 GscAuthExpiredError，其它失败不是', async () => {
+    const expired = vi.fn(async () => jsonResponse({ error: 'invalid_grant' }, 400))
+    await expect(refreshAccessToken('rt_1', fullEnv, expired)).rejects.toBeInstanceOf(GscAuthExpiredError)
+    const outage = vi.fn(async () => jsonResponse({ error: 'internal_failure' }, 500))
+    await expect(refreshAccessToken('rt_1', fullEnv, outage)).rejects.not.toBeInstanceOf(GscAuthExpiredError)
+  })
 })
 
 describe('OAuth state 签名、过期与返回路径', () => {
@@ -115,5 +126,44 @@ describe('OAuth state 签名、过期与返回路径', () => {
     expect(sanitizeReturnTo(null)).toBeNull()
     expect(sanitizeReturnTo('')).toBeNull()
     expect(sanitizeReturnTo('relative/no/slash')).toBeNull()
+  })
+})
+
+describe('checkLoopbackRedirectPort', () => {
+  const localEnv = { ...fullEnv, GOOGLE_OAUTH_REDIRECT_URI: 'http://localhost:3000/api/gsc/callback' }
+
+  it('本地回调端口与当前访问端口不同 → 拦下（回调会落到占用该端口的别的应用）', () => {
+    expect(checkLoopbackRedirectPort('http://localhost:3001/api/gsc/auth?projectId=p', localEnv)).toEqual({
+      ok: false,
+      expected: 'http://localhost:3000',
+      actual: 'http://localhost:3001',
+    })
+  })
+
+  it('同端口的 loopback 别名（127.0.0.1 / localhost）视为同一服务，放行', () => {
+    expect(checkLoopbackRedirectPort('http://localhost:3000/api/gsc/auth', localEnv)).toEqual({ ok: true })
+    expect(checkLoopbackRedirectPort('http://127.0.0.1:3000/api/gsc/auth', localEnv)).toEqual({ ok: true })
+  })
+
+  it('非 loopback 回调（生产域名）或配置缺失时不拦截', () => {
+    expect(checkLoopbackRedirectPort('https://preview.vercel.app/api/gsc/auth', fullEnv)).toEqual({ ok: true })
+    expect(checkLoopbackRedirectPort('http://localhost:3001/api/gsc/auth', {})).toEqual({ ok: true })
+  })
+})
+
+describe('appendGscResult / parseGscConnectError', () => {
+  it('在 returnTo 上追加结果参数，保留原有 query', () => {
+    expect(appendGscResult('/zh/new?step=connect&projectId=p1', { gsc: 'connected' })).toBe(
+      '/zh/new?step=connect&projectId=p1&gsc=connected',
+    )
+    expect(appendGscResult('/zh/projects/p1', { gsc_error: 'access_denied' })).toBe('/zh/projects/p1?gsc_error=access_denied')
+  })
+
+  it('只接受白名单错误码，其余一律忽略（query 可被任意拼接）', () => {
+    expect(parseGscConnectError('redirect_port_mismatch')).toBe('redirect_port_mismatch')
+    expect(parseGscConnectError('access_denied')).toBe('access_denied')
+    expect(parseGscConnectError('token_exchange_failed')).toBe('token_exchange_failed')
+    expect(parseGscConnectError('<script>')).toBeNull()
+    expect(parseGscConnectError(undefined)).toBeNull()
   })
 })

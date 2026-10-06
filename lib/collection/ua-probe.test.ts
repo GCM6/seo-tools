@@ -14,7 +14,7 @@ function readUa(init?: RequestInit): string {
   return (h as Record<string, string>)['User-Agent'] ?? ''
 }
 
-const TOTAL_UAS = SEARCH_CRAWLER_UAS.length + TRAINING_CRAWLER_UAS.length // 8
+const TOTAL_UAS = SEARCH_CRAWLER_UAS.length + TRAINING_CRAWLER_UAS.length // 7
 
 // 构造一个按 (url, ua) 路由到指定 status 的 mock fetch；llms.txt 返回可配置文本。
 function makeFetch(opts: {
@@ -49,6 +49,18 @@ describe('collectUaProbe — G02 爬虫可达性', () => {
     for (const c of result.crawlers) expect(c.status).toBe(200)
   })
 
+  it('不以 "Google-Extended" 发请求：它只是 robots 控制令牌，没有独立的 HTTP UA（Google 文档 2026-07-14）', async () => {
+    const seenUas: string[] = []
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (!url.endsWith('/llms.txt')) seenUas.push(readUa(init))
+      return new Response('ok', { status: 200 })
+    })
+    const result = await collectUaProbe({ entryUrl: 'https://example.com/' }, fetchImpl)
+    expect(seenUas).not.toContain('Google-Extended')
+    expect(result.crawlers.map((c) => c.ua)).not.toContain('Google-Extended')
+  })
+
   it('实际发送对应的 User-Agent 头', async () => {
     const seenUas: string[] = []
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -60,7 +72,7 @@ describe('collectUaProbe — G02 爬虫可达性', () => {
     expect(seenUas).toEqual([...SEARCH_CRAWLER_UAS, ...TRAINING_CRAWLER_UAS])
   })
 
-  it('403/429/其它 4xx+ 判为 blocked，2xx/3xx 不封禁', async () => {
+  it('403/429/其它 4xx 判为 blocked；5xx 是服务端错误、不算封禁（最终审查 F1-2）；2xx/3xx 不封禁', async () => {
     const fetchImpl = makeFetch({
       statusFor: (_url, ua) => {
         if (ua === 'GPTBot') return 403
@@ -74,7 +86,8 @@ describe('collectUaProbe — G02 爬虫可达性', () => {
     const byUa = Object.fromEntries(result.crawlers.map((c) => [c.ua, c]))
     expect(byUa['GPTBot'].blocked).toBe(true)
     expect(byUa['CCBot'].blocked).toBe(true)
-    expect(byUa['Bytespider'].blocked).toBe(true) // 500 也算封禁（>=400）
+    expect(byUa['Bytespider'].blocked).toBe(false) // 500 是服务端错误，说明不了站点在拦这个爬虫
+    expect(byUa['Bytespider'].status).toBe(500) // 状态码照实记录
     expect(byUa['OAI-SearchBot'].blocked).toBe(false) // 301 不算
     expect(byUa['PerplexityBot'].blocked).toBe(false) // 200
   })

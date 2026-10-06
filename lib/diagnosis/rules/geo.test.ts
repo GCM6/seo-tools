@@ -7,8 +7,8 @@ import { geoRules } from './geo'
 // 缺陷4：G05/G06 语义已变 + 新增 G10，规则库版本必须随之升版，否则跨版本回测检测
 // （lib/diagnosis/rule-proposals.ts 的 rulesVersionDelta）永远收不到旧协议 run 的告警。
 describe('RULES_VERSION', () => {
-  it('已随新增 G11/SP01/SP02 升版为 rules_v4', () => {
-    expect(RULES_VERSION).toBe('rules_v4')
+  it('已随 SP-A 可信地基的口径修正（C05b/C05c/T14/T01/T08/G01/G02/C10/C03/K03/G07 等）升版为 rules_v10', () => {
+    expect(RULES_VERSION).toBe('rules_v10')
   })
 })
 
@@ -54,7 +54,7 @@ function unbrandedProbe(present: number, total: number): ProbeSummary {
     sampleEvidenceId: 'ev',
     unbranded: { present, total, wilsonLow },
     branded: { perEngine: [] },
-    citationRate: 0, citedDomains: [], ugcCitationShare: null,
+    citationRate: 0, citedDomains: [], ugcCitationShare: null, samplesPerPromptPerEngine: 1,
   }
 }
 
@@ -95,7 +95,7 @@ function engineProbe(
         undetermined: 0,
       })),
     },
-    citationRate: 0, citedDomains: [], ugcCitationShare: null,
+    citationRate: 0, citedDomains: [], ugcCitationShare: null, samplesPerPromptPerEngine: 1,
   }
 }
 
@@ -122,7 +122,7 @@ function brandedProbe(counts: { grounded?: number; speculative?: number; unknown
         undetermined: c.undetermined ?? 0,
       })),
     },
-    citationRate: 0, citedDomains: [], ugcCitationShare: null,
+    citationRate: 0, citedDomains: [], ugcCitationShare: null, samplesPerPromptPerEngine: 1,
   }
 }
 
@@ -187,7 +187,7 @@ describe('G05 low AI visibility (D5：改用 unbranded 层口径)', () => {
       sampleEvidenceId: 'ev',
       unbranded: { present: 0, total: 0, wilsonLow: 0 },
       branded: { perEngine: [] },
-      citationRate: 0, citedDomains: [], ugcCitationShare: null,
+      citationRate: 0, citedDomains: [], ugcCitationShare: null, samplesPerPromptPerEngine: 1,
     }
     ctx.probeEvidenceId = 'pe1'
     const hit = rule('G05').evaluate(ctx) as RuleHitDraft
@@ -283,7 +283,7 @@ describe('G06 zero citation (D5：只评估 webSearchEnabled=true 的检索型�
           { provider: 'openai', webSearchEnabled: true, grounded: 0, speculative: 0, unknown: 0, unverified: 0, undetermined: 0 },
         ],
       },
-      citationRate: 0, citedDomains: [], ugcCitationShare: null,
+      citationRate: 0, citedDomains: [], ugcCitationShare: null, samplesPerPromptPerEngine: 1,
     }
     ctx.probeEvidenceId = 'pe1'
     const hit = rule('G06').evaluate(ctx) as RuleHitDraft
@@ -447,6 +447,42 @@ describe('G01 AI crawler blocked by robots', () => {
     expect(hits.some((h) => h.severity === 'error')).toBe(true)
     expect(hits.some((h) => h.severity === 'notice')).toBe(true)
   })
+  // Google-Extended 是 robots 控制令牌：管 Gemini 训练与 Gemini 应用 / Vertex AI 的 Grounding，不影响 Google 搜索收录与排名
+  // （developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers，2026-07-14 版，SP-A §5.2 #4）。
+  it('只屏蔽 Google-Extended → 不报 error，只有一条说明，写清它管什么、不影响 Google 搜索收录', () => {
+    const ctx = baseCtx()
+    ctx.entryPage = entry()
+    ctx.robotsText = 'User-agent: Google-Extended\nDisallow: /'
+    const hits = rule('G01').evaluate(ctx) as RuleHitDraft[]
+    expect(hits).toHaveLength(1)
+    expect(hits[0].severity).toBe('notice')
+    expect(hits[0].detail!.blocked).toEqual(['Google-Extended'])
+    expect(hits[0].description).toContain('Grounding')
+    expect(hits[0].description).toContain('不影响 Google 搜索收录')
+  })
+  it('Google-Extended 与 PerplexityBot 同时屏蔽 → error 只列 PerplexityBot', () => {
+    const ctx = baseCtx()
+    ctx.entryPage = entry()
+    ctx.robotsText = 'User-agent: Google-Extended\nDisallow: /\n\nUser-agent: PerplexityBot\nDisallow: /'
+    const hits = rule('G01').evaluate(ctx) as RuleHitDraft[]
+    expect(hits.find((h) => h.severity === 'error')!.detail!.blocked).toEqual(['PerplexityBot'])
+  })
+  it('只屏蔽 GPTBot → 说明里不出现 Google-Extended 的那句', () => {
+    const ctx = baseCtx()
+    ctx.entryPage = entry()
+    ctx.robotsText = 'User-agent: GPTBot\nDisallow: /'
+    const hits = rule('G01').evaluate(ctx) as RuleHitDraft[]
+    expect(hits[0].description).not.toContain('Grounding')
+  })
+  it('* 全禁、PerplexityBot 有自己的组且只禁 /private → PerplexityBot 不算被屏蔽（RFC 9309；最终审查 F3-1）', () => {
+    const ctx = baseCtx()
+    ctx.entryPage = entry()
+    ctx.robotsText = 'User-agent: *\nDisallow: /\n\nUser-agent: PerplexityBot\nDisallow: /private\n'
+    const hits = rule('G01').evaluate(ctx) as RuleHitDraft[]
+    const blocked = hits.find((h) => h.severity === 'error')!.detail!.blocked as string[]
+    expect(blocked).not.toContain('PerplexityBot')
+    expect(blocked).toContain('OAI-SearchBot')
+  })
   it('null when all crawlers allowed', () => {
     const ctx = baseCtx()
     ctx.entryPage = entry()
@@ -519,6 +555,13 @@ const uaProbe = (
 })
 
 describe('G02 CDN/WAF blocks search AI crawler', () => {
+  it('旧证据里 5xx 曾被记成 blocked → 不报（服务端错误不是 CDN/WAF 封禁；最终审查 F1-2）', () => {
+    const ctx = baseCtx()
+    ctx.uaProbe = uaProbe([
+      { ua: 'PerplexityBot', kind: 'search', url: 'https://example.com/', status: 503, blocked: true },
+    ])
+    expect(rule('G02').evaluate(ctx)).toBeNull()
+  })
   it('error when a search crawler is blocked at the transport layer', () => {
     const ctx = baseCtx()
     ctx.uaProbe = uaProbe([
@@ -551,6 +594,14 @@ describe('G02 CDN/WAF blocks search AI crawler', () => {
   it('null when uaProbe is null', () => {
     expect(rule('G02').evaluate(baseCtx())).toBeNull()
   })
+  it('旧证据里 Google-Extended 记为 search 且被拦 → 不报（它没有独立的 HTTP UA，Google 不会用这个 UA 来抓）', () => {
+    const ctx = baseCtx()
+    ctx.uaProbe = uaProbe([
+      { ua: 'Google-Extended', kind: 'search', url: 'https://example.com/', status: 403, blocked: true },
+      { ua: 'OAI-SearchBot', kind: 'search', url: 'https://example.com/', status: 200, blocked: false },
+    ])
+    expect(rule('G02').evaluate(ctx)).toBeNull()
+  })
 })
 
 describe('G08 llms.txt presence (record only)', () => {
@@ -575,40 +626,52 @@ describe('G08 llms.txt presence (record only)', () => {
   })
 })
 
-const thirdParty = (
-  wikiExists: boolean,
-  redditMentions: number,
-  windowDays = 365,
-): NonNullable<RuleContext['thirdParty']> => ({
-  wikipedia: { exists: wikiExists, title: wikiExists ? 'Example' : null, url: wikiExists ? 'https://en.wikipedia.org/wiki/Example' : null },
-  reddit: { mentions: redditMentions, windowDays },
-  evidenceId: 'tp1',
+type TpWiki = NonNullable<RuleContext['thirdParty']>['wikipedia']
+type TpReddit = NonNullable<RuleContext['thirdParty']>['reddit']
+const wikiOk = (exists: boolean): TpWiki => ({
+  status: 'ok', exists, title: exists ? 'Example' : null, url: exists ? 'https://en.wikipedia.org/wiki/Example' : null,
 })
+const wikiFailed: TpWiki = { status: 'failed', httpStatus: 503, reason: 'http_503' }
+const redditOk = (mentions: number, windowDays = 365): TpReddit => ({ status: 'ok', mentions, windowDays })
+const redditFailed: TpReddit = { status: 'failed', httpStatus: 403, reason: 'http_403', windowDays: 365 }
+const thirdParty = (wikipedia: TpWiki, reddit: TpReddit): NonNullable<RuleContext['thirdParty']> => ({ wikipedia, reddit, evidenceId: 'tp1' })
 
-describe('G07 third-party corpus absence', () => {
-  it('warning when no wikipedia AND reddit below threshold', () => {
+describe('G07 第三方语料缺失（SP-A §4.4 判定表：只用状态为 ok 的子结果）', () => {
+  it('维基 ok 无同名词条 + Reddit ok 低于阈值 → warning；措辞不再说"无 Wikipedia 条目"', () => {
     const ctx = baseCtx()
-    ctx.thirdParty = thirdParty(false, 1)
+    ctx.thirdParty = thirdParty(wikiOk(false), redditOk(1))
     const hit = rule('G07').evaluate(ctx) as RuleHitDraft
     expect(hit.evidenceRefs).toEqual(['tp1'])
     expect(hit.scope).toBe('geo:thirdparty')
     expect(rule('G07').claimType).toBe('measured_sample')
+    expect(hit.description).toContain('未找到与品牌名或别名同名的英文维基词条')
+    expect(hit.description).not.toContain('无 Wikipedia 条目')
     expect(hit.description).toContain('0.664')
   })
-  it('null when wikipedia exists (signal met)', () => {
+  it('维基 ok 有词条 → null（Reddit 不论成败）', () => {
+    for (const reddit of [redditOk(0), redditFailed]) {
+      const ctx = baseCtx()
+      ctx.thirdParty = thirdParty(wikiOk(true), reddit)
+      expect(rule('G07').evaluate(ctx)).toBeNull()
+    }
+  })
+  it('维基 ok 无词条 + Reddit 采集失败 → null（无法判定，不把 403 当 0 条）', () => {
     const ctx = baseCtx()
-    ctx.thirdParty = thirdParty(true, 0)
+    ctx.thirdParty = thirdParty(wikiOk(false), redditFailed)
     expect(rule('G07').evaluate(ctx)).toBeNull()
   })
-  it('null when reddit mentions at threshold (boundary, signal met)', () => {
+  it('维基采集失败 → null（Reddit 即使是 0 条也不判）', () => {
     const ctx = baseCtx()
-    ctx.thirdParty = thirdParty(false, 3) // === threshold, counts as enough
+    ctx.thirdParty = thirdParty(wikiFailed, redditOk(0))
     expect(rule('G07').evaluate(ctx)).toBeNull()
   })
-  it('warning at boundary just below threshold', () => {
-    const ctx = baseCtx()
-    ctx.thirdParty = thirdParty(false, 2)
-    expect(rule('G07').evaluate(ctx)).not.toBeNull()
+  it('Reddit 提及恰好达到阈值 → null；低一条 → warning', () => {
+    const at = baseCtx()
+    at.thirdParty = thirdParty(wikiOk(false), redditOk(3))
+    expect(rule('G07').evaluate(at)).toBeNull()
+    const below = baseCtx()
+    below.thirdParty = thirdParty(wikiOk(false), redditOk(2))
+    expect(rule('G07').evaluate(below)).not.toBeNull()
   })
   it('null when thirdParty is null', () => {
     expect(rule('G07').evaluate(baseCtx())).toBeNull()
@@ -627,7 +690,7 @@ const probeSentiment = (s: Partial<ProbeSummary['sentiment']>): ProbeSummary => 
   // D4（GEO branded/unbranded 重设计）：新增必填字段，G09 情感分布测试与这三项无关，给中性默认值。
   unbranded: { present: 0, total: 0, wilsonLow: 0 },
   branded: { perEngine: [] },
-  citationRate: 0, citedDomains: [], ugcCitationShare: null,
+  citationRate: 0, citedDomains: [], ugcCitationShare: null, samplesPerPromptPerEngine: 1,
 })
 
 describe('G09 negative citation sentiment', () => {
@@ -669,5 +732,29 @@ describe('G09 negative citation sentiment', () => {
     ctx2.probe = null
     ctx2.probeEvidenceId = 'pe1'
     expect(rule('G09').evaluate(ctx2)).toBeNull()
+  })
+})
+
+describe('SP-A §5.3：GEO 文案写实际采样 n（不再写死 n=5）', () => {
+  const withN = (p: ProbeSummary, n: number): ProbeSummary => ({ ...p, samplesPerPromptPerEngine: n })
+  const describeOf = (id: string, probeSummary: ProbeSummary) => {
+    const ctx = baseCtx()
+    ctx.probe = probeSummary
+    ctx.probeEvidenceId = 'pe1'
+    return (rule(id).evaluate(ctx) as RuleHitDraft).description
+  }
+  it('G05：n=1 时写 n=1，不出现 n=5', () => {
+    const d = describeOf('G05', withN(unbrandedProbe(1, 5), 1))
+    expect(d).toContain('每条问题每个引擎采样 n=1')
+    expect(d).not.toContain('n=5')
+  })
+  it('G06 / G09 / G11 读同一字段', () => {
+    const g06 = describeOf('G06', withN(engineProbe([{ engine: 'openai', promptsPresent: 0, promptsTotal: 5, webSearchEnabled: true }]), 2))
+    const g09 = describeOf('G09', withN(probeSentiment({ negative: 2, neutral: 3, total: 5 }), 2))
+    const g11 = describeOf('G11', withN(ugcProbe(0.4, [{ domain: 'reddit.com', count: 2, origin: 'third_party', platform: 'reddit' }]), 2))
+    for (const d of [g06, g09, g11]) {
+      expect(d).toContain('每条问题每个引擎采样 n=2')
+      expect(d).not.toContain('n=5')
+    }
   })
 })

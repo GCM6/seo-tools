@@ -2,7 +2,8 @@ import { safeFetch } from '@/lib/security/safe-fetch'
 import { normalizeUrl } from './url'
 
 export interface SitemapFile { url: string; xml: string }
-export interface SitemapDiscovery { files: SitemapFile[]; pageUrls: string[]; warnings: string[] }
+// fetchUrls：归一化键 → 原始 <loc>（仅二者不同时）。抓取请求原始地址，归一化只作去重键（第二轮独立审查 #6）。
+export interface SitemapDiscovery { files: SitemapFile[]; pageUrls: string[]; fetchUrls: Record<string, string>; warnings: string[] }
 
 // 防爆闸门：sitemap 文件数与 URL 总数上限（超出记 warning，不算错误）。
 const MAX_SITEMAP_FILES = 10
@@ -59,6 +60,7 @@ export async function discoverSitemaps(
   const seen = new Set<string>()
   const files: SitemapFile[] = []
   const pageUrls = new Set<string>()
+  const fetchUrls: Record<string, string> = {}
   const warnings: string[] = []
 
   while (queue.length && files.length < MAX_SITEMAP_FILES && pageUrls.size < MAX_PAGE_URLS) {
@@ -85,11 +87,15 @@ export async function discoverSitemaps(
     } else {
       for (const loc of locs) {
         const n = normalizeUrl(loc)
-        if (n) pageUrls.add(n)
+        if (n && !pageUrls.has(n)) {
+          pageUrls.add(n)
+          const raw = loc.trim()
+          if (raw !== n) fetchUrls[n] = raw
+        }
         if (pageUrls.size >= MAX_PAGE_URLS) break
       }
     }
   }
   if (queue.length) warnings.push(`sitemap_truncated:${queue.length}_files_unread`)
-  return { files, pageUrls: [...pageUrls], warnings }
+  return { files, pageUrls: [...pageUrls], fetchUrls, warnings }
 }

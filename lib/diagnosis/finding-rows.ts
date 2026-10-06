@@ -98,28 +98,29 @@ export async function buildRecommendationRows(
   runId: string,
   hits: RuleHit[],
   findingRows: FindingRow[],
-  generateRecommendation: (hit: RuleHit, opts: { domain: string }) => Promise<RecommendationDraft> | RecommendationDraft,
+  generateRecommendation: (hit: RuleHit, opts: { domain: string }) => Promise<RecommendationDraft | null> | RecommendationDraft | null,
   domain: string,
 ): Promise<RecommendationRow[]> {
-  return Promise.all(
-    hits.map(async (hit, i) => {
-      const draft = await generateRecommendation(hit, { domain })
-      return {
-        id: `rec_${crypto.randomUUID()}`,
-        runId,
-        findingId: findingRows[i].id,
-        what: draft.what,
-        why: draft.why ?? '',
-        expectedImpact: draft.expectedImpact ?? '',
-        effort: draft.effort ?? '',
-        risk: draft.risk ?? '',
-        validationMethod: draft.validationMethod ?? '',
-        priority: draft.priority ?? 'P2',
-        confidence: draft.confidence ?? confidenceLabel(hit.claimType),
-        status: 'draft' as const,
-        evidenceRefs: hit.evidenceRefs,
-        validationSpec: draft.validationSpec ?? null,
-      }
-    }),
+  // 先按命中下标配对（findingRows[i] 与 hits[i] 一一对应），再丢掉只记录型规则的 null，保证 findingId 不错位。
+  const pairs = await Promise.all(
+    hits.map(async (hit, i) => ({ hit, findingId: findingRows[i].id, draft: await generateRecommendation(hit, { domain }) })),
   )
+  return pairs
+    .filter((p): p is typeof p & { draft: RecommendationDraft } => p.draft !== null)
+    .map(({ hit, findingId, draft }) => ({
+      id: `rec_${crypto.randomUUID()}`,
+      runId,
+      findingId,
+      what: draft.what,
+      why: draft.why ?? '',
+      expectedImpact: draft.expectedImpact ?? '',
+      effort: draft.effort ?? '',
+      risk: draft.risk ?? '',
+      validationMethod: draft.validationMethod ?? '',
+      priority: draft.priority ?? 'P2',
+      confidence: draft.confidence ?? confidenceLabel(hit.claimType),
+      status: 'draft' as const,
+      evidenceRefs: hit.evidenceRefs,
+      validationSpec: draft.validationSpec ?? null,
+    }))
 }

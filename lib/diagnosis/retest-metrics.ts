@@ -123,7 +123,8 @@ const signed = (n: number): string => (n > 0 ? `+${n}` : `${n}`)
 const INCOMPARABLE_INTERPRETATION = '基线数据未按当前口径分类（需运行 pnpm reparse-probes 回填后重测），本轮不给出变化结论'
 
 // 缺陷2（spec D4）：unbranded 比例类指标重叠时的固定措辞——方向性波动未超噪声，不升级为「上升/下降」。
-const NOISE_INTERPRETATION = '方向性波动，未超噪声（推断，n=5 方向性）'
+// SP-A §5.3：n 取两轮探针各自实际采样 n 的较小值，不再写死 n=5。
+const noiseInterpretation = (n: number): string => `方向性波动，未超噪声（推断，n=${n} 方向性）`
 
 // GEO 新口径扩展（cited_owned_share / aio.*）：兼容策略——旧 run 缺该维度数据时只展示已有一侧的
 // 数值，不给涨跌结论，绝不把缺失侧折算为 0 参与 delta（编排者裁决，见 spec 回测兼容性说明）。
@@ -193,6 +194,7 @@ export function buildProbeMetricRows(baseline: RunMetrics, retest: RunMetrics): 
   const rp = retest.probe
   if (!bp || !rp) return []
   const rows: RetestSnapshotRow[] = []
+  const n = Math.min(bp.samplesPerPromptPerEngine, rp.samplesPerPromptPerEngine)
 
   // D5：brand_sov 沿用 probe.sov——聚合层（D4）已限定在 unbranded 子集计算，这里无需再收窄。
   const bSov = bp.sov.find((s) => s.you)?.pct ?? null
@@ -234,7 +236,7 @@ export function buildProbeMetricRows(baseline: RunMetrics, retest: RunMetrics): 
         baselineValue: `${bSov}%`,
         retestValue: `${rSov}%`,
         delta: signed(d),
-        interpretation: d > 0 ? '品牌 AI 答案占有率上升（推断，n=5 方向性）' : d < 0 ? '品牌 AI 答案占有率下降（推断）' : '品牌 AI 答案占有率持平（推断）',
+        interpretation: d > 0 ? `品牌 AI 答案占有率上升（推断，n=${n} 方向性）` : d < 0 ? '品牌 AI 答案占有率下降（推断）' : '品牌 AI 答案占有率持平（推断）',
       })
     }
 
@@ -251,9 +253,9 @@ export function buildProbeMetricRows(baseline: RunMetrics, retest: RunMetrics): 
         retestValue: `${rPres}%`,
         delta: signed(d),
         interpretation: overlapping
-          ? NOISE_INTERPRETATION
+          ? noiseInterpretation(n)
           : d > 0
-            ? '品牌在 AI 回答中出现率上升（推断，n=5 方向性）'
+            ? `品牌在 AI 回答中出现率上升（推断，n=${n} 方向性）`
             : d < 0
               ? '品牌在 AI 回答中出现率下降（推断）'
               : '品牌出现率持平（推断）',
@@ -269,7 +271,7 @@ export function buildProbeMetricRows(baseline: RunMetrics, retest: RunMetrics): 
     citedOwnedShare(rp),
     (d) =>
       d > 0
-        ? '被引用域名中自有站点占比上升（推断，n=5 方向性）'
+        ? `被引用域名中自有站点占比上升（推断，n=${n} 方向性）`
         : d < 0
           ? '被引用域名中自有站点占比下降（推断）'
           : '被引用域名中自有站点占比持平（推断）',

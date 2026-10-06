@@ -12,7 +12,7 @@
 // 这与 lib/dataforseo/index.ts 的纯 env 读取不同：AIO 是本 SP 新增的独立 BYOK 消费路径，
 // 复用同一对 DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD 凭据，但走标准 BYOK 解析顺序。
 
-import { createDataforseoClient, asArray, asRecord, asString } from '@/lib/dataforseo/client'
+import { createDataforseoClient, asArray, asRecord, asString, firstResultOrThrow, itemsOrThrow } from '@/lib/dataforseo/client'
 
 export interface AioReference {
   domain: string | null
@@ -93,8 +93,8 @@ export function createAioSerpProvider(config: AioSerpConfig): AioSerpProvider {
         },
       ]
       const tasks = await client.post('/v3/serp/google/organic/live/advanced', body)
-      const result = asRecord(tasks[0]?.result[0])
-      const items = result ? asArray(result.items) : []
+      // 没有 result 是失败（empty_result），不能当成"该词没有 AI Overview"的测得值（第二波审查 C1）。
+      const items = itemsOrThrow(firstResultOrThrow(tasks))
       const parsed = parseAioItem(items)
       return {
         keyword,

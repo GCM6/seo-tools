@@ -1,10 +1,10 @@
 import { eq, asc, desc, and, isNull, isNotNull, inArray, ne, or, sql, getTableColumns } from 'drizzle-orm'
 import { db } from '@/db/client'
-import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, serpAioResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals, providerCredentials, reportShares, dataSourceStatuses } from '@/db/schema'
+import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, serpAioResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals, providerCredentials, reportShares, dataSourceStatuses, evidenceRaw } from '@/db/schema'
 import type { DataSourceStatus } from '@/db/schema'
 import { hasValidEvidence, computeArtifactUpdate, assertReleasableVersion } from '@/lib/diagnosis/rule-proposals'
 import type { EvidenceType, EvidenceLevel, RunStatus, ClaimType } from '@/lib/types'
-import type { LightCheckExtra } from '@/lib/crawl/light-check'
+import type { LightCheckExtra, InternalLinkDetail, ExternalLinkDetail } from '@/lib/crawl/light-check'
 import { assertFindingClaimEvidence } from './validators'
 import { pickLatestRun, pickActiveRun, pickRetestAnchor } from '@/lib/projects/summary'
 import { ACTIVE_RUN_STATUSES, RUN_CANCELLED_REASON } from '@/lib/runs/status'
@@ -148,6 +148,9 @@ export interface SitePageUpsert {
   contentHash: string | null
   // 出向同站内链（TA01/TA02 群内邻接）；discovered_only 兜底页未抓 → null。
   internalLinks: string[] | null
+  // 链接明细（spec S1 §3）；未抓页（discovered_only / 禁抓 / 错误）为 null 或空数组。
+  linkDetails: InternalLinkDetail[] | null
+  externalLinks: ExternalLinkDetail[] | null
   lightCheckExtra: LightCheckExtra | null
   checkStatus: 'checked' | 'discovered_only' | 'blocked_by_robots' | 'error'
   errorReason: string | null
@@ -159,7 +162,7 @@ export const upsertSitePages = async (projectId: string, runId: string, rows: Si
   for (const row of rows) {
     await db
       .insert(sitePages)
-      .values({ id: `sp_${crypto.randomUUID()}`, projectId, firstSeenRunId: runId, ...row, lastCheckedAt: now })
+      .values({ id: `sp_${crypto.randomUUID()}`, projectId, firstSeenRunId: runId, lastSeenRunId: runId, ...row, lastCheckedAt: now })
       .onConflictDoUpdate({
         target: [sitePages.projectId, sitePages.url],
         set: {
@@ -173,6 +176,9 @@ export const upsertSitePages = async (projectId: string, runId: string, rows: Si
           mainTextChars: row.mainTextChars,
           contentHash: row.contentHash,
           internalLinks: row.internalLinks,
+          linkDetails: row.linkDetails,
+          externalLinks: row.externalLinks,
+          lastSeenRunId: runId,
           lightCheckExtra: row.lightCheckExtra,
           checkStatus: row.checkStatus,
           errorReason: row.errorReason,
@@ -185,10 +191,17 @@ export const upsertSitePages = async (projectId: string, runId: string, rows: Si
 export const getSitePages = (projectId: string) =>
   db.select().from(sitePages).where(eq(sitePages.projectId, projectId))
 
-export const updateInboundCounts = async (projectId: string, counts: Record<string, number>) => {
+// 本 run 见过的页（spec S1 §5）：site_audit 快照与图谱只用它，历史 run 的页不混入（修 D4）。
+export const getRunSitePages = (projectId: string, runId: string) =>
+  db.select().from(sitePages).where(and(eq(sitePages.projectId, projectId), eq(sitePages.lastSeenRunId, runId)))
+
+// 入度按 run 重算（修 D5）：先把本 run 页清零，再写入本轮计数；不动其他 run 的页。
+export const updateInboundCounts = async (projectId: string, runId: string, counts: Record<string, number>) => {
+  const scope = and(eq(sitePages.projectId, projectId), eq(sitePages.lastSeenRunId, runId))
+  await db.update(sitePages).set({ inboundLinkCount: 0 }).where(scope)
   for (const [url, count] of Object.entries(counts)) {
-    await db.update(sitePages).set({ inboundLinkCount: count })
-      .where(and(eq(sitePages.projectId, projectId), eq(sitePages.url, url)))
+    if (count <= 0) continue
+    await db.update(sitePages).set({ inboundLinkCount: count }).where(and(scope, eq(sitePages.url, url)))
   }
 }
 
@@ -252,6 +265,61 @@ export const upsertKeyword = (row: typeof keywords.$inferInsert) =>
   }).returning()
 export const getKeywords = (projectId: string) =>
   db.select().from(keywords).where(eq(keywords.projectId, projectId))
+// —— 目标关键词（SP-A §3.3）——：存 project_settings.target_keywords，不写 keywords 测量表（第一波审查 C1/I1）。
+export async function getTargetKeywords(projectId: string): Promise<string[]> {
+  const row = await db.query.projectSettings.findFirst({ where: eq(projectSettings.projectId, projectId), columns: { targetKeywords: true } })
+  return row?.targetKeywords ?? []
+}
+
+// 整组替换：去首尾空白、去重、丢空行；没有设置行时建行（单行 upsert，原子）。
+export async function setTargetKeywords(projectId: string, texts: string[]): Promise<void> {
+  const targetKeywords = [...new Set(texts.map((t) => t.trim()).filter(Boolean))]
+  await db.insert(projectSettings).values({ projectId, targetKeywords })
+    .onConflictDoUpdate({ target: projectSettings.projectId, set: { targetKeywords } })
+}
+
+// SQLite current_timestamp（'YYYY-MM-DD HH:MM:SS'，UTC）与 ISO 混存：统一转 ISO 后再比较/返回。
+function toIsoTimestamp(v: string): string {
+  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(v) ? `${v.replace(' ', 'T')}.000Z` : v
+}
+
+// 历史 GSC 词 + 最近一次出现时间：最近一条 keyword_metrics 所属 run 的 started_at（为空用 finished_at），
+// 无指标回落 keywords.created_at。只用作种子，不冒充本期数据。
+export async function getGscKeywordHistory(projectId: string): Promise<{ keyText: string; lastSeenAt: string }[]> {
+  const rows = await db
+    .select({
+      keyText: keywords.text,
+      lastRun: sql<string | null>`max(coalesce(${runs.startedAt}, ${runs.finishedAt}))`,
+      createdAt: keywords.createdAt,
+    })
+    .from(keywords)
+    .leftJoin(keywordMetrics, eq(keywordMetrics.keywordId, keywords.id))
+    .leftJoin(runs, eq(runs.id, keywordMetrics.runId))
+    .where(and(eq(keywords.projectId, projectId), eq(keywords.source, 'gsc')))
+    .groupBy(keywords.id)
+  return rows.map((r) => ({ keyText: r.keyText, lastSeenAt: toIsoTimestamp(r.lastRun ?? r.createdAt) }))
+}
+
+// —— 原始响应（SP-A §4.3）：诊断上下文不加载，只在证据下钻/审计时按需读取 ——
+export async function createEvidenceRaw(row: typeof evidenceRaw.$inferInsert): Promise<void> {
+  await db.insert(evidenceRaw).values(row)
+}
+
+// 采集成功后把先落库的原文挂到证据上；空数组短路（inArray([]) 不可用）。
+export async function linkEvidenceRaw(rawIds: string[], evidenceId: string): Promise<void> {
+  if (rawIds.length === 0) return
+  await db.update(evidenceRaw).set({ evidenceId }).where(inArray(evidenceRaw.id, rawIds))
+}
+
+export const getEvidenceRawsByEvidenceId = (evidenceId: string) =>
+  db.select().from(evidenceRaw).where(eq(evidenceRaw.evidenceId, evidenceId)).orderBy(asc(evidenceRaw.createdAt))
+
+// 按 (runId, rawId) 取：run 不匹配即取不到，防止跨 run 读取。
+export async function getEvidenceRawById(runId: string, rawId: string) {
+  const [row] = await db.select().from(evidenceRaw).where(and(eq(evidenceRaw.id, rawId), eq(evidenceRaw.runId, runId))).limit(1)
+  return row
+}
+
 export const createKeywordMetrics = (rows: (typeof keywordMetrics.$inferInsert)[]) =>
   rows.length ? db.insert(keywordMetrics).values(rows).returning() : Promise.resolve([])
 // 默认序=点击降序、次级展现降序（P1-8：clicks 是关键词表最主要的可信信号，排前面才不会被淹没）。

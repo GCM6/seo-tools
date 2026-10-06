@@ -3,6 +3,9 @@ import { Shell } from '@/components/Shell'
 import { NewAnalysisForm } from '@/components/NewAnalysisForm'
 import { getProject, getProjectSettings } from '@/lib/repositories'
 import { loadDataSourceStatuses } from '@/lib/settings/load-statuses'
+import { GoalAnalysisLauncher } from '@/components/GoalAnalysisLauncher'
+import { parseGscConnectError, gscRedirectOrigin } from '@/lib/gsc/oauth'
+import { wizardProjectProps } from '@/lib/projects/wizard-project'
 
 // 读实时项目/数据源状态（GSC 往返续起在建项目）：动态渲染。
 export const dynamic = 'force-dynamic'
@@ -15,10 +18,11 @@ export default async function NewAnalysisPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>
-  searchParams: Promise<{ step?: string; gsc?: string; projectId?: string }>
+  searchParams: Promise<{ step?: string; gsc?: string; gsc_error?: string; projectId?: string }>
 }) {
   const { locale } = await params
-  const { step, gsc, projectId } = await searchParams
+  const { step, gsc, gsc_error, projectId } = await searchParams
+  const gscConnectError = parseGscConnectError(gsc_error)
   setRequestLocale(locale)
 
   // 仅当从 GSC 往返带回 projectId 时载入该在建项目（续起授权闭环）；否则从零开始。
@@ -35,20 +39,11 @@ export default async function NewAnalysisPage({
 
   return (
     <Shell>
+      <GoalAnalysisLauncher locale={locale} />
+      <div className="advanced-analysis-divider"><span>{locale === 'zh' ? '高级采集配置' : 'Advanced collection setup'}</span></div>
       <NewAnalysisForm
         locale={locale}
-        project={
-          project
-            ? {
-                id: project.id,
-                domain: project.domain,
-                industry: project.industry ?? '',
-                market: project.market ?? '',
-                language: project.language ?? '',
-                competitors: project.competitors ?? [],
-              }
-            : null
-        }
+        project={wizardProjectProps(project, settings)}
         gscConnected={gscConnected}
         gscSiteUrl={settings?.gscSiteUrl ?? null}
         gscAppConfigured={gscAppConfigured}
@@ -56,6 +51,8 @@ export default async function NewAnalysisPage({
         dataforseoConfigured={dataforseoConfigured}
         initialStep={initialStep}
         savedEngines={settings?.defaultModels ?? null}
+        gscConnectError={gscConnectError}
+        gscRedirectOrigin={gscConnectError === 'redirect_port_mismatch' ? gscRedirectOrigin() : null}
       />
     </Shell>
   )

@@ -6,16 +6,20 @@ import { GscConnectCard } from '@/components/GscConnectCard'
 import { BrandAliasesCard } from '@/components/BrandAliasesCard'
 import { RetestButton } from '@/components/RetestButton'
 import { getProject, getProjectRuns, getProjectSettings, getFindings } from '@/lib/repositories'
-import { isGscPlatformConfigured } from '@/lib/gsc/oauth'
+import { isGscPlatformConfigured, parseGscConnectError, gscRedirectOrigin } from '@/lib/gsc/oauth'
 import { pickActiveRun, pickRetestAnchor } from '@/lib/projects/summary'
 
 // 项目详情页（SP-G1b）：诊断历史 + 该项目 GSC 连接。项目不存在 → 路由级 404。
 export default async function ProjectDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string; id: string }>
+  // GSC 授权往返结果：/api/gsc/callback 或 /api/gsc/auth 跳回时带 ?gsc=connected | ?gsc_error=<code>
+  searchParams: Promise<{ gsc_error?: string }>
 }) {
   const { locale, id } = await params
+  const gscConnectError = parseGscConnectError((await searchParams).gsc_error)
   setRequestLocale(locale)
   const t = await getTranslations('projectDetail')
   // 状态/类型标签的真源在 projects 命名空间（列表页共用），此处复用同一套映射。
@@ -68,6 +72,7 @@ export default async function ProjectDetailPage({
                 starting: tr('starting'),
                 error: tr('error'),
                 inProgress: tr('inProgress'),
+                needsSetup: tr('needsSetup'),
               }}
             />
             <Link href={`/${locale}/new?projectId=${project.id}`} className="ghost-btn !mt-0">
@@ -93,6 +98,8 @@ export default async function ProjectDetailPage({
           gscConnected={settings?.gscConnected ?? false}
           gscSiteUrl={settings?.gscSiteUrl ?? null}
           gscAppConfigured={gscAppConfigured}
+          connectError={gscConnectError}
+          redirectOrigin={gscConnectError === 'redirect_port_mismatch' ? gscRedirectOrigin() : null}
         />
       </div>
 
@@ -115,6 +122,7 @@ export default async function ProjectDetailPage({
           retestStarting: tr('starting'),
           retestError: tr('error'),
           retestInProgress: tr('inProgress'),
+          retestNeedsSetup: tr('needsSetup'),
         }}
         statusLabels={tp.raw('status') as Record<string, string>}
         runTypeLabels={tp.raw('runType') as Record<string, string>}

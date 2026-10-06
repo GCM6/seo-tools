@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { db } from '@/db/client'
-import { recommendations } from '@/db/schema'
+import { analysisSessions, recommendations } from '@/db/schema'
 import { getRun, markRecommendationApplied, markRunStatus, setProjectNextRetestDue } from '@/lib/repositories'
 
 const VALID_STATUS = ['draft', 'accepted', 'edited', 'rejected'] as const
@@ -73,11 +73,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   // 第 4 步只有在全部建议均已人工处理后才开放：任一建议回到草稿，即回到确认阶段。
   // 这样 Stepper 的输出态来自真实状态机，而不是用户手动点进某个 URL。
-  const run = await getRun(rec.runId)
+  const [run, allRecommendations] = await Promise.all([
+    getRun(rec.runId),
+    db.query.recommendations.findMany({ where: eq(recommendations.runId, rec.runId) }),
+  ])
   if (run && (run.status === 'reviewing' || run.status === 'output')) {
-    const allRecommendations = await db.query.recommendations.findMany({
-      where: eq(recommendations.runId, rec.runId),
-    })
     const allDecided = allRecommendations.length > 0 && allRecommendations.every((item) => item.status !== 'draft')
     const nextRunStatus = allDecided ? 'output' : 'reviewing'
 
@@ -86,6 +86,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         finishedAt: run.finishedAt ?? undefined,
         failureReason: run.failureReason,
       })
+    }
+    if (run.analysisSessionId) {
+      await db.update(analysisSessions).set({
+        status: allDecided ? 'completed' : 'reviewing',
+        updatedAt: new Date().toISOString(),
+        finishedAt: allDecided ? new Date().toISOString() : null,
+      }).where(eq(analysisSessions.id, run.analysisSessionId))
     }
   }
 

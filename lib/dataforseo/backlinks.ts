@@ -4,7 +4,7 @@
 // /v3/backlinks/anchors/live 与 history 端点——本期不取，取不到分别降级为 [] / null。
 
 import type { DataforseoClient } from './client'
-import { asArray, asNumber, asRecord, asString } from './client'
+import { asArray, asNumber, asRecord, asString, collectError, firstResultOrThrow } from './client'
 import type { BacklinksSummary } from './types'
 
 type Anchor = { anchor: string; count: number; dofollow: boolean }
@@ -33,13 +33,18 @@ export async function backlinksSummary(client: DataforseoClient, target: string)
     },
   ]
   const tasks = await client.post('/v3/backlinks/summary/live', body)
-  const result = asRecord(tasks[0]?.result[0])
+  // 没有 result 是失败（empty_result），不能编成"0 引荐域 / 0 外链"（第二波审查 C1）；
+  // 没有外链的目标 summary 也返回数字 0；计数字段缺失说明响应形态不对，不能编成 0（最终审查 F1-1）。
+  const result = firstResultOrThrow(tasks)
+  const referringDomains = asNumber(result.referring_domains)
+  const backlinks = asNumber(result.backlinks)
+  if (referringDomains === null || backlinks === null) throw collectError('dataforseo backlinks summary missing counts', 'invalid_shape')
 
   return {
     target,
-    referringDomains: asNumber(result?.referring_domains) ?? 0,
-    backlinks: asNumber(result?.backlinks) ?? 0,
-    rank: asNumber(result?.rank),
+    referringDomains,
+    backlinks,
+    rank: asNumber(result.rank),
     anchors: extractAnchors(result),
     // new/lost 历史窗口 summary 不提供 → null（需 backlinks/history 端点）。
     newLost: null,

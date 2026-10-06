@@ -71,3 +71,15 @@ describe('discoverSitemaps', () => {
     expect(out.warnings[0]).toContain('sitemap_fetch_failed')
   })
 })
+
+describe('discoverSitemaps 保留原始地址（第二轮独立审查 #6）', () => {
+  it('归一化键与原始 <loc> 不同时记入 fetchUrls，抓取时请求原始地址', async () => {
+    const fetchImpl = fakeFetch({
+      'https://example.com/sitemap.xml': { status: 200, body: xmlUrlset(['https://www.example.com/docs/', 'https://example.com/plain']) },
+    })
+    const out = await discoverSitemaps('https://example.com/', '', fetchImpl)
+    expect(out.pageUrls).toEqual(['https://example.com/docs', 'https://example.com/plain'])
+    expect(out.fetchUrls).toEqual({ 'https://example.com/docs': 'https://www.example.com/docs/' })
+  })
+})
+

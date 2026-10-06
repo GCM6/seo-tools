@@ -84,6 +84,8 @@ export function ProjectList({
     retestStarting: string
     retestError: string
     retestInProgress: string
+    // SP-A §3.5：建 run 闸门拒绝时链到向导补充的文案（可选，缺省回落 retestError）。
+    retestNeedsSetup?: string
     projectManagement: string
     searchPlaceholder: string
     marketLabel: string
@@ -210,6 +212,7 @@ export function ProjectList({
                             starting: labels.retestStarting,
                             error: labels.retestError,
                             inProgress: labels.retestInProgress,
+                            needsSetup: labels.retestNeedsSetup,
                           }}
                         />
                         <Link href={`/${locale}/new?projectId=${p.id}`} className="ghost-config-link">

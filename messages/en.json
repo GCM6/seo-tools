@@ -1,7 +1,37 @@
 {
+  "preflight": {
+    "title": "Pre-run check",
+    "loading": "Checking data sources…",
+    "failed": "The check did not finish. You can continue; each data source's result will be recorded during collection.",
+    "allReady": "All data sources are ready.",
+    "unavailableSummary": "Cannot be assessed this run: {dims}",
+    "degradedSummary": "Limited this run: {dims}",
+    "balance": "Account balance: USD {balance}",
+    "state": { "ready": "Ready", "degraded": "Limited", "unavailable": "Unavailable" },
+    "source": { "project": "Project settings", "gsc": "Google Search Console", "dataforseo": "DataForSEO", "psi": "PageSpeed Insights", "render": "Rendering check", "ai_probe": "AI engine probes" },
+    "reason": {
+      "category_invalid": "The product/service category is invalid. Go back to step 1 and enter it in English.",
+      "market_invalid": "The target market is invalid. Go back to step 1 and choose again.",
+      "gsc_not_configured": "Google sign-in is not configured on this platform yet, so GSC cannot be connected.",
+      "gsc_not_connected": "GSC is not connected, so ranking and keyword data are unavailable.",
+      "gsc_site_missing": "GSC is authorized, but no property has been selected.",
+      "gsc_token_invalid": "The GSC authorization has expired. Please re-authorize.",
+      "gsc_unreachable": "Google could not be reached to refresh the GSC authorization; data may be missing this run.",
+      "dfs_no_credentials": "No DataForSEO account is configured.",
+      "dfs_auth_failed": "The DataForSEO login or password is incorrect.",
+      "dfs_unreachable": "DataForSEO could not be reached; data may be missing this run.",
+      "psi_no_key": "No PageSpeed API key: anonymous calls often fail once the shared quota runs out.",
+      "render_not_configured": "No rendering service is configured, so text before and after JavaScript rendering cannot be compared.",
+      "ai_not_configured": "No AI engine key is configured.",
+      "ai_memory_only": "Only non-browsing engines (such as DeepSeek) are configured, so AI citations of this site cannot be checked."
+    },
+    "fix": { "reauth_gsc": "Re-authorize", "select_gsc_site": "Select property", "configure_key": "Configure", "edit_project": "Edit project" },
+    "dimension": { "eeat": "E-E-A-T", "content": "Content", "structured_data": "Structured data", "site_type": "Site type", "rich_results": "Rich results", "rankings": "Rankings", "keywords": "Keywords", "technical": "Technical & performance", "geo": "AI visibility (GEO)", "competitors": "Competitors", "backlinks": "Backlinks" }
+  },
   "nav": {
     "projects": "Projects",
     "rules": "Rule library",
+    "knowledge": "Knowledge brain",
     "settings": "Settings",
     "newAnalysis": "New analysis",
     "menuTitle": "Navigation Menu",
@@ -128,6 +158,7 @@
     "projectManagement": "Project Management",
     "searchPlaceholder": "Search domains...",
     "marketLabel": "Market",
+    "marketUnset": "Not set",
     "retestLabel": "Retest:",
     "latestStatusLabel": "Latest status",
     "findingsDetectedLabel": "Findings detected",
@@ -180,19 +211,18 @@
     "intro": "Enter a URL and Veris runs an SEO + GEO diagnosis on real data (your GSC, measured answers from each AI engine, page crawls) — every conclusion comes with verifiable evidence.",
     "urlLabel": "URL",
     "urlPlaceholder": "https://your-domain.com",
-    "industryLabel": "Industry / vertical",
-    "industryOptions": [
-      "B2B SaaS · Team collaboration",
-      "Cross-border e-commerce",
-      "Local services",
-      "Other…"
-    ],
-    "marketLabel": "Market / language",
-    "marketOptions": [
-      "Chinese · Mainland China",
-      "English · Global",
-      "Southeast Asia"
-    ],
+    "categoryLabel": "Product / service category (English)",
+    "categoryPlaceholder": "e.g. document metadata removal tool",
+    "categoryHint": "Used in English AI probe questions and search queries: describe what you sell in one English phrase.",
+    "categoryCandidates": "Candidates found on your homepage (click to fill, then edit)",
+    "categoryInvalid": "Describe your product or service category in English (3–80 characters: letters, digits, spaces and common punctuation).",
+    "sitePreviewLoading": "Reading your homepage…",
+    "siteFactsTitle": "Homepage text for reference",
+    "marketLabel": "Target market",
+    "targetKeywordsLabel": "Target keywords (optional)",
+    "targetKeywordsPlaceholder": "One English keyword per line, e.g. remove pdf metadata",
+    "targetKeywordsHint": "Up to 20. Used first as seed keywords for rankings and competitor analysis.",
+    "targetKeywordsInvalid": "One English keyword per line (2–80 characters), at most 20 lines.",
     "competitorsLabel": "Competitors (optional, enter manually)",
     "competitorsPlaceholder": "e.g. Competitor A, Competitor B, Competitor C (comma-separated)",
     "enginesLabel": "Probe engines (proxy-metric source for GEO visibility · developer-API sampling)",
@@ -236,7 +266,7 @@
     "engineNeedsDataforseo": "Configure DataForSEO in settings first",
     "skipHint": "Any source can be skipped for now; connect GSC later from the project detail page, or configure other BYOK sources in Settings before re-running.",
     "scopeDomain": "Site",
-    "scopeIndustry": "Industry",
+    "scopeIndustry": "Category",
     "scopeMarket": "Market",
     "scopeEngines": "AI engines",
     "scopeData": "Data sources",
@@ -253,6 +283,8 @@
     "submitError": "Couldn't start the analysis. Please try again.",
     "errorInvalidDomain": "Invalid site URL. Please check it and try again.",
     "errorDispatchFailed": "Failed to dispatch the collection job: the background job service (Inngest) is unavailable. Start it and try again.",
+    "errorCategoryRequired": "Enter your product/service category in English before starting the diagnosis.",
+    "errorMarketRequired": "Choose a target market before starting the diagnosis.",
     "note": "Diagnosis is asynchronous: only evidence collected from real sources reaches the next screen; unconfigured sources stay pending."
   },
   "screen2": {
@@ -265,7 +297,7 @@
       "avgRank": "Avg. organic rank",
       "avgRankUnit": "pos.",
       "crawlableText": "Non-rendered body readability",
-      "schemaCoverage": "Structured-data footprint",
+      "schemaCoverage": "Homepage schema types",
       "schemaCoverageUnit": "types"
     },
     "pendingSource": "Pending · {source}",
@@ -283,7 +315,7 @@
     "perEngineTitle": "Per-engine AI visibility",
     "perEngineMeta": "AI engines cite differently (~11–13% overlap) — reported per engine, not merged.",
     "sentimentTitle": "Citation sentiment",
-    "sentimentMeta": "Sentiment of brand mentions (measurement-layer classifier; n=5 directional).",
+    "sentimentMeta": "Sentiment of brand mentions (measurement-layer classifier; n={n} per question per engine, directional only).",
     "sentPositive": "Positive",
     "sentNeutral": "Neutral",
     "sentNegative": "Negative",
@@ -337,6 +369,8 @@
       "retry": "Retry collection",
       "retrying": "Retrying…",
       "retryFailed": "Retry failed, please try again later.",
+      "retryNeedsSetup": "Project category/market not set — complete setup →",
+      "retryRetestUnsupported": "A retest can't be retried directly (it would lose its baseline) — start a new retest from the project page →",
       "cancel": "Stop diagnosis",
       "cancelling": "Stopping…",
       "cancelConfirm": "Stop this diagnosis? Evidence already collected will be kept.",
@@ -804,6 +838,8 @@
     "noindex": "noindex is a \"don't index me\" instruction on a page. If a page that should be searchable gets mistakenly tagged this way, it will never show up in Google search results — invisible to visitors.",
     "http4xx": "4xx is a server response code meaning the request failed (e.g. 404 = page not found). These links are likely broken — visitors hit an error page, and search engines read it as a bad experience.",
     "orphanPages": "An orphan page has no other page linking to it. Search engines mostly discover and evaluate content through links between pages, so an unlinked page is hard to crawl, index, or rank.",
+    "clickDepth": "Click depth: the fewest clicks from the homepage to this page along followable internal HTML links (excluding nofollow, sitemaps, RSS and the like). \"≤\" means the crawl did not cover every shallower path, so the true depth may be smaller; \"Unreachable\" means it cannot be reached via followable links given a complete crawl.",
+    "linkEquity": "Link equity: a relative weight estimated with a PageRank model on this crawl's internal link graph, shown as a multiple of the site median (1.0× is the middle; below 0.5× is low). It reflects internal link structure only and is not the search engine's actual weighting; not computed when fewer than 10 pages were crawled.",
     "httpStatus": "The HTTP status code is the server's response to this request: 200 means OK, 301/302 means it redirected elsewhere, 404 means the page doesn't exist, 5xx means the server errored. Anything other than 200 usually needs a look.",
     "urlPattern": "Pages with a similar URL structure (e.g. all product detail pages) are automatically grouped into one template, so you can spot-check a single \"representative page\" instead of checking every page in that group.",
     "renderDelta": "Unit: characters. Value = main-content character count after browser JS rendering minus the character count in the initial HTML response. The larger the positive number, the more this page's core content depends on JS to display — and search crawlers may not wait for JS to finish, so they may miss it.",
@@ -850,6 +886,19 @@
       "blocked_by_robots": "Blocked by robots",
       "error": "Failed"
     },
+    "linkStructureTitle": "Link structure (measured)",
+    "reachablePages": "URLs reachable from home",
+    "unreachableSitemapPages": "Sitemap pages unreachable from home",
+    "brokenTargets": "Broken internal link targets",
+    "deadEndPages": "Dead-end pages",
+    "linkPartialNotice": "This crawl did not cover every page reachable from the homepage: unreachable and depth findings are limited to crawled pages, and depths marked \"≤\" are upper bounds.",
+    "entryNoLinksNotice": "No internal links were found in the entry page's initial HTML (common with JS-rendered navigation); link structure analysis was skipped.",
+    "clickDepth": "Click depth",
+    "inboundLinks": "Inlinks",
+    "linkEquity": "Link equity",
+    "linkEquityNote": "Link equity is an internal PageRank model estimate (site median = 1.0×). It reflects only this crawl's link structure, not the search engine's actual weighting.",
+    "unreachable": "Unreachable",
+    "noPathFound": "No path found",
     "viewReport": "View full report →",
     "goToOutput": "Go to output →"
   },
@@ -947,6 +996,20 @@
         "partial": "Partially collected",
         "failed": "Collection failed"
       },
+      "subSourceTitle": "Sub-stages",
+      "subSourceLabel": {
+        "dataforseo_seed_serp": "Seed keyword Google rankings",
+        "dataforseo_labs": "Labs keyword data",
+        "dataforseo_backlinks": "Backlink summary",
+        "dataforseo_bing_index": "Bing index",
+        "dataforseo_brand_serp": "Brand query results",
+        "third_party_wikipedia": "Wikipedia exact-title article",
+        "third_party_reddit": "Reddit discussions",
+        "social_presence_youtube": "YouTube",
+        "social_presence_g2": "G2",
+        "social_presence_trustpilot": "Trustpilot",
+        "social_presence_capterra": "Capterra"
+      },
       "sourceLabel": {
         "google_cse": "Google front-end visibility",
         "gsc": "Google Search Console",
@@ -956,12 +1019,14 @@
         "ai_probe": "AI probes",
         "dataforseo": "DataForSEO",
         "ua_probe": "UA bot detection",
-        "third_party": "Third-party corpus"
+        "third_party": "Third-party corpus",
+        "aio": "Google AI Overviews (measured)",
+        "social_presence": "Social & community mentions"
       }
     },
     "geo": {
       "title": "GEO Visibility Supplement",
-      "meta": "Brand visibility and cognitive quality in AI search — n=5 directional sampling",
+      "meta": "Brand visibility and cognitive quality in AI search (directional sampling)",
       "unbrandedHeadline": "Unbranded recall {present}/{total} (95% lower bound {wilsonPct}%)",
       "wilsonLabel": "95% lower confidence bound",
       "wilsonNote": "Small samples swing a lot round to round; call it a real change only when the two rounds' intervals don't overlap — otherwise it's noise.",
@@ -1054,6 +1119,67 @@
       }
     },
     "keywords": {
+      "intentMap": {
+        "title": "Search Intent → Landing Page",
+        "meta": "Generated from GSC query-page data, DataForSEO demand samples, and crawl structure; {rows} demand groups detected, with {issues} carrying landing-page fit risk.",
+        "clean": "No clear intent-to-page fit issue was found in the checked queries.",
+        "noPage": "No clear landing page",
+        "fitScore": "{score} pts",
+        "demandImpressions": "{count} impressions",
+        "demandSearchVolume": "{count} volume (est.)",
+        "col": {
+          "query": "Search demand",
+          "intent": "Intent",
+          "page": "Current page",
+          "demand": "Demand",
+          "fit": "Fit",
+          "issues": "Issues",
+          "action": "Recommended action"
+        },
+        "intent": {
+          "informational": "Informational",
+          "commercial": "Commercial research",
+          "transactional": "Transactional / lead",
+          "comparison": "Comparison",
+          "support": "Support / troubleshooting",
+          "local": "Local",
+          "navigational": "Navigational",
+          "unknown": "Unknown"
+        },
+        "role": {
+          "home": "Home",
+          "service": "Service page",
+          "product": "Product page",
+          "collection": "Category / collection",
+          "pricing": "Pricing",
+          "comparison": "Comparison page",
+          "case_study": "Case study",
+          "blog": "Blog / article",
+          "docs": "Docs",
+          "support": "Help / support",
+          "local": "Local page",
+          "about": "About",
+          "tool": "Tool page",
+          "unknown": "Unknown role"
+        },
+        "issue": {
+          "missing_landing_page": "Missing landing page",
+          "intent_page_mismatch": "Intent mismatch",
+          "overbroad_landing_page": "Overbroad page",
+          "underlinked_landing_page": "Weak internal links",
+          "thin_landing_page": "Thin page",
+          "competing_pages": "Competing pages"
+        },
+        "action": {
+          "create_or_assign_landing_page": "Create or assign a suitable landing page",
+          "reshape_landing_page": "Reshape the page to match intent",
+          "split_or_refocus_page": "Split or refocus the page",
+          "strengthen_internal_links": "Strengthen navigation, breadcrumbs, and internal links",
+          "consolidate_competing_pages": "Consolidate or canonicalize competing pages",
+          "improve_landing_page": "Improve page content and structure",
+          "monitor": "Monitor"
+        }
+      },
       "estimateNote": "Search volume / difficulty are third-party estimates (L3), not measured.",
       "gapsTitle": "Keyword gaps",
       "empty": "GSC / DataForSEO not connected — no keyword data.",
@@ -1143,6 +1269,7 @@
     "starting": "Starting…",
     "error": "Failed to start retest — please try again",
     "inProgress": "Diagnosis in progress — view",
+    "needsSetup": "Project category/market not set — complete setup →",
     "nextDue": "Next retest: {date}"
   },
   "rulesAdmin": {
@@ -1196,10 +1323,24 @@
   "routeFallback": {
     "loading": "Loading diagnosis data…"
   },
+  "notFound": {
+    "title": "Page not found",
+    "description": "The project, run or page you requested does not exist. It may have been deleted, or the link is wrong.",
+    "backToProjects": "Back to projects"
+  },
   "runError": {
     "title": "Failed to load this page",
     "description": "Sorry, something went wrong loading this page's data. You can retry; if it keeps failing, go back to the run overview and re-enter.",
     "retry": "Retry",
     "backToOverview": "Back to run overview"
+  },
+  "gscConnect": {
+    "error": {
+      "redirect_port_mismatch": "GSC not connected: the Google OAuth callback is {expected}, which does not match the port you are using. After consent Google sends the browser to {expected}, where a different app is running (hence the 404). Stop whatever occupies that port and restart this app there with pnpm dev, or change GOOGLE_OAUTH_REDIRECT_URI to the current port and register the same URI under \"Authorized redirect URIs\" in Google Cloud Console.",
+      "access_denied": "You cancelled on the Google consent page; GSC is not connected. Click connect again when ready.",
+      "oauth_error": "Google authorization did not complete; GSC is not connected. Please retry; if it keeps happening, check this OAuth client's settings in Google Cloud Console.",
+      "token_exchange_failed": "Google consent succeeded but exchanging the code for tokens failed; GSC is not connected. Please reconnect; if it keeps happening, check GOOGLE_OAUTH_CLIENT_SECRET and the callback URI."
+    },
+    "reauth": "The Google authorization has expired or been revoked, so GSC properties cannot be read and collection will fail. Click \"Reconnect GSC\" to authorize again."
   }
 }

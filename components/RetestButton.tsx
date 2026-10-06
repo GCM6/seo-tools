@@ -4,7 +4,12 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-type RetestState = { kind: 'idle' } | { kind: 'error' } | { kind: 'inProgress'; runId: string }
+type RetestState =
+  | { kind: 'idle' }
+  | { kind: 'error' }
+  | { kind: 'inProgress'; runId: string }
+  // SP-A §3.5：项目品类/市场未设置，建 run 闸门拒绝 → 链到向导补充。
+  | { kind: 'needsSetup'; projectId: string }
 
 // 「发起回测」按钮（客户端叶子，参照 RetestBanner 的 POST→跳转模式）。
 // 额外处理同项目并发保护 409（spec §2.3）：显示进行中提示并链到该 run。
@@ -18,7 +23,7 @@ export function RetestButton({
 }: {
   locale: string
   baselineRunId: string
-  labels: { cta: string; starting: string; error: string; inProgress: string }
+  labels: { cta: string; starting: string; error: string; inProgress: string; needsSetup?: string }
   className?: string
   disabled?: boolean
 }) {
@@ -42,6 +47,14 @@ export function RetestButton({
         setPending(false)
         return
       }
+      if (res.status === 422) {
+        const data = (await res.json().catch(() => null)) as { error?: string; projectId?: string } | null
+        if ((data?.error === 'category_required' || data?.error === 'market_required') && data.projectId) {
+          setState({ kind: 'needsSetup', projectId: data.projectId })
+          setPending(false)
+          return
+        }
+      }
       if (res.status === 409) {
         const data = (await res.json().catch(() => null)) as { runId?: string } | null
         setState({ kind: 'inProgress', runId: data?.runId ?? baselineRunId })
@@ -62,6 +75,11 @@ export function RetestButton({
         {pending ? labels.starting : labels.cta}
       </button>
       {state.kind === 'error' ? <span className="err">{labels.error}</span> : null}
+      {state.kind === 'needsSetup' ? (
+        <Link href={`/${locale}/new?projectId=${state.projectId}`} className="err">
+          {labels.needsSetup ?? labels.error}
+        </Link>
+      ) : null}
       {state.kind === 'inProgress' ? (
         <Link href={`/${locale}/runs/${state.runId}`} className="err">
           {labels.inProgress}

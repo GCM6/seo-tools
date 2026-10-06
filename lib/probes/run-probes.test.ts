@@ -56,6 +56,7 @@ function makeDeps(overrides?: Partial<ProbeStageDeps> & { providers?: AiProbePro
     createPrompts: async (rows) => {
       created.prompts.push(...rows)
     },
+    getRunPrompts: async () => [],
     createEvidenceArtifact: (async (input: Record<string, unknown>) => {
       created.evidence.push(input)
       return [input]
@@ -201,6 +202,20 @@ describe('collectProbesStage', () => {
     expect(created.results.every((r) => r.unknownAdmission === true)).toBe(true)
   })
 
+  it('SP-A：项目语言为空时回退英文模板（只做英文市场）', async () => {
+    const { deps, created } = makeDeps({
+      getProject: async () => ({
+        id: 'proj_1', domain: 'https://metadocu.com/', industry: 'document metadata removal tool', market: 'global-en',
+        language: '', competitors: [], ownerId: 'local', createdAt: '', updatedAt: '',
+      }),
+    })
+    await run(deps)
+    const texts = (created.prompts as { text: string; language: string }[]).map((p) => p.text)
+    expect(texts.length).toBeGreaterThan(0)
+    for (const t of texts) expect(t).toMatch(/^[\x20-\x7E]+$/)
+    expect((created.prompts as { language: string }[])[0].language).toBe('en')
+  })
+
   it('D1: persists prompts.branded straight from buildPromptSetV2', async () => {
     const { deps, created } = makeDeps()
     await run(deps)
@@ -220,5 +235,33 @@ describe('collectProbesStage', () => {
     const evidenceMsgs = (emitted as { type: string; evidenceType?: string }[]).filter((m) => m.type === 'evidence_created')
     expect(evidenceMsgs).toHaveLength(30)
     expect(evidenceMsgs[0].evidenceType).toBe('ai_answer')
+  })
+})
+
+describe('回测同协议：复用基线问句集（第一波审查 I4）', () => {
+  // 基线是旧品类时代生成的问句；项目品类此后改成了英文品类——按当前项目重建会换掉问句集。
+  const baselinePrompts = [
+    { id: 'pr_b1', runId: 'run_base', text: '有哪些好用的项目协作工具？', intent: 'recommendation', source: 'template_v2' as const, market: '中文 · 中国大陆', language: 'zh', priority: 0, branded: false },
+    { id: 'pr_b2', runId: 'run_base', text: 'Metadocu 靠谱吗？', intent: 'brand', source: 'template_v2' as const, market: '中文 · 中国大陆', language: 'zh', priority: 1, branded: true },
+  ]
+  const runRetest = (deps: ProbeStageDeps, baselineRunId?: string) =>
+    collectProbesStage({ step, emit: (async () => undefined) as never, runId: 'run_1', projectId: 'proj_1', entryUrl: 'https://metadocu.com/', baselineRunId }, deps)
+
+  it('带 baselineRunId 且基线有问句 → 原样复用（新 id、挂本轮 run），探针问的就是这些问句', async () => {
+    const provider = fakeProvider('openai')
+    const { deps, created } = makeDeps({ providers: [provider], getRunPrompts: async (runId) => (runId === 'run_base' ? baselinePrompts : []) })
+    await runRetest(deps, 'run_base')
+    const rows = created.prompts as { id: string; runId: string; text: string; market: string; language: string; branded: boolean; priority: number }[]
+    expect(rows.map((r) => r.text)).toEqual(baselinePrompts.map((p) => p.text))
+    expect(rows.map((r) => [r.market, r.language, r.branded, r.priority])).toEqual(baselinePrompts.map((p) => [p.market, p.language, p.branded, p.priority]))
+    const baselineIds = new Set(baselinePrompts.map((p) => p.id))
+    expect(rows.every((r) => r.runId === 'run_1' && /^pr_[0-9a-f-]{36}$/.test(r.id) && !baselineIds.has(r.id))).toBe(true)
+    expect(vi.mocked(provider.ask).mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining(baselinePrompts.map((p) => p.text)))
+  })
+
+  it('基线没有问句（当时没跑探针）→ 按当前项目新建', async () => {
+    const { deps, created } = makeDeps({ getRunPrompts: async () => [] })
+    await runRetest(deps, 'run_base')
+    expect((created.prompts as { text: string }[]).length).toBeGreaterThan(2)
   })
 })

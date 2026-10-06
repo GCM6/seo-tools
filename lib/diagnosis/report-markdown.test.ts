@@ -154,4 +154,54 @@ describe('renderReportMarkdown', () => {
     expect(md).toContain('ai_probe：partial（证据 2）')
     expect(md).toContain('未覆盖项：ai_probe')
   })
+
+  it('renders intent-to-page fit artifact rows when provided', () => {
+    const model = buildReport({
+      findings: [],
+      recommendations: [],
+      pillarsWithData: ['P3'],
+      artifacts: [],
+      now: NOW,
+    })
+    const md = renderReportMarkdown(model, {
+      domain: 'example.com',
+      runId: 'run_1',
+      capturedAt: '2026-07-06',
+      intentPageFit: {
+        kind: 'intent_page_fit_map',
+        version: 1,
+        rowCount: 2,
+        issueRowCount: 1,
+        issueCounts: {
+          missing_landing_page: 1,
+          intent_page_mismatch: 0,
+          overbroad_landing_page: 0,
+          underlinked_landing_page: 0,
+          thin_landing_page: 0,
+          competing_pages: 0,
+        },
+        rows: [{
+          query: 'enterprise crm pricing',
+          intent: 'transactional',
+          expectedPageRoles: ['pricing', 'product'],
+          currentUrl: null,
+          currentPageRole: null,
+          fitScore: 0,
+          impressions: null,
+          searchVolume: 700,
+          issueCodes: ['missing_landing_page'],
+          action: 'create_or_assign_landing_page',
+          evidenceIds: ['serp1'],
+          source: 'dataforseo',
+        }],
+        overbroadPages: [],
+      },
+    })
+
+    expect(md).toContain('### 搜索意图 → 承接页面')
+    expect(md).toContain('共识别 2 个需求组，其中 1 个存在承接风险。')
+    expect(md).toContain('enterprise crm pricing')
+    expect(md).toContain('缺承接页')
+    expect(md).toContain('创建或指定合适承接页')
+  })
 })

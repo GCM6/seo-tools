@@ -3,10 +3,19 @@ import { templates, genericTemplate, GLOBAL_CONTENT_BLOCKERS, TEMPLATE_COUNT } f
 
 describe('recommendation templates', () => {
   it('covers the Phase A rule set', () => {
-    for (const id of ['T01', 'T03', 'T04', 'T05', 'T07', 'T10', 'T11', 'T12', 'C01', 'C02', 'C03', 'C04', 'C05a', 'C05b', 'C05c', 'C05d', 'C06', 'C09', 'C10', 'C11', 'TR04', 'TR05', 'E01', 'G01', 'G03']) {
+    for (const id of ['T01', 'T03', 'T04', 'T05', 'T07', 'T10', 'T11', 'T12', 'C01', 'C02', 'C03', 'C04', 'C05a', 'C05b', 'C05c', 'C05d', 'C06', 'C09', 'C10', 'C11', 'TR04', 'TR05', 'E01', 'G01', 'G03', 'IPF01', 'IPF02', 'IPF03', 'IPF04']) {
       expect(templates[id], `missing template ${id}`).toBeDefined()
     }
     expect(TEMPLATE_COUNT).toBeGreaterThanOrEqual(20)
+  })
+
+  it('SP-A §5.3：GEO 规则有专属模板，G08 只记录、不出建议', () => {
+    for (const id of ['G02', 'G05', 'G06', 'G07', 'G09', 'Q02']) {
+      expect(templates[id], `missing template ${id}`).toBeDefined()
+      expect(templates[id].recordOnly).toBeUndefined()
+      expect(templates[id].what.length).toBeGreaterThan(10)
+    }
+    expect(templates.G08.recordOnly).toBe(true)
   })
 
   it('gives technical fix rules a static fixSnippet', () => {
@@ -43,6 +52,12 @@ describe('recommendation templates', () => {
     expect(joined).toMatch(/FAQ/)
     expect(joined).toMatch(/跨域名/)
     expect(joined).toMatch(/不得编造/)
+  })
+
+  it('IPF templates keep intent mapping from turning into thin-page generation', () => {
+    expect(templates.IPF01.what).toMatch(/意图/)
+    expect(templates.IPF01.negativeConstraints?.join(' ')).toMatch(/薄页/)
+    expect(templates.IPF03.negativeConstraints?.join(' ')).toMatch(/互相竞争/)
   })
 
   it('falls back by side', () => {

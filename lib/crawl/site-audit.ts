@@ -1,5 +1,7 @@
 import { normalizeUrl, isSameSite } from './url'
 import type { LightCheckExtra } from './light-check'
+import { readLinkGraph, type LinkGraphPayload } from './link-graph'
+import type { ExternalCheckResult } from './external-check'
 
 // site_audit：一次 run 的全站轻检不可变快照（存 evidence payload）。
 // site_pages 表是「当前状态」，本快照才是 findings 引用与 retest 对比的锚。
@@ -10,6 +12,7 @@ export interface SiteAuditPage {
   depth: number | null
   httpStatus: number | null
   finalUrl: string | null
+  title?: string | null
   canonicalUrl: string | null
   metaRobots: string | null
   mainTextChars: number | null
@@ -31,7 +34,15 @@ export interface SiteAuditPage {
 export interface SiteAuditTemplate { pattern: string; pageCount: number; representativeUrl: string | null }
 
 export interface SiteAuditPayload {
-  protocol: { maxPages: number; maxDepth: number }
+  // crawlStrategy/sitemapReserveRatio 自 S1 起记录；旧快照缺省视为 sitemap_first_v0（spec S1 §8 重测兼容）。
+  protocol: {
+    maxPages: number
+    maxDepth: number
+    crawlStrategy?: string
+    sitemapReserveRatio?: number
+    // 站外链接抽检协议（spec S2 §4）：cap=抽检上限，checked=实际检测数，skippedUrls=反爬平台跳过数。
+    externalCheck?: { cap: number; checked: number; skippedUrls: number; failedBatches?: number }
+  }
   stats: {
     totalDiscovered: number
     checked: number
@@ -48,6 +59,10 @@ export interface SiteAuditPayload {
   pages: SiteAuditPage[]
   templates: SiteAuditTemplate[]
   citations: { url: string; count: number }[]
+  // 站内链接图谱（spec S1 §6）：历史证据无此字段，规则经 readLinkGraph 取得 null 后回退旧逻辑。
+  linkGraph?: LinkGraphPayload
+  // 站外链接单次抽检结果（spec S2 §4）：L07 只对 404/410 下结论。历史证据无此字段。
+  externalChecks?: ExternalCheckResult[]
 }
 
 const isNoindex = (p: SiteAuditPage) => (p.metaRobots ?? '').toLowerCase().includes('noindex')
@@ -69,8 +84,22 @@ export function buildSiteAudit(input: {
   entryHost: string
   maxPages: number
   maxDepth: number
+  linkGraph?: LinkGraphPayload | null
+  crawlStrategy?: string
+  sitemapReserveRatio?: number
+  externalChecks?: ExternalCheckResult[] | null
+  externalCheckProtocol?: { cap: number; checked: number; skippedUrls: number; failedBatches?: number } | null
 }): SiteAuditPayload {
-  const { pages, templates, citedUrls, entryHost, maxPages, maxDepth } = input
+  const { templates, citedUrls, entryHost, maxPages, maxDepth } = input
+  const view = input.linkGraph ? readLinkGraph({ linkGraph: input.linkGraph }) : null
+  // 有图谱时逐页深度取图谱 BFS 深度（修 D1：sitemap 页不再恒为 null）。只写精确值：上界深度与首页不可达
+  // 都记 null，避免下游（如 IPF 的深度扣分）把上界当实测（独立审查附带说明）。按 nodeFor 查，跳转请求 URL 取最终节点。
+  const pages = view
+    ? input.pages.map((p) => {
+        const n = view.nodeFor(p.url)
+        return { ...p, depth: n?.depthExact ? n.depth : null }
+      })
+    : input.pages
   const checkedPages = pages.filter((p) => p.checkStatus === 'checked')
 
   const counts = new Map<string, number>()
@@ -81,7 +110,13 @@ export function buildSiteAudit(input: {
   }
 
   return {
-    protocol: { maxPages, maxDepth },
+    protocol: {
+      maxPages,
+      maxDepth,
+      ...(input.crawlStrategy ? { crawlStrategy: input.crawlStrategy } : {}),
+      ...(input.sitemapReserveRatio !== undefined ? { sitemapReserveRatio: input.sitemapReserveRatio } : {}),
+      ...(input.externalCheckProtocol ? { externalCheck: input.externalCheckProtocol } : {}),
+    },
     stats: {
       totalDiscovered: pages.length,
       checked: checkedPages.length,
@@ -98,5 +133,7 @@ export function buildSiteAudit(input: {
     pages,
     templates,
     citations: [...counts.entries()].map(([url, count]) => ({ url, count })),
+    ...(input.linkGraph ? { linkGraph: input.linkGraph } : {}),
+    ...(input.externalChecks ? { externalChecks: input.externalChecks } : {}),
   }
 }

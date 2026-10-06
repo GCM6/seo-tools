@@ -45,6 +45,15 @@ import { brandFromDomain } from '@/lib/probes/prompt-set'
 import { aggregateAioExposure } from '@/lib/serp/aio-summary'
 import { loadDataSourceStatuses } from '@/lib/settings/load-statuses'
 import type { CitationPlatform } from '@/lib/probes/citation-platform'
+import { getAnalysisSessionArtifacts, getAnalysisSessionSnapshot, getKnowledgeSourceUrls } from '@/lib/knowledge/read'
+import {
+  isIntentPageFitArtifactPayload,
+  type IntentPageFitAction,
+  type IntentPageFitArtifactPayload,
+  type IntentPageFitIssueCode,
+  type PageRole,
+  type SearchIntentKind,
+} from '@/lib/diagnosis/intent-page-fit'
 
 const PILLARS: Pillar[] = ['P1', 'P2', 'P3', 'P4', 'P5']
 
@@ -80,22 +89,34 @@ const CLAIM_TAG: Record<string, { variant: string; key: string }> = {
 }
 
 const SEV_CLASS: Record<FindingSeverity, string> = { high: 'hi', mid: 'mid', ok: 'ok' }
+const EVIDENCE_LADDER_TONE = { l0: 'g', l1: 'g', l2: 'i', l3: 'm', l4: 'm' } as const
+const IPF_ARTIFACT_TYPE = 'intent_page_fit_map'
+type ReportTranslator = (key: string, vars?: Record<string, string | number | Date>) => string
+
+function demandLabel(row: IntentPageFitArtifactPayload['rows'][number], t: ReportTranslator) {
+  if (row.impressions !== null) return t('keywords.intentMap.demandImpressions', { count: row.impressions })
+  if (row.searchVolume !== null) return t('keywords.intentMap.demandSearchVolume', { count: row.searchVolume })
+  return '—'
+}
 
 // 报告主体（9 段 + 目录，第 4 段 GEO 可见度补充见 spec 2026-07-13-geo-branded-unbranded-redesign.md）。
 // 报告页与只读分享页共用同一套渲染（spec §SP-G1e-1 / G2d）。
 // 语言由调用方 setRequestLocale 决定；本组件无任何 /[locale] 内部导航链接，可用于无 locale 的分享路由。
 // run 缺失即 notFound()——路由级 404。
 export async function ReportView({ runId }: { runId: string }) {
-  const t = await getTranslations('report')
+  const [t, tt, run] = await Promise.all([
+    getTranslations('report'),
+    getTranslations('terms'),
+    getRun(runId),
+  ])
   // 术语翻译层（P1-3「术语裸奔」修复）：术语解释文案统一放 terms.* 命名空间，
   // 与页面自身的 report.* 文案分开维护，供多处 <Term> 复用同一份解释。
-  const tt = await getTranslations('terms')
-
-  const run = await getRun(runId)
   if (!run) notFound()
 
   // 跨版本回测横幅：run 记录的规则版本 ≠ 当前 RULES_VERSION 时提示（V0 同版本 / 旧数据 null → null，不渲染）。
   const versionDelta = rulesVersionDelta(run.rulesVersion, RULES_VERSION)
+  const knowledgeSessionPromise = run.analysisSessionId ? getAnalysisSessionSnapshot(run.analysisSessionId) : Promise.resolve(undefined)
+  const knowledgeArtifactsPromise = run.analysisSessionId ? getAnalysisSessionArtifacts(run.analysisSessionId) : Promise.resolve([])
 
   const [
     findingRows,
@@ -113,6 +134,8 @@ export async function ReportView({ runId }: { runId: string }) {
     promptRows,
     aioResultRows,
     byokStatuses,
+    knowledgeSession,
+    knowledgeArtifacts,
   ] = await Promise.all([
     getFindings(runId),
     getRecommendations(runId),
@@ -129,7 +152,18 @@ export async function ReportView({ runId }: { runId: string }) {
     getRunPrompts(runId),
     getRunSerpAioResults(runId),
     loadDataSourceStatuses(run.projectId),
+    knowledgeSessionPromise,
+    knowledgeArtifactsPromise,
   ])
+  const knowledgeSourceUrls = knowledgeSession
+    ? await getKnowledgeSourceUrls([...new Set(findingRows.flatMap((finding) => finding.knowledgeVersionRefs))])
+    : []
+  const intentPageFitArtifact = knowledgeArtifacts.find((artifact) =>
+    artifact.artifactType === IPF_ARTIFACT_TYPE && isIntentPageFitArtifactPayload(artifact.payload),
+  )
+  const intentPageFit: IntentPageFitArtifactPayload | undefined = intentPageFitArtifact && isIntentPageFitArtifactPayload(intentPageFitArtifact.payload)
+    ? intentPageFitArtifact.payload
+    : undefined
 
   // GEO 可见度补充（同 app/[locale]/runs/[id]/page.tsx 的接线方式）：ai_probe_results 已带
   // citedUrls/hedged/unknownAdmission，web_search_enabled 只落在 evidence_artifacts.request，
@@ -244,8 +278,7 @@ export async function ReportView({ runId }: { runId: string }) {
     findings,
     recommendations,
     pillarsWithData: pillarsWithData(
-      evidence.map((e) => e.type),
-      findingRows.map((f) => f.pillar),
+      evidence.map((e) => ({ type: e.type, payload: e.payload })),
       competitors.length,
     ),
     artifacts,
@@ -286,12 +319,11 @@ export async function ReportView({ runId }: { runId: string }) {
   }
 
   // 证据等级 L0–L4 阶梯（plan-ux §5.1）；tone 复用 .tag 语义色：L0/L1→g、L2→i、L3/L4→m。
-  const LADDER_TONE = { l0: 'g', l1: 'g', l2: 'i', l3: 'm', l4: 'm' } as const
   const ladderLevels = (['l0', 'l1', 'l2', 'l3', 'l4'] as const).map((code) => ({
     code: code.toUpperCase(),
     name: t(`evidenceLadder.${code}.name`),
     desc: t(`evidenceLadder.${code}.desc`),
-    tone: LADDER_TONE[code],
+    tone: EVIDENCE_LADDER_TONE[code],
   }))
 
   // 引用平台徽标文案（CitedDomainsCard 新增 prop，i18n-free 惯例：调用方 t() 解析好再传入）。
@@ -339,6 +371,20 @@ export async function ReportView({ runId }: { runId: string }) {
         <ReportToc toc={toc} title={t('title')} />
 
         <div className="report-body">
+          {knowledgeSession ? (
+            <aside className="report-knowledge-trace">
+              <div>
+                <span>KNOWLEDGE PROVENANCE / 知识溯源</span>
+                <strong>{knowledgeSession.knowledgeReleaseVersion} · {knowledgeSession.workflowVersion} · {knowledgeSession.ruleConfigVersion}</strong>
+              </div>
+              {knowledgeSourceUrls.length ? (
+                <details>
+                  <summary>{knowledgeSourceUrls.length} original sources / 原始来源</summary>
+                  <ul>{knowledgeSourceUrls.slice(0, 20).map((url) => <li key={url}>{url.startsWith('http') ? <a href={url} target="_blank" rel="noreferrer">{url}</a> : <code>{url}</code>}</li>)}</ul>
+                </details>
+              ) : null}
+            </aside>
+          ) : null}
           {/* ——— 跨版本回测横幅（规则库升级提示，V0 暂不触发） ——— */}
           {versionDelta && (
             <div role="alert" style={{ background: '#fef3c7', border: '1px solid #f59e0b', padding: 12, marginBottom: 16 }}>
@@ -693,6 +739,71 @@ export async function ReportView({ runId }: { runId: string }) {
           {/* ——— 6. 关键词现状与缺口 ——— */}
           <section id="sec-keywords" className="report-section">
             <h3>{t('toc.keywords')}</h3>
+            {intentPageFit ? (
+              <div className="card report-method" data-testid="intent-page-fit-map">
+                <h4>{t('keywords.intentMap.title')}</h4>
+                <p className="note">
+                  {t('keywords.intentMap.meta', {
+                    rows: intentPageFit.rowCount,
+                    issues: intentPageFit.issueRowCount,
+                  })}
+                </p>
+                {intentPageFit.rows.length ? (
+                  <div className="report-table-wrap">
+                    <table className="report-table">
+                      <thead>
+                        <tr>
+                          <th>{t('keywords.intentMap.col.query')}</th>
+                          <th>{t('keywords.intentMap.col.intent')}</th>
+                          <th>{t('keywords.intentMap.col.page')}</th>
+                          <th>{t('keywords.intentMap.col.demand')}</th>
+                          <th>{t('keywords.intentMap.col.fit')}</th>
+                          <th>{t('keywords.intentMap.col.issues')}</th>
+                          <th>{t('keywords.intentMap.col.action')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {intentPageFit.rows.slice(0, 12).map((row) => (
+                          <tr key={`${row.query}:${row.currentUrl ?? 'missing'}`}>
+                            <td>{row.query}</td>
+                            <td>{t(`keywords.intentMap.intent.${row.intent as SearchIntentKind}`)}</td>
+                            <td>
+                              {row.currentUrl ? (
+                                <>
+                                  <div className="mono">{row.currentUrl}</div>
+                                  <span className="tag g">
+                                    <span className="dot" />
+                                    {t(`keywords.intentMap.role.${(row.currentPageRole ?? 'unknown') as PageRole}`)}
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="tag i">
+                                  <span className="dot" />
+                                  {t('keywords.intentMap.noPage')}
+                                </span>
+                              )}
+                            </td>
+                            <td>{demandLabel(row, t)}</td>
+                            <td>{t('keywords.intentMap.fitScore', { score: row.fitScore })}</td>
+                            <td>
+                              {row.issueCodes.map((code) => (
+                                <span key={code} className="tag i">
+                                  <span className="dot" />
+                                  {t(`keywords.intentMap.issue.${code as IntentPageFitIssueCode}`)}
+                                </span>
+                              ))}
+                            </td>
+                            <td>{t(`keywords.intentMap.action.${row.action as IntentPageFitAction}`)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="note">{t('keywords.intentMap.clean')}</p>
+                )}
+              </div>
+            ) : null}
             <KeywordTable keywordMetrics={keywordMetrics} keywordGaps={keywordGaps} keywordText={keywordText} />
           </section>
 
@@ -796,6 +907,18 @@ export async function ReportView({ runId }: { runId: string }) {
                         ：{t(`contract.sourceStatus.${source.status}`)}
                         {source.capturedEvidenceCount ? ` · ${source.capturedEvidenceCount}` : ''}
                         {source.failureReason ? ` · ${source.failureReason}` : ''}
+                        {source.children?.length ? (
+                          <ul className="report-subsources" aria-label={t('contract.subSourceTitle')}>
+                            {source.children.map((child) => (
+                              <li key={child.sourceKey}>
+                                {t(`contract.subSourceLabel.${child.sourceKey.replace(':', '_')}`)}
+                                ：{t(`contract.sourceStatus.${child.status}`)}
+                                {child.capturedEvidenceCount ? ` · ${child.capturedEvidenceCount}` : ''}
+                                {child.failureReason ? ` · ${child.failureReason}` : ''}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
@@ -809,7 +932,11 @@ export async function ReportView({ runId }: { runId: string }) {
                     <p className="note">{t('contract.gapHint')}</p>
                     <ul>
                       {model.reportContract.gaps.map((sourceKey) => (
-                        <li key={sourceKey}>{t(`contract.sourceLabel.${sourceKey}`)}</li>
+                        <li key={sourceKey}>
+                          {sourceKey.includes(':')
+                            ? `${t(`contract.sourceLabel.${sourceKey.split(':')[0]}`)} · ${t(`contract.subSourceLabel.${sourceKey.replace(':', '_')}`)}`
+                            : t(`contract.sourceLabel.${sourceKey}`)}
+                        </li>
                       ))}
                     </ul>
                   </>

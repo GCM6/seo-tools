@@ -128,3 +128,61 @@ describe('parseGscKeywordMetrics', () => {
     expect(out).toEqual([])
   })
 })
+
+describe('buildRuleContext — third_party_presence 解析（SP-A §4.4）', () => {
+  it('v2 载荷原样透传两路检查（含失败）', () => {
+    const ctx = build([
+      ev({
+        id: 'tp2', type: 'third_party_presence', source: 'metadocu',
+        payload: {
+          version: 2, candidates: ['Metadocu'],
+          wikipedia: { status: 'ok', exists: false, title: null, url: null },
+          reddit: { status: 'failed', httpStatus: 403, reason: 'http_403', windowDays: 365 },
+        },
+      }),
+    ])
+    expect(ctx.thirdParty).toEqual({
+      wikipedia: { status: 'ok', exists: false, title: null, url: null },
+      reddit: { status: 'failed', httpStatus: 403, reason: 'http_403', windowDays: 365 },
+      evidenceId: 'tp2',
+    })
+  })
+
+  it('v1 旧载荷（10-03 metadocu 真实形态：Reddit 403 被记成 0、维基走全文搜索）→ 两路都标"无法核实"，不当测得值回放', () => {
+    const ctx = build([ev({ id: 'tp1', type: 'third_party_presence', payload: { reddit: { mentions: 0, windowDays: 365 }, wikipedia: { exists: false, title: null, url: null } } })])
+    expect(ctx.thirdParty).toEqual({
+      wikipedia: { status: 'failed', httpStatus: null, reason: 'legacy_unverified' },
+      reddit: { status: 'failed', httpStatus: null, reason: 'legacy_unverified', windowDays: 365 },
+      evidenceId: 'tp1',
+    })
+  })
+
+  it('v1 旧载荷里 Reddit 有正数提及 → 那是真拿到的结果，记 ok', () => {
+    const ctx = build([ev({ id: 'tp1', type: 'third_party_presence', payload: { reddit: { mentions: 5, windowDays: 365 }, wikipedia: { exists: true, title: 'Acme', url: 'https://en.wikipedia.org/wiki/Acme' } } })])
+    expect(ctx.thirdParty?.reddit).toEqual({ status: 'ok', mentions: 5, windowDays: 365 })
+    expect(ctx.thirdParty?.wikipedia).toMatchObject({ status: 'failed', reason: 'legacy_unverified' })
+  })
+})
+
+describe('buildRuleContext — social_presence 平台状态（SP-A §4.4）', () => {
+  it('新载荷的 status / reason 原样透传', () => {
+    const ctx = build([ev({ id: 'sp2', type: 'social_presence', payload: {
+      brand: 'Acme', checkedAt: '2026-10-04T00:00:00.000Z',
+      platforms: [
+        { platform: 'youtube', query: 'q', status: 'failed', reason: 'http_403', resultCount: 0, topResults: [] },
+        { platform: 'g2', query: 'q', status: 'ok', resultCount: 0, topResults: [] },
+      ],
+    } })])
+    expect(ctx.socialPresence?.platforms.map((p) => [p.platform, p.status, p.reason])).toEqual([['youtube', 'failed', 'http_403'], ['g2', 'ok', undefined]])
+  })
+  it('旧载荷（无 status：当年失败也记 0 条）→ 有结果的记 ok，0 条记 failed/legacy_unverified', () => {
+    const ctx = build([ev({ id: 'sp1', type: 'social_presence', payload: {
+      brand: 'Acme', checkedAt: '2026-07-15T00:00:00.000Z',
+      platforms: [
+        { platform: 'youtube', query: 'q', resultCount: 0, topResults: [] },
+        { platform: 'g2', query: 'q', resultCount: 2, topResults: [{ title: 't', url: 'https://g2.com/x' }] },
+      ],
+    } })])
+    expect(ctx.socialPresence?.platforms.map((p) => [p.platform, p.status, p.reason])).toEqual([['youtube', 'failed', 'legacy_unverified'], ['g2', 'ok', undefined]])
+  })
+})

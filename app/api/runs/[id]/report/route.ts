@@ -15,6 +15,8 @@ import { renderReportMarkdown } from '@/lib/diagnosis/report-markdown'
 import { pillarsWithData } from '@/lib/diagnosis/pillars-with-data'
 import type { FindingSeverity } from '@/lib/diagnosis/types'
 import type { ReferenceArtifactRow } from '@/lib/diagnosis/reference-artifacts'
+import { getAnalysisSessionArtifacts } from '@/lib/knowledge/read'
+import { isIntentPageFitArtifactPayload } from '@/lib/diagnosis/intent-page-fit'
 
 // GET /runs/{id}/report（§7）—— 默认返回只读聚合 JSON；?format=md 返回可下载的 Markdown 报告（八板块）。
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -30,14 +32,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ run, findings, recommendations })
   }
 
-  const [project, evidence, referenceArtifacts, dataSourceStatuses, probeResults, competitors] = await Promise.all([
+  const artifactPromise = run.analysisSessionId ? getAnalysisSessionArtifacts(run.analysisSessionId) : Promise.resolve([])
+  const [project, evidence, referenceArtifacts, dataSourceStatuses, probeResults, competitors, workflowArtifacts] = await Promise.all([
     getProject(run.projectId),
     getRunEvidence(id),
     getReferenceArtifacts(),
     getRunDataSourceStatuses(id),
     getRunProbeResults(id),
     getConfirmedCompetitors(run.projectId),
+    artifactPromise,
   ])
+  const intentPageFitArtifact = workflowArtifacts.find((artifact) =>
+    artifact.artifactType === 'intent_page_fit_map' && isIntentPageFitArtifactPayload(artifact.payload),
+  )
+  const intentPageFit = intentPageFitArtifact && isIntentPageFitArtifactPayload(intentPageFitArtifact.payload)
+    ? intentPageFitArtifact.payload
+    : null
 
   const reportFindings: ReportFinding[] = findings.map((f) => ({
     id: f.id,
@@ -77,8 +87,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     findings: reportFindings,
     recommendations: reportRecs,
     pillarsWithData: pillarsWithData(
-      evidence.map((e) => e.type),
-      findings.map((f) => f.pillar),
+      evidence.map((e) => ({ type: e.type, payload: e.payload })),
       competitors.length,
     ),
     artifacts,
@@ -99,6 +108,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     domain: project?.domain ?? '',
     runId: id,
     capturedAt: run.finishedAt ?? run.startedAt ?? '',
+    intentPageFit,
   })
 
   return new Response(md, {

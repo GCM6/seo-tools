@@ -14,6 +14,8 @@ import {
   getRunEvidence,
 } from '@/lib/repositories'
 import type { SiteAuditPayload } from '@/lib/crawl/site-audit'
+import { filterToSnapshot, depthCellsFor, linkStructureCounts, snapshotStatusFor, type DepthCell } from '@/lib/crawl/site-view'
+import { equityRelativeFor } from '@/lib/crawl/link-equity'
 import { toggleKeyPageAction, setRepresentativeAction } from './actions'
 
 // 站点结构面板：全站健康统计（site_audit 快照，L4 实测）+ 推断模板列表 + 页面清单。
@@ -47,7 +49,12 @@ export default async function SiteStructurePage({
       .filter((e) => e.type === 'render_check' && e.sitePageId)
       .map((e) => [e.sitePageId as string, (e.payload as { mainContentDelta?: number } | null)?.mainContentDelta]),
   )
-  const visiblePages = statusFilter ? pages.filter((p) => p.checkStatus === statusFilter) : pages
+  // 页面清单只列本 run 快照里的 URL（site_pages 跨 run 累积，spec S2 §5）；再按抓取状态过滤。
+  const runPages = filterToSnapshot(pages, payload)
+  // 状态与 HTTP 码取自本次快照：site_pages 只存最新一轮的值（第二轮独立审查 #17）。
+  const snapStatus = snapshotStatusFor(payload)
+  const statusOf = (p: { url: string; checkStatus: string; httpStatus: number | null }) => snapStatus(p.url) ?? { checkStatus: p.checkStatus, httpStatus: p.httpStatus }
+  const visiblePages = statusFilter ? runPages.filter((p) => statusOf(p).checkStatus === statusFilter) : runPages
 
   if (!payload) {
     return (
@@ -95,6 +102,27 @@ export default async function SiteStructurePage({
   ]
 
   const statuses = ['checked', 'discovered_only', 'blocked_by_robots', 'error'] as const
+  // 链接结构（spec S2 §5）：计数与 L 规则同源（analyzeLinkIntegrity）；历史快照无图谱时整块不显示。
+  const linkCounts = linkStructureCounts(payload)
+  const depthCell = depthCellsFor(payload)
+  // 内链权重（spec S3 §5）：站内 PageRank ÷ 中位数（1.0× 居中），模型估算；已抓 HTML 页 < 10 时整列为空。
+  const equity = equityRelativeFor(payload)
+  const equityLabel = (v: number | null) => (v === null ? '—' : v < 0.1 ? '<0.1×' : `${v.toFixed(1)}×`)
+  const hasEquity = linkCounts !== null && !linkCounts.entryNoLinks && runPages.some((p) => equity(p.url) !== null)
+  const depthLabel = (c: DepthCell) =>
+    c.kind === 'exact' ? String(c.depth)
+      : c.kind === 'upper' ? `≤${c.depth}`
+        : c.kind === 'unreachable' ? t('unreachable')
+          : c.kind === 'no_path_found' ? t('noPathFound')
+            : '—'
+  const linkStats = linkCounts && !linkCounts.entryNoLinks
+    ? [
+        { key: 'reachable', label: t('reachablePages'), value: linkCounts.reachable },
+        { key: 'unreachableSitemap', label: t('unreachableSitemapPages'), value: linkCounts.unreachableSitemap, problem: true },
+        { key: 'brokenTargets', label: t('brokenTargets'), value: linkCounts.brokenTargets, problem: true },
+        { key: 'deadEnds', label: t('deadEndPages'), value: linkCounts.deadEnds, problem: true },
+      ]
+    : []
 
   return (
     <Shell runId={id} domain={project?.domain}>
@@ -136,6 +164,33 @@ export default async function SiteStructurePage({
             </p>
           )}
         </div>
+
+        {linkCounts && (
+          <div className="mt-6">
+            <h2 className="text-sm font-medium">{t('linkStructureTitle')}</h2>
+            {linkCounts.entryNoLinks ? (
+              <p className="mt-2 text-xs text-warning">{t('entryNoLinksNotice')}</p>
+            ) : (
+              <>
+                <div className="stats mt-2">
+                  {linkStats.map((s) => {
+                    const isWarn = Boolean(s.problem) && s.value > 0
+                    return (
+                      <div key={s.key} className={isWarn ? 'card stat bg-gap-bg' : 'card stat'}>
+                        <div className="k">{s.label}</div>
+                        <div className={isWarn ? 'v text-gap' : 'v'}>{s.value}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+                {!linkCounts.closureComplete && (
+                  <p className="mt-2 text-xs text-warning">{t('linkPartialNotice')}</p>
+                )}
+                {hasEquity && <p className="mt-1 text-xs text-ghost">{t('linkEquityNote')}</p>}
+              </>
+            )}
+          </div>
+        )}
 
         <div className="mt-6">
           <h2 className="text-sm font-medium">
@@ -202,12 +257,17 @@ export default async function SiteStructurePage({
                 <tr>
                   <th>URL</th>
                   <th><Term explain={tt('httpStatus')}>HTTP</Term></th>
+                  <th><Term explain={tt('clickDepth')}>{t('clickDepth')}</Term></th>
+                  <th>{t('inboundLinks')}</th>
+                  <th><Term explain={tt('linkEquity')}>{t('linkEquity')}</Term></th>
                   <th><Term explain={tt('urlPattern')}>{t('pattern')}</Term></th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {visiblePages.map((p) => (
+                {visiblePages.map((p) => {
+                  const cell = depthCell(p.url)
+                  return (
                   <tr key={p.id}>
                     <td className="max-w-md truncate font-mono text-xs">
                       {p.url}
@@ -217,7 +277,10 @@ export default async function SiteStructurePage({
                         </span>
                       )}
                     </td>
-                    <td>{p.httpStatus ?? t(`status.${p.checkStatus}`)}</td>
+                    <td>{statusOf(p).httpStatus ?? t(`status.${statusOf(p).checkStatus}`)}</td>
+                    <td>{depthLabel(cell)}</td>
+                    <td>{cell.inAll ?? '—'}</td>
+                    <td>{equityLabel(equity(p.url))}</td>
                     <td className="font-mono text-xs">
                       {p.templateId ? templates.find((tp) => tp.id === p.templateId)?.pattern ?? '—' : '—'}
                     </td>
@@ -246,7 +309,8 @@ export default async function SiteStructurePage({
                       )}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

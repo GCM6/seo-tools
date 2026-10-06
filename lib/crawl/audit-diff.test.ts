@@ -25,4 +25,11 @@ describe('diffSiteAudits', () => {
   it('爬取参数不同标记协议不一致', () => {
     expect(diffSiteAudits(audit({}), audit({}, ['/'], 500)).protocolMismatch).toBe(true)
   })
+
+  it('crawlStrategy 不同（旧快照缺省视为 sitemap_first_v0）→ protocolMismatch（spec S1 §8）', () => {
+    const base = audit({})
+    const retest: SiteAuditPayload = { ...audit({}), protocol: { maxPages: 200, maxDepth: 3, crawlStrategy: 'link_first_v1' } }
+    expect(diffSiteAudits(base, retest).protocolMismatch).toBe(true)
+    expect(diffSiteAudits(retest, retest).protocolMismatch).toBe(false)
+  })
 })

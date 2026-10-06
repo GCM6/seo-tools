@@ -1,4 +1,5 @@
 import type { Rule, RuleHitDraft } from '../types'
+import { buildIntentPageFitMap, type IntentPageFitRow } from '../intent-page-fit'
 
 // P3 关键词规则组（证据源：GSC Search Analytics）。规则读 RuleContext 的 keywordMetrics（query 维）
 // 与 queryPageMetrics（page×query 交叉维）——均来自 gsc 证据 payload，未连接 GSC 时为空 → 整组 no-op。
@@ -13,6 +14,7 @@ const K01_POS_MAX = 20 // 机会词排名上界（第 2 页内，仍可优化上
 const K02_POS_MAX = 5 // 低 CTR 异常只看前 5 名
 const K02_CTR_RATIO = 0.5 // 实际 CTR 低于位置基准的此比例 → 异常
 const K06_MIN_IMPRESSIONS = 10 // 蚕食：单页最低展示量，低于此不计入争词
+const IPF_LIMIT = 20 // Intent-to-Page Fit 明细展示上限（避免报告过长）
 
 const round1 = (n: number): number => Math.round(n * 10) / 10
 const dedupeRefs = (ids: (string | null)[]): string[] => [...new Set(ids.filter((x): x is string => !!x))]
@@ -311,4 +313,126 @@ const K07: Rule = {
   },
 }
 
-export const keywordRules: Rule[] = [K01, K02, K06, K03, K04, K05, K07]
+function fitKeyword(row: IntentPageFitRow) {
+  return {
+    text: row.query,
+    intent: row.intent,
+    expectedPageRoles: row.expectedPageRoles,
+    currentUrl: row.primaryPage?.url ?? null,
+    currentPageRole: row.primaryPage?.role ?? null,
+    fitScore: row.fitScore,
+    impressions: row.demand.impressions,
+    searchVolume: row.demand.searchVolume,
+  }
+}
+
+// IPF01：有明确需求，但当前抓取/抽样证据里没有可指派的主承接页。
+const IPF01: Rule = {
+  id: 'IPF01',
+  pillar: 'P3',
+  side: 'seo',
+  severity: 'warning',
+  claimType: 'inferred',
+  evaluate(ctx): RuleHitDraft | null {
+    const rows = buildIntentPageFitMap(ctx).rows
+      .filter((row) => row.issueCodes.includes('missing_landing_page'))
+      .slice(0, IPF_LIMIT)
+    if (rows.length === 0) return null
+    const refs = dedupeRefs(rows.flatMap((row) => row.evidenceIds))
+    if (refs.length === 0) return null
+    return {
+      title: `发现 ${rows.length} 个搜索意图缺少清晰承接页`,
+      description:
+        '这些查询已有 GSC 或第三方 SERP/Labs 需求证据，但当前抓取页面与本站 SERP 抽样中未发现清晰主承接页。建议先判断是否已有页面可指派；没有则为该意图新建专门承接页，避免用首页或泛页面硬接。',
+      evidenceRefs: refs,
+      scope: 'intent-page-fit:missing',
+      detail: { count: rows.length, keywords: rows.map(fitKeyword) },
+    }
+  },
+}
+
+// IPF02：GSC query×page 证据显示当前承接页角色与搜索意图不匹配。
+const IPF02: Rule = {
+  id: 'IPF02',
+  pillar: 'P3',
+  side: 'seo',
+  severity: 'warning',
+  claimType: 'inferred',
+  evaluate(ctx): RuleHitDraft | null {
+    const rows = buildIntentPageFitMap(ctx).rows
+      .filter((row) => row.source !== 'dataforseo' && row.issueCodes.includes('intent_page_mismatch'))
+      .slice(0, IPF_LIMIT)
+    if (rows.length === 0) return null
+    const refs = dedupeRefs(rows.flatMap((row) => row.evidenceIds))
+    if (refs.length === 0) return null
+    return {
+      title: `发现 ${rows.length} 个意图-页面承接错位`,
+      description:
+        '这些查询的 GSC 落地页与意图类型不匹配，例如商业/交易意图由博客或文档承接，支持/排错意图由产品页承接。页型错位会降低相关性、点击后的满意度与转化，需要重定向到合适页型或改造现有页面。',
+      evidenceRefs: refs,
+      scope: 'intent-page-fit:mismatch',
+      detail: { count: rows.length, keywords: rows.map(fitKeyword) },
+    }
+  },
+}
+
+// IPF03：同一泛页面承接多个不同意图，说明页面架构可能太粗。
+const IPF03: Rule = {
+  id: 'IPF03',
+  pillar: 'P3',
+  side: 'seo',
+  severity: 'warning',
+  claimType: 'inferred',
+  evaluate(ctx): RuleHitDraft | null {
+    const fit = buildIntentPageFitMap(ctx)
+    const pages = fit.overbroadPages.slice(0, IPF_LIMIT)
+    if (pages.length === 0) return null
+    const pageUrls = new Set(pages.map((page) => page.url))
+    const refs = dedupeRefs(fit.rows.filter((row) => row.primaryPage && pageUrls.has(row.primaryPage.url)).flatMap((row) => row.evidenceIds))
+    if (refs.length === 0) return null
+    const keywords = fit.rows
+      .filter((row) => row.primaryPage && pageUrls.has(row.primaryPage.url))
+      .map(fitKeyword)
+      .slice(0, IPF_LIMIT)
+    return {
+      title: `发现 ${pages.length} 个过宽承接页（多意图压到同一页）`,
+      description:
+        '同一页面正在承接多个不同搜索意图，常见于首页、泛服务页、泛产品页或内容中心页。若这些意图的用户任务不同，应拆出专门承接页；若不该拆页，则要重写页面结构，让主意图、子意图和内链关系更清楚。',
+      evidenceRefs: refs,
+      scope: 'intent-page-fit:overbroad',
+      detail: { count: pages.length, pages, keywords },
+    }
+  },
+}
+
+// IPF04：承接页方向基本正确，但内链/层级支撑弱。
+const IPF04: Rule = {
+  id: 'IPF04',
+  pillar: 'P3',
+  side: 'seo',
+  severity: 'notice',
+  claimType: 'inferred',
+  evaluate(ctx): RuleHitDraft | null {
+    const rows = buildIntentPageFitMap(ctx).rows
+      .filter((row) =>
+        row.issueCodes.includes('underlinked_landing_page') &&
+        !row.issueCodes.includes('missing_landing_page') &&
+        !row.issueCodes.includes('intent_page_mismatch') &&
+        !row.issueCodes.includes('competing_pages'),
+      )
+      .slice(0, IPF_LIMIT)
+    if (rows.length === 0) return null
+    const refs = dedupeRefs(rows.flatMap((row) => row.evidenceIds))
+    if (refs.length === 0) return null
+    return {
+      title: `发现 ${rows.length} 个意图承接页内链支撑不足`,
+      description:
+        '这些查询已有相对合适的承接页，但页面站内入链很弱，权重传递与抓取优先级不足。建议从导航、相关页面、内容正文和上下级页面补自然内链，而不是盲目新增内容。',
+      evidenceRefs: refs,
+      scope: 'intent-page-fit:underlinked',
+      detail: { count: rows.length, keywords: rows.map(fitKeyword) },
+    }
+  },
+}
+
+export const keywordRules: Rule[] = [K01, K02, K06, K03, K04, K05, K07, IPF01, IPF02, IPF03, IPF04]

@@ -5,6 +5,7 @@ import { getProject, markRunStatus, findActiveRun } from '@/lib/repositories'
 import { inngest } from '@/lib/inngest/client'
 import { buildCollectRequestedEvent } from '@/lib/inngest/events'
 import { RULES_VERSION } from '@/lib/diagnosis/types'
+import { runGateError } from '@/lib/runs/gate'
 
 const VALID_RUN_TYPE = ['baseline', 'retest'] as const
 
@@ -25,6 +26,10 @@ export async function POST(req: Request) {
   const project = await getProject(projectId)
   if (!project) return NextResponse.json({ error: 'not_found' }, { status: 404 })
 
+  // SP-A §3.5 闸门：品类/市场无效不得启动（也就不会触发任何付费采集）。界面据错误码引导回向导第 1 步。
+  const gate = runGateError(project)
+  if (gate) return NextResponse.json({ error: gate }, { status: 422 })
+
   // 同项目并发保护（spec §2.3）：已有进行中 run 时拒绝创建，不插入不派发。
   const active = await findActiveRun(projectId)
   if (active) return NextResponse.json({ error: 'run_in_progress', runId: active.id }, { status: 409 })
@@ -33,6 +38,15 @@ export async function POST(req: Request) {
     .insert(runs)
     .values({ id: `run_${crypto.randomUUID()}`, projectId, runType, status: 'collecting', rulesVersion: RULES_VERSION })
     .returning()
+
+  // 兼容旧入口：诊断行为不变，但尽力补建知识脑会话并冻结知识/工作流/规则配置版本。
+  // 失败不阻断旧采集链，便于尚未执行 0013 migration 的本地环境继续工作。
+  try {
+    const { createLegacySessionForRun } = await import('@/lib/knowledge/repository')
+    await createLegacySessionForRun({ runId: created.id, project })
+  } catch (error) {
+    console.warn('legacy_session_bridge_failed', error instanceof Error ? error.message : String(error))
+  }
 
   // 派发失败（如本地 Inngest dev server 未启动）时不能让 run 卡死在
   // collecting：标记 failed 并返回可诊断的错误码，而非未处理的 500。

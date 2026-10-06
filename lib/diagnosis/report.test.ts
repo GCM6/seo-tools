@@ -166,6 +166,24 @@ describe('buildReport report contract', () => {
     expect(fullSample.reportContract?.level).toBe('R4')
   })
 
+  it('子阶段挂到父项下（SP-A §4.2）：合同只列父项，children 为同前缀子阶段；gaps 含父项与非 collected 的子阶段', () => {
+    const model = buildReport({
+      findings: [], recommendations: [], scope,
+      dataSources: [
+        source('dataforseo', 'partial'),
+        source('dataforseo:labs', 'failed', { failureReason: 'task_40101' }),
+        source('dataforseo:backlinks', 'collected', { capturedEvidenceCount: 1 }),
+        source('crawl', 'collected'),
+      ],
+      coverageStats: { checkedPages: 1 }, now,
+    })
+    const c = model.reportContract!
+    expect(c.dataSources.map((s) => s.sourceKey)).toEqual(['dataforseo', 'crawl'])
+    expect(c.dataSources[0].children?.map((s) => s.sourceKey)).toEqual(['dataforseo:labs', 'dataforseo:backlinks'])
+    expect(c.dataSources[1].children).toEqual([])
+    expect(c.gaps).toEqual(['dataforseo', 'dataforseo:labs'])
+  })
+
   it('treats partial and unattempted sources as gaps instead of silently omitting them', () => {
     const model = buildReport({
       findings: [],

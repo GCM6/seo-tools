@@ -1,6 +1,13 @@
 import type { ReportModel, ConstraintKind, ReportRecommendation } from './report'
 import type { Pillar } from './types'
 import type { RoadmapHorizon, Quadrant } from './report'
+import type {
+  IntentPageFitAction,
+  IntentPageFitArtifactPayload,
+  IntentPageFitIssueCode,
+  PageRole,
+  SearchIntentKind,
+} from './intent-page-fit'
 
 // 综合报告 → Markdown 序列化（spec §7.2 八板块）——纯字符串，无 I/O，可单测。
 // 恒守铁律：健康分 / 约束定位 / 流量价值均标「推断」，绝不冒用「实测」。
@@ -12,6 +19,7 @@ export interface ReportMarkdownMeta {
   runId: string
   // 采集时间（run.finishedAt/startedAt）；无则传空串。
   capturedAt: string
+  intentPageFit?: IntentPageFitArtifactPayload | null
 }
 
 // 五支柱人读名（Markdown 内固定中文，主 UI 语言）。
@@ -49,10 +57,67 @@ const HORIZON_LABEL: Record<RoadmapHorizon, string> = {
   long: '长期（6 周+）',
 }
 
+const IPF_INTENT_LABEL: Record<SearchIntentKind, string> = {
+  informational: '信息型',
+  commercial: '商业调研',
+  transactional: '交易/询盘',
+  comparison: '对比选择',
+  support: '支持/故障',
+  local: '本地',
+  navigational: '品牌导航',
+  unknown: '未判定',
+}
+
+const IPF_ROLE_LABEL: Record<PageRole, string> = {
+  home: '首页',
+  service: '服务页',
+  product: '产品页',
+  collection: '分类/聚合页',
+  pricing: '价格页',
+  comparison: '对比页',
+  case_study: '案例页',
+  blog: '博客/文章',
+  docs: '文档',
+  support: '帮助/支持',
+  local: '本地页',
+  about: '关于页',
+  tool: '工具页',
+  unknown: '未知角色',
+}
+
+const IPF_ISSUE_LABEL: Record<IntentPageFitIssueCode, string> = {
+  missing_landing_page: '缺承接页',
+  intent_page_mismatch: '意图不匹配',
+  overbroad_landing_page: '页面过宽',
+  underlinked_landing_page: '内链弱',
+  thin_landing_page: '页面偏薄',
+  competing_pages: '页面竞争',
+}
+
+const IPF_ACTION_LABEL: Record<IntentPageFitAction, string> = {
+  create_or_assign_landing_page: '创建或指定合适承接页',
+  reshape_landing_page: '重塑页面以匹配搜索意图',
+  split_or_refocus_page: '拆分或重新聚焦页面',
+  strengthen_internal_links: '加强导航、面包屑和内链',
+  consolidate_competing_pages: '合并或规范化竞争页面',
+  improve_landing_page: '补强页面内容与结构',
+  monitor: '持续观察',
+}
+
 const scoreText = (s: number | null): string => (s === null ? '未评分' : String(s))
 
 function recLine(r: ReportRecommendation): string {
   return `- ${r.what}${r.expectedImpact ? `（预期影响：${r.expectedImpact}）` : ''}`
+}
+
+function mdCell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\n/g, ' ')
+}
+
+function ipfDemand(row: IntentPageFitArtifactPayload['rows'][number]): string {
+  if (row.impressions !== null) return `${row.impressions} 次展现`
+  if (row.searchVolume !== null) return `${row.searchVolume} 搜索量（估算）`
+  return '—'
 }
 
 export function renderReportMarkdown(model: ReportModel, meta: ReportMarkdownMeta): string {
@@ -186,6 +251,31 @@ export function renderReportMarkdown(model: ReportModel, meta: ReportMarkdownMet
   L.push('## 4. 关键词现状与缺口')
   L.push('')
   L.push('关键词表现与缺口为实时数据，详见在线报告。搜索量 / 难度恒为第三方估算（L3），非实测。')
+  if (meta.intentPageFit) {
+    L.push('')
+    L.push('### 搜索意图 → 承接页面')
+    L.push('')
+    L.push(`共识别 ${meta.intentPageFit.rowCount} 个需求组，其中 ${meta.intentPageFit.issueRowCount} 个存在承接风险。`)
+    L.push('')
+    if (meta.intentPageFit.rows.length) {
+      L.push('| 搜索需求 | 意图 | 当前承接页 | 需求 | 匹配度 | 问题 | 建议动作 |')
+      L.push('| --- | --- | --- | --- | --- | --- | --- |')
+      for (const row of meta.intentPageFit.rows.slice(0, 12)) {
+        const page = row.currentUrl ? `${row.currentUrl}（${IPF_ROLE_LABEL[row.currentPageRole ?? 'unknown']}）` : '无明确承接页'
+        L.push([
+          mdCell(row.query),
+          IPF_INTENT_LABEL[row.intent],
+          mdCell(page),
+          ipfDemand(row),
+          `${row.fitScore} 分`,
+          row.issueCodes.map((code) => IPF_ISSUE_LABEL[code]).join('、'),
+          IPF_ACTION_LABEL[row.action],
+        ].join(' | ').replace(/^/, '| ').replace(/$/, ' |'))
+      }
+    } else {
+      L.push('已检查到的查询暂无明显意图承接问题。')
+    }
+  }
   L.push('')
 
   // —— 板块 5：竞品对比（实时明细见在线报告）——

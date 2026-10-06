@@ -32,6 +32,32 @@ function renderCard(props: Partial<Parameters<typeof GscConnectCard>[0]> = {}) {
 }
 
 describe('GscConnectCard', () => {
+  it('授权已失效（sites 接口 409 gsc_reauth_required）：明确提示重新授权，而不是泛化报错', async () => {
+    const res = { ok: false, status: 409, json: async () => ({ error: 'gsc_reauth_required' }) }
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ...res, clone: () => res })))
+    renderCard({ gscConnected: true })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Google 授权已失效')
+    expect(screen.queryByText('无法读取已授权资源，请重新连接 GSC 后再试。')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '重新连接 GSC' })).toBeInTheDocument()
+  })
+
+  it('授权往返失败（端口不一致）：展示原因与期望回调地址', () => {
+    renderCard({ connectError: 'redirect_port_mismatch', redirectOrigin: 'http://localhost:3000' })
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Google 授权回调地址是 http://localhost:3000')
+    expect(alert).toHaveTextContent('GOOGLE_OAUTH_REDIRECT_URI')
+  })
+
+  it('已连接时取消了一次重连：旧授权仍有效，不误报「未连接」', () => {
+    renderCard({ gscConnected: true, connectError: 'access_denied' })
+    expect(screen.queryByText(/你在 Google 授权页取消了授权/)).not.toBeInTheDocument()
+  })
+
+  it('用户在同意页取消：提示未连接', () => {
+    renderCard({ connectError: 'access_denied' })
+    expect(screen.getByRole('alert')).toHaveTextContent('你在 Google 授权页取消了授权')
+  })
+
   it('未连接：显示连接按钮，不显示已授权资源选择', () => {
     renderCard({ gscConnected: false })
     expect(screen.getByRole('button', { name: '连接 GSC' })).toBeInTheDocument()

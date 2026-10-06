@@ -34,7 +34,7 @@ const probe = (sov: ProbeSummary['sov']): ProbeSummary => ({
   perEngine: [], sentiment: { positive: 0, neutral: 0, negative: 0, comparison: 0, total: 0 },
   sampleEvidenceId: 'p1',
   // D4（GEO branded/unbranded 重设计）：新增必填字段，本文件测的是竞品 SoV 规则，与这三项无关，给中性默认值。
-  unbranded: { present: 0, total: 0, wilsonLow: 0 }, branded: { perEngine: [] }, citationRate: 0, citedDomains: [], ugcCitationShare: null,
+  unbranded: { present: 0, total: 0, wilsonLow: 0 }, branded: { perEngine: [] }, citationRate: 0, citedDomains: [], ugcCitationShare: null, samplesPerPromptPerEngine: 1,
 })
 
 describe('Q01 share of SERP', () => {
@@ -150,5 +150,17 @@ describe('all competitor rules no-op on empty context', () => {
     for (const r of competitorRules) {
       expect(r.evaluate(baseCtx())).toBeNull()
     }
+  })
+})
+
+describe('Q02 文案写实际采样 n（SP-A §5.3）', () => {
+  it('n=3 时写 n=3，不出现 n=5', () => {
+    const ctx = baseCtx()
+    ctx.confirmedCompetitors = [{ domain: 'rival.com', name: 'Rival' }]
+    ctx.probe = { ...probe([{ name: 'example.com', pct: 40, you: true }, { name: 'rival.com', pct: 60, you: false }]), samplesPerPromptPerEngine: 3 }
+    ctx.probeEvidenceId = 'probeEv'
+    const d = (rule('Q02').evaluate(ctx) as RuleHitDraft).description
+    expect(d).toContain('n=3')
+    expect(d).not.toContain('n=5')
   })
 })

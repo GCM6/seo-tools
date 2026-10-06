@@ -12,6 +12,11 @@ import {
   type MetricTarget,
 } from '@/lib/diagnosis/retest-metrics'
 import { evaluateRules } from '@/lib/diagnosis/engine'
+import {
+  buildIntentPageFitArtifactPayload,
+  buildIntentPageFitMap,
+  type IntentPageFitArtifactPayload,
+} from '@/lib/diagnosis/intent-page-fit'
 import type { DiagnosisEvidenceRow, Rule, RuleHit } from '@/lib/diagnosis/types'
 import { buildFindingRows, buildRecommendationRows, type RecommendationDraft } from '@/lib/diagnosis/finding-rows'
 import { aggregateProbeSummary, normalizeProjectDomain } from '@/lib/probes/summary'
@@ -71,6 +76,8 @@ interface GenerateFindingsDeps {
   setRecommendationOutcome: typeof setRecommendationOutcome
   evaluateRules: typeof evaluateRules
   buildRuleContext: typeof buildRuleContext
+  buildIntentPageFitMap: typeof buildIntentPageFitMap
+  buildIntentPageFitArtifactPayload: typeof buildIntentPageFitArtifactPayload
   aggregateProbeSummary: typeof aggregateProbeSummary
   // GEO 新口径回测扩展：AIO 实测曝光两轮对比所需（retest-metrics.ts buildAioMetricRows）。
   getRunSerpAioResults: typeof getRunSerpAioResults
@@ -81,7 +88,7 @@ interface GenerateFindingsDeps {
   generateRecommendation: (
     hit: RuleHit,
     opts: { domain: string },
-  ) => Promise<RecommendationDraft> | RecommendationDraft
+  ) => Promise<RecommendationDraft | null> | RecommendationDraft | null
 }
 
 function errorReason(err: unknown, fallback = 'diagnosis_failed'): string {
@@ -107,6 +114,8 @@ function defaultDeps(): GenerateFindingsDeps {
     setRecommendationOutcome,
     evaluateRules,
     buildRuleContext,
+    buildIntentPageFitMap,
+    buildIntentPageFitArtifactPayload,
     aggregateProbeSummary,
     aggregateAioExposure,
     // 动态 import：规则集/建议生成器在最终集成时落地；此处按需加载，不在模块加载期解析。
@@ -125,12 +134,20 @@ export async function generateFindingsHandler(
   const emit = async (msg: RunProgressMessage) => publish(await channel.progress(msg))
 
   await step.run('mark-diagnosing', () => deps.markRunStatus(runId, 'diagnosing', { failureReason: null }))
+  await step.run('start-workflow-runtime', async () => {
+    try {
+      const { startWorkflowForRun } = await import('@/lib/knowledge/repository')
+      await startWorkflowForRun(runId)
+    } catch {
+      // 0013 尚未迁移时保持旧诊断链可用。
+    }
+  })
   await emit({ type: 'phase', phase: 'diagnose' })
 
   // —— 规则求值 ——（读证据 + 项目 + 探针聚合 → RuleContext → RuleHit[]）。
   // 证据 rawText 可能很大：整个加载+求值裹进一个 step，只把精简的 hits/domain 出参回放，
   // 避免把全站 HTML 塞进 Inngest step 状态往返序列化。
-  const { hits, domain } = await step.run('run-rules', async () => {
+  const { hits, domain, intentPageFit } = await step.run('run-rules', async () => {
     const project = await deps.getProject(projectId)
     if (!project) throw new NonRetriableError(`project_not_found:${projectId}`)
 
@@ -197,8 +214,20 @@ export async function generateFindingsHandler(
       robotsText: null,
     })
 
-    const rules = await deps.allRules()
-    return { hits: deps.evaluateRules(ctx, rules), domain: project.domain }
+    let rules = await deps.allRules()
+    try {
+      const { orderRulesForRun } = await import('@/lib/knowledge/repository')
+      rules = await orderRulesForRun(runId, rules)
+    } catch {
+      // 无知识脑会话的历史 run 沿用注册表顺序。
+    }
+    const hits = deps.evaluateRules(ctx, rules)
+    const fit = deps.buildIntentPageFitArtifactPayload(deps.buildIntentPageFitMap(ctx))
+    return {
+      hits,
+      domain: project.domain,
+      intentPageFit: fit.rowCount > 0 ? fit : null,
+    } satisfies { hits: RuleHit[]; domain: string; intentPageFit: IntentPageFitArtifactPayload | null }
   })
 
   await emit({ type: 'phase', phase: 'diagnose', findings: hits.length })
@@ -221,6 +250,15 @@ export async function generateFindingsHandler(
   await step.run('mark-reviewing', () =>
     deps.markRunStatus(runId, 'reviewing', { finishedAt: new Date().toISOString(), failureReason: null }),
   )
+  await step.run('complete-workflow-runtime', async () => {
+    try {
+      const { completeWorkflowForRun, recordIntentPageFitArtifactForRun } = await import('@/lib/knowledge/repository')
+      await completeWorkflowForRun(runId, hits)
+      if (intentPageFit) await recordIntentPageFitArtifactForRun(runId, intentPageFit)
+    } catch {
+      // 工作流状态是增强追踪；失败不污染已完成的确定性诊断结果。
+    }
+  })
 
   // —— 回测收尾（spec §5.1-3）——：仅当本 run 是对 baselineRunId 的同协议重跑时，
   // 按 fingerprint 对齐两轮 findings 算四态 delta，据此写 baseline 建议 outcome（恒 inferred，
@@ -385,6 +423,7 @@ export const generateFindings = inngest.createFunction(
       const failure = ctx as { error?: Error; event: { data: { error?: { message?: string } } } }
       const reason = errorReason(failure.error ?? failure.event.data.error, 'diagnosis_failed')
       await markRunStatus(runId, 'failed', { failureReason: reason, finishedAt: new Date().toISOString() })
+      try { await (await import('@/lib/knowledge/repository')).failWorkflowForRun(runId, reason) } catch { /* migration compatibility */ }
       // 重试耗尽后补发 failed，让 /runs/{id}/events 的诊断流收到终态并关闭。
       const publish = (ctx as { publish?: (m: unknown) => Promise<void> }).publish
       try {

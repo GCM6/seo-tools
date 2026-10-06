@@ -29,7 +29,7 @@ describe('checkSocialPresence', () => {
       'capterra.com': { resultCount: 2, results: [{ title: 'Acme on Capterra', link: 'https://capterra.com/acme' }] },
     })
 
-    const result = await checkSocialPresence({ brand: 'Acme' }, search)
+    const { payload: result } = await checkSocialPresence({ brand: 'Acme' }, search)
 
     expect(result.brand).toBe('Acme')
     expect(typeof result.checkedAt).toBe('string')
@@ -53,9 +53,10 @@ describe('checkSocialPresence', () => {
       'capterra.com': { resultCount: 0, results: [] },
     })
 
-    const result = await checkSocialPresence({ brand: 'NoSuchBrandXYZ' }, search)
+    const { payload: result } = await checkSocialPresence({ brand: 'NoSuchBrandXYZ' }, search)
 
     result.platforms.forEach((p) => {
+      expect(p.status).toBe('ok')
       expect(p.resultCount).toBe(0)
       expect(p.topResults).toEqual([])
     })
@@ -69,27 +70,28 @@ describe('checkSocialPresence', () => {
       'capterra.com': { resultCount: 0, results: [] },
     })
 
-    const result = await checkSocialPresence({ brand: 'Acme' }, search)
+    const { payload: result } = await checkSocialPresence({ brand: 'Acme' }, search)
 
+    // SP-A §4.4：查询失败如实标 failed，不再降级成"0 条结果"。
     const youtube = result.platforms.find((p) => p.platform === 'youtube')
-    expect(youtube).toMatchObject({ resultCount: 0, topResults: [] })
+    expect(youtube).toMatchObject({ status: 'failed', reason: 'network_error' })
     const g2 = result.platforms.find((p) => p.platform === 'g2')
-    expect(g2).toMatchObject({ resultCount: 3 })
+    expect(g2).toMatchObject({ status: 'ok', resultCount: 3 })
   })
 
   it('全部平台抛错 → 整体降级为全零结果，不抛出', async () => {
     const search: SocialPresenceSearchFn = vi.fn(async () => { throw new Error('rate limited') })
 
-    const result = await checkSocialPresence({ brand: 'Acme' }, search)
+    const { payload: result } = await checkSocialPresence({ brand: 'Acme' }, search)
 
     expect(result.platforms).toHaveLength(4)
-    result.platforms.forEach((p) => expect(p).toMatchObject({ resultCount: 0, topResults: [] }))
+    result.platforms.forEach((p) => expect(p).toMatchObject({ status: 'failed', reason: 'network_error' }))
   })
 
   it('查询串使用 site:<domain> "<brand>" 格式', async () => {
     const search = vi.fn(async () => ({ resultCount: 0, results: [] }))
 
-    const result = await checkSocialPresence({ brand: 'Acme Corp' }, search)
+    const { payload: result } = await checkSocialPresence({ brand: 'Acme Corp' }, search)
 
     expect(result.platforms.map((p) => p.query)).toEqual([
       'site:youtube.com "Acme Corp"',
@@ -97,5 +99,19 @@ describe('checkSocialPresence', () => {
       'site:trustpilot.com "Acme Corp"',
       'site:capterra.com "Acme Corp"',
     ])
+  })
+})
+
+describe('checkSocialPresence — 原文与 HTTP 失败（SP-A §4.3/§4.4）', () => {
+  it('成功与 HTTP 失败的平台都返回原文；失败原因取自错误（http_403）', async () => {
+    const okRaw = { status: 200, contentType: 'application/json', body: '{"items":[]}' }
+    const failRaw = { status: 403, contentType: 'application/json; charset=UTF-8', body: '{"error":{"code":403}}' }
+    const search: SocialPresenceSearchFn = vi.fn(async (query: string) => {
+      if (query.includes('youtube.com')) throw Object.assign(new Error('Google Custom Search failed: 403'), { raw: failRaw })
+      return { resultCount: 0, results: [], raw: okRaw }
+    })
+    const { payload, raws } = await checkSocialPresence({ brand: 'Acme' }, search)
+    expect(payload.platforms.find((p) => p.platform === 'youtube')).toMatchObject({ status: 'failed', reason: 'http_403' })
+    expect(raws.map((r) => [r.platform, r.raw.status])).toEqual([['youtube', 403], ['g2', 200], ['trustpilot', 200], ['capterra', 200]])
   })
 })

@@ -1,86 +1,27 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createDataforseoClient } from './client'
 import { backlinksSummary } from './backlinks'
+import { reasonOf } from '@/lib/collection/result'
 
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
-}
-function clientWith(fetchMock: typeof fetch) {
-  return createDataforseoClient({ login: 'u', password: 'p', fetchImpl: fetchMock })
-}
+const jsonResponse = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+const clientWith = (body: unknown) => createDataforseoClient({ login: 'u', password: 'p', fetchImpl: vi.fn(async () => jsonResponse(body)) as unknown as typeof fetch })
 
 describe('backlinksSummary', () => {
-  it('posts live status body and maps core metrics', async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({
-        status_code: 20000,
-        tasks: [
-          {
-            status_code: 20000,
-            result: [{ referring_domains: 320, backlinks: 5400, rank: 480 }],
-          },
-        ],
-      }),
-    )
-    const out = await backlinksSummary(clientWith(fetchMock), 'example.com')
-
-    const [url, init] = fetchMock.mock.calls[0] as unknown[] as [string, RequestInit]
-    expect(url).toContain('/v3/backlinks/summary/live')
-    expect(JSON.parse(init.body as string)).toEqual([
-      { target: 'example.com', internal_list_limit: 10, backlinks_status_type: 'live' },
-    ])
-    expect(out).toEqual({
-      target: 'example.com',
-      referringDomains: 320,
-      backlinks: 5400,
-      rank: 480,
-      anchors: [],
-      newLost: null,
-    })
+  it('映射引荐域 / 外链 / rank', async () => {
+    const r = await backlinksSummary(clientWith({ status_code: 20000, tasks: [{ status_code: 20000, result: [{ referring_domains: 12, backlinks: 340, rank: 210 }] }] }), 'example.com')
+    expect(r).toMatchObject({ target: 'example.com', referringDomains: 12, backlinks: 340, rank: 210 })
   })
-
-  it('maps anchors when present and defaults dofollow', async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({
-        status_code: 20000,
-        tasks: [
-          {
-            status_code: 20000,
-            result: [
-              {
-                referring_domains: 10,
-                backlinks: 20,
-                rank: 100,
-                anchors: [
-                  { anchor: 'example', backlinks: 12, dofollow: 12 },
-                  { anchor: 'click here', count: 3, dofollow: 0 },
-                  { backlinks: 5 }, // 无 anchor → 跳过
-                ],
-              },
-            ],
-          },
-        ],
-      }),
-    )
-    const out = await backlinksSummary(clientWith(fetchMock), 'example.com')
-    expect(out.anchors).toEqual([
-      { anchor: 'example', count: 12, dofollow: true },
-      { anchor: 'click here', count: 3, dofollow: false },
-    ])
+  it('任务成功但没有 result → 抛错 empty_result，不编成"0 引荐域 / 0 外链"（第二波审查 C1）', async () => {
+    expect(reasonOf(await backlinksSummary(clientWith({ status_code: 20000, tasks: [{ status_code: 20000, result: null }] }), 'example.com').catch((e: unknown) => e))).toBe('empty_result')
   })
+})
 
-  it('degrades missing metrics (rank null, counts 0, anchors [])', async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({ status_code: 20000, tasks: [{ status_code: 20000, result: [{}] }] }),
-    )
-    const out = await backlinksSummary(clientWith(fetchMock), 'example.com')
-    expect(out).toEqual({
-      target: 'example.com',
-      referringDomains: 0,
-      backlinks: 0,
-      rank: null,
-      anchors: [],
-      newLost: null,
-    })
+describe('任务成功、JSON 合法但缺计数字段（最终审查 F1-1）', () => {
+  it('result 为 [{}] → 抛错 invalid_shape（不是"0 引荐域 / 0 外链"）', async () => {
+    expect(reasonOf(await backlinksSummary(clientWith({ status_code: 20000, tasks: [{ status_code: 20000, result: [{}] }] }), 'example.com').catch((e: unknown) => e))).toBe('invalid_shape')
+  })
+  it('计数字段是数字 0（真没有外链）→ 照常返回 0', async () => {
+    const r = await backlinksSummary(clientWith({ status_code: 20000, tasks: [{ status_code: 20000, result: [{ referring_domains: 0, backlinks: 0, rank: 0 }] }] }), 'example.com')
+    expect(r).toMatchObject({ referringDomains: 0, backlinks: 0 })
   })
 })

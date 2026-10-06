@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
+import { parseLightCheckHtml } from '@/lib/crawl/light-check'
 import type { RuleContext, RuleHitDraft } from '../types'
 import type { SiteAuditPage, SiteAuditPayload } from '@/lib/crawl/site-audit'
 import { technicalRules, isLanguagePathTemplate } from './technical'
+import { buildLinkGraph, type LinkGraphPageInput } from '@/lib/crawl/link-graph'
 
 const rule = (id: string) => technicalRules.find((r) => r.id === id)!
 
@@ -280,6 +282,81 @@ describe('T13 viewport', () => {
   })
 })
 
+describe('T14 hreflang 按 BCP 47 校验（SP-A §5.2 #1，真实 HTML 经 light-check 解析）', () => {
+  const hreflangPage = (links: string) =>
+    page({ lightCheckExtra: parseLightCheckHtml(`<html><head>${links}</head><body></body></html>`, 'https://example.com/', 'example.com').extra as never })
+  it('只有 hreflang="en" 与 x-default → 不命中（en 是合法语言码）', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit({}, [hreflangPage('<link rel="alternate" hreflang="en" href="https://example.com/"><link rel="alternate" hreflang="x-default" href="https://example.com/">')])
+    expect(rule('T14').evaluate(ctx)).toBeNull()
+  })
+  it('uk（乌克兰语）、eu（巴斯克语）是合法语言码，不命中', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit({}, [hreflangPage('<link rel="alternate" hreflang="uk" href="https://example.com/uk/"><link rel="alternate" hreflang="eu" href="https://example.com/eu/"><link rel="alternate" hreflang="x-default" href="https://example.com/">')])
+    expect(rule('T14').evaluate(ctx)).toBeNull()
+  })
+  it('en-uk → 命中，invalidCodes 为 en-uk，并给出改为 en-gb 的建议', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit({}, [hreflangPage('<link rel="alternate" hreflang="en-uk" href="https://example.com/uk/"><link rel="alternate" hreflang="x-default" href="https://example.com/">')])
+    const hit = rule('T14').evaluate(ctx) as RuleHitDraft
+    expect(hit.detail!.invalidCodes).toEqual(['en-uk'])
+    expect(hit.detail!.suggestions).toEqual({ 'en-uk': 'en-gb' })
+  })
+})
+
+describe('T01 只为 Googlebot 真不可抓的页面报错（最终审查 F3-1）', () => {
+  it('白名单式 robots：本工具爬虫（*）被禁，但 Googlebot 放行 → 不报"Googlebot 不可抓"', () => {
+    const ctx = baseCtx()
+    ctx.robotsText = 'User-agent: *\nDisallow: /\n\nUser-agent: Googlebot\nAllow: /\n'
+    ctx.siteAudit = audit({ blockedByRobots: 1 }, [page({ url: 'https://example.com/k', checkStatus: 'blocked_by_robots', isKeyPage: true })])
+    expect(rule('T01').evaluate(ctx)).toBeNull()
+  })
+  it('旧证据的入口 robotsAllowed 按 * 组算成 false，但 robots 原文对 Googlebot 放行 → 重新分析时不报（最终审查 F3-1）', () => {
+    const ctx = baseCtx()
+    ctx.project = { ...ctx.project, domain: 'https://example.com/' }
+    ctx.robotsText = 'User-agent: *\nDisallow: /\n\nUser-agent: Googlebot\nAllow: /\n'
+    ctx.entryPage = { id: 'ep1', rawHtml: '', canonicalUrl: null, metaRobots: null, robotsAllowed: false }
+    expect(rule('T01').evaluate(ctx)).toBeNull()
+  })
+  it('Googlebot 也被禁的重点页 → 仍报 error', () => {
+    const ctx = baseCtx()
+    ctx.robotsText = 'User-agent: *\nDisallow: /k\n'
+    ctx.siteAudit = audit({ blockedByRobots: 1 }, [page({ url: 'https://example.com/k', checkStatus: 'blocked_by_robots', isKeyPage: true })])
+    expect((rule('T01').evaluate(ctx) as RuleHitDraft).severity ?? 'error').toBe('error')
+  })
+})
+
+describe('T01 禁抓分级（SP-A §5.2 #2）', () => {
+  it('只有 /cart 被禁抓（非入口、非重点页）→ notice「robots.txt 禁抓了 1 个 URL」', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit({ blockedByRobots: 1 }, [page({ url: 'https://example.com/cart', checkStatus: 'blocked_by_robots', isKeyPage: false })])
+    const hit = rule('T01').evaluate(ctx) as RuleHitDraft
+    expect(hit.severity).toBe('notice')
+    expect(hit.title).toBe('robots.txt 禁抓了 1 个 URL')
+    expect(hit.detail).toMatchObject({ blockedCount: 1, blockedUrls: ['https://example.com/cart'] })
+  })
+  it('入口页被禁抓 → error，标题不变', () => {
+    const ctx = baseCtx()
+    ctx.entryPage = { id: 'ep1', rawHtml: '', canonicalUrl: null, metaRobots: null, robotsAllowed: false }
+    const hit = rule('T01').evaluate(ctx) as RuleHitDraft
+    expect(hit.severity ?? 'error').toBe('error')
+    expect(hit.title).toBe('入口/关键页被 robots.txt 屏蔽（Googlebot 不可抓）')
+  })
+  it('重点页被禁抓 → error', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit({ blockedByRobots: 1 }, [page({ url: 'https://example.com/k', checkStatus: 'blocked_by_robots', isKeyPage: true })])
+    expect((rule('T01').evaluate(ctx) as RuleHitDraft).severity ?? 'error').toBe('error')
+  })
+  it('禁抓数超过 10 条时 blockedCount 用完整数量，列表只列前 10 条', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit({ blockedByRobots: 12 }, Array.from({ length: 12 }, (_, i) => page({ url: `https://example.com/search?q=${i}`, checkStatus: 'blocked_by_robots', isKeyPage: false })))
+    const hit = rule('T01').evaluate(ctx) as RuleHitDraft
+    expect(hit.title).toBe('robots.txt 禁抓了 12 个 URL')
+    expect(hit.detail!.blockedCount).toBe(12)
+    expect((hit.detail!.blockedUrls as string[]).length).toBe(10)
+  })
+})
+
 describe('T14 hreflang', () => {
   it('flags invalid region code and missing x-default', () => {
     const ctx = baseCtx()
@@ -451,5 +528,142 @@ describe('T15 低价值语言页泛滥', () => {
       { evidenceId: 'gsc1', page: 'https://example.com/other', query: 'x', clicks: 0, impressions: 5, position: 10 },
     ]
     expect(rule('T15').evaluate(ctx)).toBeNull()
+  })
+})
+
+// —— spec S1 §8：T12/T05 读链接图谱 ——
+const GH = 'https://example.com'
+const gp = (path: string, links: string[] | null, over: Partial<LinkGraphPageInput> = {}): LinkGraphPageInput => ({
+  url: `${GH}${path}`, checkStatus: 'checked', httpStatus: 200, metaRobots: null, discoveredVia: 'crawl',
+  linkDetails: links && links.map((l) => ({ url: `${GH}${l}`, count: 1, anchors: [], regions: ['main' as const], nofollow: false })),
+  externalLinks: [], ...over,
+})
+const withGraph = (a: RuleContext['siteAudit'], pages: LinkGraphPageInput[]): RuleContext['siteAudit'] =>
+  ({ ...a!, payload: { ...a!.payload, linkGraph: buildLinkGraph({ entryUrl: `${GH}/`, pages }) } })
+
+describe('T12 读图谱深度（spec S1 §8）', () => {
+  it('已抓取的 HTML 页深度精确且 > 3 → 实测', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = withGraph(audit({}), [
+      gp('/', ['/1'], { discoveredVia: 'entry' }), gp('/1', ['/2']), gp('/2', ['/3']), gp('/3', ['/4']), gp('/4', []),
+    ])
+    const hit = rule('T12').evaluate(ctx) as RuleHitDraft
+    expect(hit.detail).toMatchObject({ count: 1, measuredPageCount: 1, unfetchedDeepCount: 0, exactDepthHorizon: null, examples: [{ url: `${GH}/4`, depth: 4, fetched: true }] })
+    expect(hit.claimType).toBeUndefined()
+    expect(hit.description).toContain('搜索引擎可跟随链接')
+  })
+
+  it('只有未抓取的超深链接目标 → 推断（页面类型与状态未确认，审查 P4）', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = withGraph(audit({}), [
+      gp('/', ['/1'], { discoveredVia: 'entry' }), gp('/1', ['/2']), gp('/2', ['/3']), gp('/3', ['/4']),
+    ])
+    const hit = rule('T12').evaluate(ctx) as RuleHitDraft
+    expect(hit.claimType).toBe('inferred')
+    expect(hit.detail).toMatchObject({ measuredPageCount: 0, unfetchedDeepCount: 1, examples: [{ url: `${GH}/4`, depth: 4, fetched: false }] })
+  })
+
+  it('图片/PDF 等资源 URL 与 404 页不算「页面」（审查复现 F）', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = withGraph(audit({}), [
+      gp('/', ['/1'], { discoveredVia: 'entry' }), gp('/1', ['/2']), gp('/2', ['/3']),
+      gp('/3', ['/img/p1.jpg', '/manual.pdf', '/gone']), gp('/gone', [], { httpStatus: 404 }),
+    ])
+    expect(rule('T12').evaluate(ctx)).toBeNull()
+  })
+
+  it('上界深度计入 upperBoundDeepCount，不进实测样例（审查 P7）', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = withGraph(audit({}), [
+      gp('/', ['/1', '/x'], { discoveredVia: 'entry' }), gp('/x', [], { httpStatus: 503 }),
+      gp('/1', ['/2']), gp('/2', ['/3']), gp('/3', ['/4']), gp('/4', []),
+    ])
+    expect(rule('T12').evaluate(ctx)).toBeNull()
+  })
+
+  it('视界不足 4（第 2 层有抓取失败）时不判定', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = withGraph(audit({}), [
+      gp('/', ['/1'], { discoveredVia: 'entry' }), gp('/1', ['/2']),
+      gp('/2', null, { checkStatus: 'error', httpStatus: 0 }),
+    ])
+    expect(rule('T12').evaluate(ctx)).toBeNull()
+  })
+})
+
+describe('T05 诚信降级（spec S1 §8）', () => {
+  const orphan = page({ url: `${GH}/o`, discoveredVia: 'sitemap', depth: null, inboundLinkCount: 0 })
+
+  it('抓取未穷尽 → inferred，措辞说明已抓范围', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = withGraph(audit({ orphanPages: 1, checked: 3 }, [orphan]), [
+      gp('/', ['/a'], { discoveredVia: 'entry' }), gp('/a', ['/z']), gp('/o', [], { discoveredVia: 'sitemap' }),
+    ])
+    const hit = rule('T05').evaluate(ctx) as RuleHitDraft
+    expect(hit.claimType).toBe('inferred')
+    expect(hit.description).toContain('已抓取的 3 页')
+    expect(hit.detail).toMatchObject({ exhaustive: false })
+  })
+
+  it('抓取穷尽 → 保持规则默认 measured_hard', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = withGraph(audit({ orphanPages: 1, checked: 3 }, [orphan]), [
+      gp('/', ['/a'], { discoveredVia: 'entry' }), gp('/a', []), gp('/o', [], { discoveredVia: 'sitemap' }),
+    ])
+    expect((rule('T05').evaluate(ctx) as RuleHitDraft).claimType).toBeUndefined()
+  })
+
+  it('入口页零站内出链（疑似 JS 渲染导航）→ 不判定（Review Focus 1）', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = withGraph(audit({ orphanPages: 1, checked: 2 }, [orphan]), [
+      gp('/', [], { discoveredVia: 'entry' }), gp('/o', [], { discoveredVia: 'sitemap' }),
+    ])
+    expect(rule('T05').evaluate(ctx)).toBeNull()
+  })
+})
+
+describe('口径与 L01/L03 对齐（第二轮独立审查 #16）', () => {
+  it('T02：401/403/429 等拒绝访问码不计入错误比例（多为反爬/限流），单列在 detail', () => {
+    const ctx = baseCtx()
+    const pages = [
+      page({ url: `${GH}/a`, httpStatus: 403 }), page({ url: `${GH}/b`, httpStatus: 403 }),
+      page({ url: `${GH}/c`, httpStatus: 429 }), page({ url: `${GH}/d`, httpStatus: 404 }),
+    ]
+    ctx.siteAudit = audit({ checked: 30, http4xx: 4 }, pages)
+    // 扣掉 3 个拒绝访问码后只剩 1/30（3.3%），不超 5% 告警线
+    expect(rule('T02').evaluate(ctx)).toBeNull()
+    ctx.siteAudit = audit({ checked: 10, http4xx: 4 }, pages)
+    const hit = rule('T02').evaluate(ctx) as RuleHitDraft
+    expect(hit.detail).toMatchObject({ denied: 3, examples: [{ url: `${GH}/d`, status: 404 }] })
+  })
+
+  it('T03：隐私/条款/登录等功能页的 noindex 是正常做法，不计入「误用」', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit({ noindex: 2 }, [
+      page({ url: `${GH}/privacy-policy`, metaRobots: 'noindex' }), page({ url: `${GH}/login`, metaRobots: 'noindex' }),
+    ])
+    expect(rule('T03').evaluate(ctx)).toBeNull()
+    ctx.siteAudit = audit({ noindex: 2 }, [
+      page({ url: `${GH}/privacy-policy`, metaRobots: 'noindex' }), page({ url: `${GH}/guide`, metaRobots: 'noindex' }),
+    ])
+    expect((rule('T03').evaluate(ctx) as RuleHitDraft).detail).toMatchObject({ count: 1, examples: [`${GH}/guide`] })
+  })
+})
+
+
+describe('真实站点冒烟修复（2026-10-03）', () => {
+  it('T07：链接优先爬取下 sitemap 页多半先被链接发现（discoveredVia=both），仍算来自 sitemap（metadocu.com 误报）', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit({ totalDiscovered: 5 }, [page({ discoveredVia: 'both' })])
+    expect(rule('T07').evaluate(ctx)).toBeNull()
+  })
+  it('逐页内容规则只看 2xx HTML 页：PDF 与 429 限流页不算缺 viewport；历史证据无 contentKind 仍按 HTML 计（jac/ruanyifeng 误报）', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit({}, [
+      page({ url: 'https://example.com/a.pdf', lightCheckExtra: ext({ hasViewport: false, contentKind: 'document' }) }),
+      page({ url: 'https://example.com/limited', httpStatus: 429, lightCheckExtra: ext({ hasViewport: false, contentKind: 'html' }) }),
+      page({ url: 'https://example.com/old', lightCheckExtra: ext({ hasViewport: false }) }),
+    ])
+    expect((rule('T13').evaluate(ctx) as RuleHitDraft).detail).toMatchObject({ count: 1, examples: ['https://example.com/old'] })
   })
 })

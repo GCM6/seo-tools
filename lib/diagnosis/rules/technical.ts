@@ -1,13 +1,27 @@
+import { parseRobotsAllowed } from '@/lib/collection/robots'
 import type { Rule, RuleHitDraft, RuleSeverity } from '../types'
+import { checkHreflang } from './hreflang-codes'
 import { analyzeCwv, lighthouseClues, ttfbConcern, TTFB_SLOW_MS } from '@/lib/collection/psi-analyze'
+import { readLinkGraph } from '@/lib/crawl/link-graph'
+import { isUtilityPage } from '@/lib/crawl/link-integrity'
 
 // P1 技术健康规则组（确定性、纯函数，消费已落库证据）。
 // —— 阈值均为启发式经验值，随 RULES_VERSION 版本化，非行业硬标准 ——
 const HTTP_ERROR_WARN_RATIO = 0.05 // 4xx+5xx 占已检页比例的告警线
+const DENIED_STATUSES = new Set([401, 403, 429]) // 拒绝访问 / 限流：多为反爬，不代表用户不可达
 const HTTP_ERROR_ERROR_RATIO = 0.15 // 超过此比例升级为 error
 export const RENDER_DEPENDENCY_RATIO = 0.3 // 初始正文/渲染后正文 低于此值判为渲染依赖
 const KEY_PAGE_MIN_INBOUND = 3 // 关键/聚合页最低内链入度
 const MAX_DEPTH = 3 // 点击深度上限：超过 3 层视为过深（权重传导与抓取效率下降）
+// 静态资源扩展名：未抓取的链接目标若是这些，不当作「页面」计入 T12（独立审查复现 F）。
+const ASSET_PATH = /\.(jpe?g|png|gif|webp|avif|svg|ico|bmp|pdf|zip|rar|7z|gz|tar|mp4|webm|mov|avi|mp3|wav|woff2?|ttf|otf|eot|css|js|mjs|json|xml|txt|csv|xlsx?|docx?|pptx?)$/i
+const isAssetUrl = (url: string) => {
+  try {
+    return ASSET_PATH.test(new URL(url).pathname)
+  } catch {
+    return false
+  }
+}
 
 // 渲染依赖判定：computeMainContentDelta 语义下 delta = renderedChars - initialChars，
 // 「初始 HTML 正文占渲染后正文 <30%」等价于 initialChars/renderedChars < 0.3。
@@ -73,11 +87,36 @@ const T01: Rule = {
     const refs: string[] = []
     const blockedUrls: string[] = []
     const blockedKeyUrls: string[] = []
-    const entryBlocked = ctx.entryPage?.robotsAllowed === false
+    // 入口可抓性：有 robots 原文且项目域名是完整 URL 时按 Googlebot 重新判定——旧证据的 robotsAllowed 是按 * 组算的
+    // （本工具爬虫的身份），重新分析旧 run 时会把白名单式 robots 误报成"Googlebot 不可抓"（最终审查 F3-1）。
+    const entryPathForGooglebot = (() => {
+      if (!ctx.robotsText) return null
+      try {
+        const u = new URL(ctx.project.domain)
+        return `${u.pathname}${u.search}`
+      } catch {
+        return null
+      }
+    })()
+    const entryBlocked = ctx.entryPage
+      ? entryPathForGooglebot !== null && ctx.robotsText
+        ? !parseRobotsAllowed(ctx.robotsText, entryPathForGooglebot, 'Googlebot')
+        : ctx.entryPage.robotsAllowed === false
+      : false
     if (ctx.entryPage && entryBlocked) refs.push(ctx.entryPage.id)
     const audit = ctx.siteAudit
     if (audit) {
-      const blocked = audit.payload.pages.filter((p) => p.checkStatus === 'blocked_by_robots')
+      // 爬虫按 * 组守规则；T01 讲的是 Googlebot——有 robots 原文时按 Googlebot 复核，只留 Googlebot 也不可抓的页（最终审查 F3-1）。
+      const googlebotBlocked = (url: string): boolean => {
+        if (!ctx.robotsText) return true
+        try {
+          const u = new URL(url)
+          return !parseRobotsAllowed(ctx.robotsText, `${u.pathname}${u.search}`, 'Googlebot')
+        } catch {
+          return true
+        }
+      }
+      const blocked = audit.payload.pages.filter((p) => p.checkStatus === 'blocked_by_robots' && googlebotBlocked(p.url))
       if (blocked.length > 0) {
         refs.push(audit.id)
         for (const p of blocked) {
@@ -87,18 +126,29 @@ const T01: Rule = {
       }
     }
     if (refs.length === 0) return null
+    if (entryBlocked || blockedKeyUrls.length > 0) {
+      return {
+        title: '入口/关键页被 robots.txt 屏蔽（Googlebot 不可抓）',
+        description:
+          '检测到页面对 Googlebot 处于 robots.txt Disallow 状态，搜索引擎无法抓取与收录，属技术健康最高优先级问题。',
+        evidenceRefs: refs,
+        scope: 'site',
+        detail: {
+          entryBlocked,
+          blockedCount: blockedUrls.length,
+          blockedKeyUrls,
+          blockedUrls: blockedUrls.slice(0, 10),
+        },
+      }
+    }
+    // 只有入口与重点页以外的 URL 被禁抓（如购物车、站内搜索结果页）：多为有意为之，降为 notice 提示核对（SP-A §5.2 #2）。
     return {
-      title: '入口/关键页被 robots.txt 屏蔽（Googlebot 不可抓）',
-      description:
-        '检测到页面对 Googlebot 处于 robots.txt Disallow 状态，搜索引擎无法抓取与收录，属技术健康最高优先级问题。',
+      title: `robots.txt 禁抓了 ${blockedUrls.length} 个 URL`,
+      description: '这些 URL 对 Googlebot 处于 Disallow 状态（如购物车、搜索结果页通常属于有意为之）。请确认其中没有需要被收录的页面。',
       evidenceRefs: refs,
       scope: 'site',
-      detail: {
-        entryBlocked,
-        blockedCount: blockedUrls.length,
-        blockedKeyUrls,
-        blockedUrls: blockedUrls.slice(0, 10),
-      },
+      severity: 'notice',
+      detail: { entryBlocked, blockedCount: blockedUrls.length, blockedKeyUrls, blockedUrls: blockedUrls.slice(0, 10) },
     }
   },
 }
@@ -115,21 +165,23 @@ const T02: Rule = {
     if (!audit) return null
     const { checked, http4xx, http5xx } = audit.payload.stats
     if (checked <= 0) return null
-    const bad = http4xx + http5xx
+    // 401/403/429 多为反爬/限流对本工具请求的拒绝，不代表用户不可达，不计入错误比例（与 L01 口径一致，第二轮独立审查 #16）。
+    const denied = audit.payload.pages.filter((p) => p.checkStatus === 'checked' && DENIED_STATUSES.has(p.httpStatus ?? 0)).length
+    const bad = Math.max(0, http4xx + http5xx - denied)
     const ratio = bad / checked
     if (ratio <= HTTP_ERROR_WARN_RATIO) return null
     const severity: RuleSeverity = ratio > HTTP_ERROR_ERROR_RATIO ? 'error' : 'warning'
     const examples = audit.payload.pages
-      .filter((p) => (p.httpStatus ?? 0) >= 400)
+      .filter((p) => (p.httpStatus ?? 0) >= 400 && !DENIED_STATUSES.has(p.httpStatus ?? 0))
       .map((p) => ({ url: p.url, status: p.httpStatus }))
       .slice(0, 10)
     return {
       title: '页面 4xx/5xx 错误比例偏高',
-      description: `已检 ${checked} 页中 ${bad} 页返回 4xx/5xx（占比 ${(ratio * 100).toFixed(1)}%），浪费抓取预算并影响用户可达性。`,
+      description: `已检 ${checked} 页中 ${bad} 页返回 4xx/5xx（占比 ${(ratio * 100).toFixed(1)}%，不含 401/403/429 等拒绝访问码），浪费抓取预算并影响用户可达性。${denied ? `另有 ${denied} 页对本工具的请求返回拒绝访问码，可能是反爬或限流，未计入。` : ''}`,
       evidenceRefs: [audit.id],
       scope: 'site',
       severity,
-      detail: { checked, http4xx, http5xx, ratio, examples },
+      detail: { checked, http4xx, http5xx, denied, ratio, examples },
     }
   },
 }
@@ -144,10 +196,13 @@ const T03: Rule = {
   evaluate(ctx): RuleHitDraft | null {
     const audit = ctx.siteAudit
     if (!audit) return null
-    const n = audit.payload.stats.noindex
+    // 隐私/条款/登录/购物车/站内搜索等功能页 noindex 是正常做法，不算「误用」（与 L03 口径一致，第二轮独立审查 #16）。
+    const noindexPages = audit.payload.pages.filter((p) => p.checkStatus === 'checked' && (p.metaRobots ?? '').toLowerCase().includes('noindex'))
+    const utility = noindexPages.filter((p) => isUtilityPage(p.url)).length
+    const n = Math.max(0, audit.payload.stats.noindex - utility)
     if (n <= 0) return null
-    const examples = audit.payload.pages
-      .filter((p) => p.checkStatus === 'checked' && (p.metaRobots ?? '').toLowerCase().includes('noindex'))
+    const examples = noindexPages
+      .filter((p) => !isUtilityPage(p.url))
       .map((p) => p.url)
       .slice(0, 10)
     return {
@@ -203,16 +258,24 @@ const T05: Rule = {
     if (!audit) return null
     const n = audit.payload.stats.orphanPages
     if (n <= 0) return null
+    const graph = readLinkGraph(audit.payload)
+    // 入口页零站内出链：多为 JS 渲染导航，初始 HTML 抽不到链接，孤岛判定不可信（spec S1 Review Focus 1）。
+    if (graph && (graph.nodeByUrl.get(graph.entryUrl)?.outInternal ?? 0) === 0) return null
     const examples = audit.payload.pages
       .filter((p) => p.discoveredVia === 'sitemap' && p.inboundLinkCount === 0 && p.checkStatus === 'checked')
       .map((p) => p.url)
       .slice(0, 10)
+    // 抓取未穷尽：未抓页可能链向它，只能说「已抓范围内未发现入链」（spec S1 §8）。
+    const partial = graph !== null && !graph.exhaustive
     return {
       title: '存在孤岛页（sitemap 声明但无内链入口）',
-      description: `检测到 ${n} 个页面仅在 sitemap 中声明、站内无任何内链指向，抓取发现与内链传权受限。`,
+      description: partial
+        ? `在已抓取的 ${audit.payload.stats.checked} 页中，有 ${n} 个 sitemap 声明的页面未发现任何内链指向（本次抓取未穷尽全站，未抓取页面可能链向它们），抓取发现与内链传权可能受限。`
+        : `检测到 ${n} 个页面仅在 sitemap 中声明、站内无任何内链指向，抓取发现与内链传权受限。`,
       evidenceRefs: [audit.id],
       scope: 'site',
-      detail: { count: n, examples },
+      detail: { count: n, examples, ...(graph ? { exhaustive: graph.exhaustive } : {}) },
+      ...(partial ? { claimType: 'inferred' as const } : {}),
     }
   },
 }
@@ -228,7 +291,8 @@ const T07: Rule = {
     const audit = ctx.siteAudit
     if (!audit) return null
     const { totalDiscovered } = audit.payload.stats
-    const sitemapPages = audit.payload.pages.filter((p) => p.discoveredVia === 'sitemap').length
+    // 链接优先爬取（S1）下 sitemap 页多半先被链接发现，记为 both：同样来自 sitemap（2026-10-03 metadocu.com 误报）。
+    const sitemapPages = audit.payload.pages.filter((p) => p.discoveredVia === 'sitemap' || p.discoveredVia === 'both').length
     // 有 sitemap 来源页 → 视为存在 sitemap，不判定；单页站点无从判定，跳过。
     if (sitemapPages > 0) return null
     if (totalDiscovered <= 1) return null
@@ -299,6 +363,38 @@ const T12: Rule = {
   evaluate(ctx): RuleHitDraft | null {
     const audit = ctx.siteAudit
     if (!audit) return null
+    const graph = readLinkGraph(audit.payload)
+    if (graph) {
+      // 只用深度精确的节点（深度 ≤ 视界 H）。实测只给已抓取的 2xx HTML 页；未抓取的超深链接目标类型与状态
+      // 未确认（可能是图片、404），单独计数且只能标 inferred（spec S1 §8 + 独立审查 P4/P7）。
+      const deepExact = graph.nodes.filter((n) => n.depthExact && n.depth !== null && n.depth > MAX_DEPTH)
+      const pages = deepExact.filter((n) => n.html)
+      const unfetched = deepExact.filter((n) => !n.fetched && !isAssetUrl(n.url))
+      if (pages.length === 0 && unfetched.length === 0) return null
+      const upperBoundDeepCount = graph.nodes.filter(
+        (n) => !n.depthExact && n.depth !== null && n.depth > MAX_DEPTH && (n.html || (!n.fetched && !isAssetUrl(n.url))),
+      ).length
+      const measured = pages.length > 0
+      const shown = measured ? pages : unfetched
+      const examples = [...shown]
+        .sort((a, b) => (b.depth ?? 0) - (a.depth ?? 0))
+        .slice(0, 10)
+        .map((n) => ({ url: n.url, depth: n.depth, fetched: n.fetched }))
+      return {
+        title: '页面点击深度过深',
+        description: measured
+          ? `在本次抓取的链接图内，${pages.length} 个已抓取页面从首页出发、沿搜索引擎可跟随链接的最短路径超过 ${MAX_DEPTH} 层（仅统计可精确测定深度的页面）${unfetched.length ? `；另有 ${unfetched.length} 个未抓取的链接目标同样超过 ${MAX_DEPTH} 层` : ''}。权重传导与抓取效率随深度递减，重点页应压到 ${MAX_DEPTH} 层内。`
+          : `在本次抓取的链接图内，有 ${unfetched.length} 个链接目标位于首页出发、沿搜索引擎可跟随链接的第 ${MAX_DEPTH + 1} 层及更深（受抓取深度上限未抓取，页面类型与状态未确认）。重点页应压到 ${MAX_DEPTH} 层内。`,
+        evidenceRefs: [audit.id],
+        scope: 'site',
+        detail: {
+          maxDepth: MAX_DEPTH, count: shown.length, measuredPageCount: pages.length, unfetchedDeepCount: unfetched.length,
+          upperBoundDeepCount, examples, exactDepthHorizon: graph.exactDepthHorizon, closureComplete: graph.closureComplete,
+        },
+        ...(measured ? {} : { claimType: 'inferred' as const }),
+      }
+    }
+    // 历史证据无图谱：回退爬虫深度（旧口径）。
     const deep = audit.payload.pages.filter((p) => p.depth != null && p.depth > MAX_DEPTH)
     if (deep.length === 0) return null
     const examples = deep.map((p) => ({ url: p.url, depth: p.depth })).slice(0, 10)
@@ -315,13 +411,13 @@ const T12: Rule = {
 // —— 轻检扩展字段规则组（消费 siteAudit.payload.pages[].lightCheckExtra；旧证据无此字段则跳过该页）——
 const C09_ALT_MISSING_RATIO = 0.3 // 站级图片 alt 缺失率告警线（启发式）
 const SCANNABILITY_PARA_WORDS = 150 // 平均段落词数上限，超过判为不易扫描（启发式）
-// hreflang 语言-地区代码校验白名单（常见 ISO 3166-1 alpha-2 子集；命中错误码即告警）。
-// uk 是最常见误用（应为 gb）；本表只做「已知错误码」拦截，非完整 ISO 全表（随 RULES_VERSION 保鲜）。
-const INVALID_REGION_CODES = new Set(['uk', 'eu', 'en', 'us_en'])
 
+// 逐页内容规则只看成功返回的 HTML 页：PDF/图片/feed 与 404/429 等错误页没有 viewport、alt 可言
+// （2026-10-03 真实站点冒烟：PDF 与限流页被报成缺 viewport）。历史证据无 contentKind/httpStatus 时照旧计入。
 const pagesWithExtra = (ctx: Parameters<Rule['evaluate']>[0]) =>
   (ctx.siteAudit?.payload.pages ?? [])
     .filter((p) => p.checkStatus === 'checked' && p.lightCheckExtra)
+    .filter((p) => (p.lightCheckExtra!.contentKind ?? 'html') === 'html' && (p.httpStatus == null || (p.httpStatus >= 200 && p.httpStatus < 300)))
     .map((p) => ({ url: p.url, x: p.lightCheckExtra! }))
 
 // T06：重定向（跳转链/循环的方向性信号——本期仅凭 redirected 标志，非完整链路追踪）。
@@ -404,15 +500,17 @@ const T14: Rule = {
     const withHreflang = pagesWithExtra(ctx).filter((p) => p.x.hreflangEntries.length > 0)
     if (withHreflang.length === 0) return null // 单语言站：无 hreflang，跳过
 
+    // 按 BCP 47 子集逐个校验（SP-A §5.2 #1：语言 ISO 639-1 [-文字] [-地区 ISO 3166-1 alpha-2]，代码表见 hreflang-codes.ts）。
     const invalidCodes: string[] = []
+    const suggestions: Record<string, string> = {}
     let hasXDefault = false
     for (const p of withHreflang) {
       for (const e of p.x.hreflangEntries) {
-        const code = e.hreflang.toLowerCase()
-        if (code === 'x-default') { hasXDefault = true; continue }
-        const region = code.includes('-') ? code.split('-')[1] : ''
-        if (INVALID_REGION_CODES.has(code) || (region && INVALID_REGION_CODES.has(region))) {
+        if (e.hreflang.trim().toLowerCase() === 'x-default') { hasXDefault = true; continue }
+        const check = checkHreflang(e.hreflang)
+        if (!check.ok) {
           invalidCodes.push(e.hreflang)
+          if (check.suggestion) suggestions[e.hreflang] = check.suggestion
         }
       }
     }
@@ -425,7 +523,7 @@ const T14: Rule = {
       description: `多语言站的 hreflang 声明存在问题：${problems.join('；')}。错误的 hreflang 会导致错误地区版本被索引。`,
       evidenceRefs: [audit.id],
       scope: 'site',
-      detail: { invalidCodes: [...new Set(invalidCodes)], hasXDefault, affectedPages: withHreflang.length },
+      detail: { invalidCodes: [...new Set(invalidCodes)], suggestions, hasXDefault, affectedPages: withHreflang.length },
     }
   },
 }

@@ -1,7 +1,37 @@
 {
+  "preflight": {
+    "title": "运行前检查",
+    "loading": "正在检查各数据源……",
+    "failed": "检查没有完成。可以先继续，采集时会如实记录每个数据源的结果。",
+    "allReady": "全部数据源就绪。",
+    "unavailableSummary": "本次无法评估：{dims}",
+    "degradedSummary": "本次评估受限：{dims}",
+    "balance": "账户余额：{balance} 美元",
+    "state": { "ready": "可用", "degraded": "受限", "unavailable": "不可用" },
+    "source": { "project": "项目设置", "gsc": "Google Search Console", "dataforseo": "DataForSEO", "psi": "PageSpeed Insights", "render": "渲染检测", "ai_probe": "AI 引擎探针" },
+    "reason": {
+      "category_invalid": "产品/服务品类无效，请返回第 1 步用英文填写。",
+      "market_invalid": "目标市场无效，请返回第 1 步重新选择。",
+      "gsc_not_configured": "平台还没配置 Google 登录，暂时无法连接 GSC。",
+      "gsc_not_connected": "还没连接 GSC，排名与关键词数据拿不到。",
+      "gsc_site_missing": "已授权 GSC，但还没有选择站点。",
+      "gsc_token_invalid": "GSC 授权已失效，需要重新授权。",
+      "gsc_unreachable": "暂时连不上 Google 刷新 GSC 授权，本次可能拿不到数据。",
+      "dfs_no_credentials": "还没配置 DataForSEO 账号。",
+      "dfs_auth_failed": "DataForSEO 账号或密码不正确。",
+      "dfs_unreachable": "暂时连不上 DataForSEO，本次可能拿不到数据。",
+      "psi_no_key": "还没配置 PageSpeed API key：匿名调用常因配额用尽而失败。",
+      "render_not_configured": "还没配置渲染服务，无法对比 JavaScript 渲染前后的正文。",
+      "ai_not_configured": "还没配置任何 AI 引擎的 key。",
+      "ai_memory_only": "只配置了不联网的引擎（如 DeepSeek），无法检查 AI 是否引用本站。"
+    },
+    "fix": { "reauth_gsc": "重新授权", "select_gsc_site": "选择站点", "configure_key": "去配置", "edit_project": "修改项目信息" },
+    "dimension": { "eeat": "E-E-A-T", "content": "内容", "structured_data": "结构化数据", "site_type": "站点类型", "rich_results": "富媒体结果", "rankings": "排名", "keywords": "关键词", "technical": "技术与性能", "geo": "AI 可见度（GEO）", "competitors": "竞品", "backlinks": "外链" }
+  },
   "nav": {
     "projects": "项目",
     "rules": "规则库",
+    "knowledge": "知识脑",
     "settings": "设置",
     "newAnalysis": "新建分析",
     "menuTitle": "导航菜单",
@@ -128,6 +158,7 @@
     "projectManagement": "项目管理",
     "searchPlaceholder": "输入域名进行搜索…",
     "marketLabel": "市场",
+    "marketUnset": "未设置",
     "retestLabel": "回测:",
     "latestStatusLabel": "最近诊断状态",
     "findingsDetectedLabel": "已检测缺陷",
@@ -180,19 +211,18 @@
     "intro": "输入一个网址，Veris 会用真实数据（你的 GSC、各家 AI 的实测回答、页面抓取）做出 SEO + GEO 诊断——每条结论都附可复核的证据。",
     "urlLabel": "网址",
     "urlPlaceholder": "https://your-domain.com",
-    "industryLabel": "行业 / 垂直",
-    "industryOptions": [
-      "B2B SaaS · 项目协作",
-      "跨境电商",
-      "本地服务",
-      "其他…"
-    ],
-    "marketLabel": "市场 / 语言",
-    "marketOptions": [
-      "中文 · 中国大陆",
-      "English · Global",
-      "东南亚"
-    ],
+    "categoryLabel": "产品/服务品类（英文）",
+    "categoryPlaceholder": "例如 document metadata removal tool",
+    "categoryHint": "会写进英文 AI 探针问题与搜索查询：请用一句英文描述你卖的是什么。",
+    "categoryCandidates": "从首页识别的候选（点击填入，可再修改）",
+    "categoryInvalid": "请用英文描述你的产品或服务品类（3–80 个字符，只含字母、数字、空格与常见标点）。",
+    "sitePreviewLoading": "正在读取首页…",
+    "siteFactsTitle": "首页原文参考",
+    "marketLabel": "目标市场",
+    "targetKeywordsLabel": "目标关键词（可选）",
+    "targetKeywordsPlaceholder": "每行一个英文关键词，例如 remove pdf metadata",
+    "targetKeywordsHint": "最多 20 个，会优先作为排名与竞品分析的种子词。",
+    "targetKeywordsInvalid": "每行一个英文关键词（2–80 个字符），最多 20 行。",
     "competitorsLabel": "竞品（可选，手动填写）",
     "competitorsPlaceholder": "如 竞品 A, 竞品 B, 竞品 C（逗号分隔）",
     "enginesLabel": "探测引擎（GEO 可见度代理指标来源 · 基于开发者 API 采样）",
@@ -236,7 +266,7 @@
     "engineNeedsDataforseo": "需先在设置页配置 DataForSEO",
     "skipHint": "任一数据源都可先跳过；GSC 请稍后在项目详情页连接，其他 BYOK 数据源在设置页接入后重新诊断。",
     "scopeDomain": "网站",
-    "scopeIndustry": "行业",
+    "scopeIndustry": "品类",
     "scopeMarket": "市场",
     "scopeEngines": "AI 引擎",
     "scopeData": "数据源",
@@ -253,6 +283,8 @@
     "submitError": "创建分析失败，请重试。",
     "errorInvalidDomain": "站点地址无效，请检查后重试。",
     "errorDispatchFailed": "采集任务派发失败：后台任务服务（Inngest）不可用，请启动后重试。",
+    "errorCategoryRequired": "请先填写英文的产品/服务品类，再开始诊断。",
+    "errorMarketRequired": "请先选择目标市场，再开始诊断。",
     "note": "诊断为异步过程：只有真实采集到的 evidence 会进入下一屏；未配置的数据源保持待接入。"
   },
   "screen2": {
@@ -265,7 +297,7 @@
       "avgRank": "平均自然排名",
       "avgRankUnit": "位",
       "crawlableText": "非渲染正文可读性",
-      "schemaCoverage": "结构化数据足迹",
+      "schemaCoverage": "首页结构化数据类型",
       "schemaCoverageUnit": "类"
     },
     "pendingSource": "待接入 · {source}",
@@ -283,7 +315,7 @@
     "perEngineTitle": "分引擎 AI 可见度",
     "perEngineMeta": "各 AI 引擎引用差异大（重叠约 11–13%），分引擎报告、不合并。",
     "sentimentTitle": "引用情感",
-    "sentimentMeta": "品牌提及的情感分布（测量层分类器；n=5 方向性）。",
+    "sentimentMeta": "品牌提及的情感分布（测量层分类器；每条问题每个引擎采样 n={n}，仅供参考方向）。",
     "sentPositive": "正面",
     "sentNeutral": "中性",
     "sentNegative": "负面",
@@ -337,6 +369,8 @@
       "retry": "重试采集",
       "retrying": "正在重试…",
       "retryFailed": "重试失败，请稍后再试。",
+      "retryNeedsSetup": "项目品类/市场未设置，先去补充 →",
+      "retryRetestUnsupported": "回测不能直接重试（会丢掉基线、前后协议不一致），请回项目页从基线重新发起回测 →",
       "cancel": "中止诊断",
       "cancelling": "正在中止…",
       "cancelConfirm": "要中止本轮诊断吗？已采集的证据会保留。",
@@ -804,6 +838,8 @@
     "noindex": "noindex 是网页里「不要收录我」的指令。如果本该被搜索到的页面被误标了这个记号，它就不会出现在谷歌搜索结果里，等于对访客隐身。",
     "http4xx": "4xx 是服务器返回的「访问失败」状态码（比如 404 找不到页面）。这类链接可能是死链，访客点进来会看到报错页，也会被搜索引擎判为体验差。",
     "orphanPages": "孤岛页是指没有任何其他页面链接到它。搜索引擎主要靠页面之间的链接发现和评估内容，没人链接的页面很难被抓取、收录和排上排名。",
+    "clickDepth": "点击深度：从首页出发、沿可跟随的站内 HTML 链接（不含 nofollow、sitemap、RSS 等）到达该页所需的最少点击次数。标「≤」表示本次抓取未覆盖更浅的路径，真实深度可能更小；「不可达」表示在抓取完整的前提下沿可跟随链接到不了。",
+    "linkEquity": "内链权重：本次抓取的站内链接图上用 PageRank 模型估算的相对权重，显示为全站中位数的倍数（1.0× 居中，0.5× 以下偏低）。只反映站内链接结构，不是搜索引擎的真实权重；已抓页面少于 10 个时不计算。",
     "httpStatus": "HTTP 状态码是服务器对本次访问的回应结果：200 表示正常，301/302 表示跳转到了别的网址，404 表示页面不存在，5xx 表示服务器出错。非 200 的页面通常需要检查修复。",
     "urlPattern": "把网址结构相似的一批页面（比如所有产品详情页）自动归为一类，你不用逐个检查，抽查一个「代表页」就能判断这一整类页面的健康状况。",
     "renderDelta": "单位：字符数。数值 = 浏览器执行 JS 渲染后的正文字符数 − 网页最初返回的 HTML 正文字符数。正数越大，说明这个页面的核心内容越依赖 JS 才能显示，搜索引擎爬虫不一定会等 JS 跑完，可能抓不到这部分内容。",
@@ -850,6 +886,19 @@
       "blocked_by_robots": "robots 禁抓",
       "error": "失败"
     },
+    "linkStructureTitle": "链接结构（实测）",
+    "reachablePages": "首页可达 URL",
+    "unreachableSitemapPages": "首页不可达的 sitemap 页",
+    "brokenTargets": "站内断链目标",
+    "deadEndPages": "死胡同页",
+    "linkPartialNotice": "本次抓取未覆盖首页可达的全部页面：不可达与深度结论仅限已抓取范围，标「≤」的深度为上限值。",
+    "entryNoLinksNotice": "入口页初始 HTML 中未抽取到站内链接（常见于 JS 渲染导航），本次跳过链接结构分析。",
+    "clickDepth": "点击深度",
+    "inboundLinks": "入链",
+    "linkEquity": "内链权重",
+    "linkEquityNote": "内链权重为站内 PageRank 模型估算（全站中位数 = 1.0×），仅反映本次抓取的链接结构，不是搜索引擎的真实权重。",
+    "unreachable": "不可达",
+    "noPathFound": "未发现路径",
     "viewReport": "查看完整报告 →",
     "goToOutput": "前往输出 →"
   },
@@ -947,6 +996,20 @@
         "partial": "部分采集",
         "failed": "采集失败"
       },
+      "subSourceTitle": "子阶段",
+      "subSourceLabel": {
+        "dataforseo_seed_serp": "种子词 Google 排名",
+        "dataforseo_labs": "Labs 关键词数据",
+        "dataforseo_backlinks": "外链概况",
+        "dataforseo_bing_index": "Bing 收录",
+        "dataforseo_brand_serp": "品牌词搜索结果",
+        "third_party_wikipedia": "维基百科同名词条",
+        "third_party_reddit": "Reddit 讨论",
+        "social_presence_youtube": "YouTube",
+        "social_presence_g2": "G2",
+        "social_presence_trustpilot": "Trustpilot",
+        "social_presence_capterra": "Capterra"
+      },
       "sourceLabel": {
         "google_cse": "Google 前台可见性",
         "gsc": "Google Search Console",
@@ -956,12 +1019,14 @@
         "ai_probe": "AI 探针",
         "dataforseo": "DataForSEO",
         "ua_probe": "UA 爬虫探测",
-        "third_party": "第三方语料"
+        "third_party": "第三方语料",
+        "aio": "Google AI Overviews 实测",
+        "social_presence": "社媒与社区提及"
       }
     },
     "geo": {
       "title": "GEO 可见度补充",
-      "meta": "AI 搜索场景下的品牌可见度与认知质量，n=5 方向性抽样",
+      "meta": "AI 搜索场景下的品牌可见度与认知质量（方向性抽样）",
       "unbrandedHeadline": "无品牌提问召回 {present}/{total}（95% 置信下限 {wilsonPct}%）",
       "wilsonLabel": "95% 置信下限",
       "wilsonNote": "样本量小，单轮数字波动大；两轮区间不重叠，才能说是真实变化，不是噪声。",
@@ -1054,6 +1119,67 @@
       }
     },
     "keywords": {
+      "intentMap": {
+        "title": "搜索意图 → 承接页面",
+        "meta": "基于 GSC 查询-页面数据、DataForSEO 需求样本与全站爬取结构生成；共识别 {rows} 个需求组，其中 {issues} 个存在承接风险。",
+        "clean": "已检查到的查询暂无明显意图承接问题。",
+        "noPage": "无明确承接页",
+        "fitScore": "{score} 分",
+        "demandImpressions": "{count} 次展现",
+        "demandSearchVolume": "{count} 搜索量（估算）",
+        "col": {
+          "query": "搜索需求",
+          "intent": "意图",
+          "page": "当前承接页",
+          "demand": "需求",
+          "fit": "匹配度",
+          "issues": "问题",
+          "action": "建议动作"
+        },
+        "intent": {
+          "informational": "信息型",
+          "commercial": "商业调研",
+          "transactional": "交易/询盘",
+          "comparison": "对比选择",
+          "support": "支持/故障",
+          "local": "本地",
+          "navigational": "品牌导航",
+          "unknown": "未判定"
+        },
+        "role": {
+          "home": "首页",
+          "service": "服务页",
+          "product": "产品页",
+          "collection": "分类/聚合页",
+          "pricing": "价格页",
+          "comparison": "对比页",
+          "case_study": "案例页",
+          "blog": "博客/文章",
+          "docs": "文档",
+          "support": "帮助/支持",
+          "local": "本地页",
+          "about": "关于页",
+          "tool": "工具页",
+          "unknown": "未知角色"
+        },
+        "issue": {
+          "missing_landing_page": "缺承接页",
+          "intent_page_mismatch": "意图不匹配",
+          "overbroad_landing_page": "页面过宽",
+          "underlinked_landing_page": "内链弱",
+          "thin_landing_page": "页面偏薄",
+          "competing_pages": "页面竞争"
+        },
+        "action": {
+          "create_or_assign_landing_page": "创建或指定合适承接页",
+          "reshape_landing_page": "重塑页面以匹配搜索意图",
+          "split_or_refocus_page": "拆分或重新聚焦页面",
+          "strengthen_internal_links": "加强导航、面包屑和内链",
+          "consolidate_competing_pages": "合并或规范化竞争页面",
+          "improve_landing_page": "补强页面内容与结构",
+          "monitor": "持续观察"
+        }
+      },
       "estimateNote": "搜索量 / 难度为第三方估算（L3），非实测。",
       "gapsTitle": "关键词缺口",
       "empty": "未接入 GSC / DataForSEO，暂无关键词数据。",
@@ -1143,6 +1269,7 @@
     "starting": "发起中…",
     "error": "发起回测失败，请重试",
     "inProgress": "已有诊断进行中，查看",
+    "needsSetup": "项目品类/市场未设置，先去补充 →",
     "nextDue": "下次回测：{date}"
   },
   "rulesAdmin": {
@@ -1196,10 +1323,24 @@
   "routeFallback": {
     "loading": "正在加载诊断数据…"
   },
+  "notFound": {
+    "title": "页面不存在",
+    "description": "你访问的项目、诊断或页面不存在，可能已被删除，或链接有误。",
+    "backToProjects": "返回项目列表"
+  },
   "runError": {
     "title": "页面加载失败",
     "description": "抱歉，加载本页数据时出了问题。你可以重试；若持续失败，请返回诊断总览重新进入。",
     "retry": "重试",
     "backToOverview": "返回诊断总览"
+  },
+  "gscConnect": {
+    "error": {
+      "redirect_port_mismatch": "GSC 未连接：Google 授权回调地址是 {expected}，与你当前访问的端口不一致。授权成功后 Google 会把浏览器送到 {expected}，那里运行的不是本应用（因此会看到 404）。请停掉占用该端口的程序，用 pnpm dev 在该端口重启本应用后再连接；或把 GOOGLE_OAUTH_REDIRECT_URI 改为当前端口，并在 Google Cloud Console 的「已获授权的重定向 URI」中登记同一地址。",
+      "access_denied": "你在 Google 授权页取消了授权，GSC 未连接。需要时可再次点击连接。",
+      "oauth_error": "Google 授权未完成，GSC 未连接。请重试；若反复出现，请检查 Google Cloud Console 中该 OAuth 客户端的配置。",
+      "token_exchange_failed": "Google 授权成功，但换取访问令牌失败，GSC 未连接。请重新连接；若反复出现，请检查 GOOGLE_OAUTH_CLIENT_SECRET 与回调地址配置。"
+    },
+    "reauth": "Google 授权已失效（被撤销或已过期），无法读取 GSC 资源，采集也会失败。请点「重新连接 GSC」重新授权。"
   }
 }

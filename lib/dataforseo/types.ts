@@ -5,6 +5,8 @@
 
 // —— 结果型（provider 方法返回，纯 plain object，不含持久化字段）——
 
+import type { RawResponse } from '@/lib/collection/result'
+
 export interface SerpItem {
   domain: string
   url: string
@@ -24,6 +26,8 @@ export interface SeedSerpResult {
   locationCode: number
   languageCode: string
   results: SeedSerpEntry[]
+  // 任务级失败的种子词（逐词请求，单词失败不连累其他词）；全部成功时省略。
+  failedKeywords?: { keyword: string; error: string; statusCode?: number }[]
 }
 
 // Bing `site:` 收录检查（G04，影响 ChatGPT 可发现性）。
@@ -81,6 +85,8 @@ export interface DataforseoConfig {
   login: string
   password: string
   fetchImpl?: typeof fetch
+  // 每个 HTTP 响应的原文回调（SP-A §4.3），由采集层缓冲后在同一 step 内存档。
+  onResponse?: (info: { path: string; raw: RawResponse }) => void
 }
 
 // —— evidence payload 判别联合（采集层落库 / context 解析的权威形状，plan §0.2）——

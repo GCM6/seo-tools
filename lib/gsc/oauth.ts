@@ -122,6 +122,64 @@ export function sanitizeReturnTo(raw: string | null): string | null {
   return raw
 }
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+// 本地开发时 redirect_uri 是固定的 loopback 端口（Google Console 只认登记过的地址）。
+// 若应用实际跑在别的端口（例：3000 被其它项目占用，next dev 自动换到 3001），
+// Google 会把授权码送到该端口上的**另一个应用** → 用户在授权成功后看到 404，
+// 且授权码泄给了无关应用。发起授权前比对端口，不一致就不跳 Google。
+// 非 loopback（生产/预览域名）不拦：多域名同库部署是合法配置。
+export function checkLoopbackRedirectPort(
+  requestUrl: string,
+  env: Env = process.env,
+): { ok: true } | { ok: false; expected: string; actual: string } {
+  let redirect: URL
+  let current: URL
+  try {
+    redirect = new URL(readGscPlatformConfig(env).redirectUri)
+    current = new URL(requestUrl)
+  } catch {
+    return { ok: true }
+  }
+  if (!LOOPBACK_HOSTS.has(redirect.hostname) || !LOOPBACK_HOSTS.has(current.hostname)) return { ok: true }
+  if (redirect.port === current.port && redirect.protocol === current.protocol) return { ok: true }
+  return { ok: false, expected: redirect.origin, actual: current.origin }
+}
+
+// 授权往返结果以 query 形式带回 returnTo 页面（全页跳转，页面无法接 JSON）。
+export const GSC_CONNECT_ERRORS = ['redirect_port_mismatch', 'access_denied', 'oauth_error', 'token_exchange_failed'] as const
+export type GscConnectError = (typeof GSC_CONNECT_ERRORS)[number]
+
+// 仅用于向用户解释端口不一致：回调地址的 origin（服务端配置，可信）。
+export function gscRedirectOrigin(env: Env = process.env): string | null {
+  try {
+    return new URL(readGscPlatformConfig(env).redirectUri).origin
+  } catch {
+    return null
+  }
+}
+
+export function parseGscConnectError(raw: string | null | undefined): GscConnectError | null {
+  return (GSC_CONNECT_ERRORS as readonly string[]).includes(raw ?? '') ? (raw as GscConnectError) : null
+}
+
+export function appendGscResult(returnTo: string, params: Record<string, string>): string {
+  const q = returnTo.indexOf('?')
+  const path = q === -1 ? returnTo : returnTo.slice(0, q)
+  const search = new URLSearchParams(q === -1 ? '' : returnTo.slice(q + 1))
+  for (const [k, v] of Object.entries(params)) search.set(k, v)
+  return `${path}?${search.toString()}`
+}
+
+// refresh_token 被撤销 / 过期（Google 返回 invalid_grant）：只能重新授权，重试无用。
+// 注：OAuth 同意屏幕处于 Testing 发布状态时，Google 签发的 refresh_token 7 天即过期。
+export class GscAuthExpiredError extends Error {
+  constructor(message = 'gsc authorization expired (invalid_grant)') {
+    super(message)
+    this.name = 'GscAuthExpiredError'
+  }
+}
+
 interface GoogleTokenResponse {
   access_token?: string
   refresh_token?: string
@@ -193,6 +251,9 @@ export async function refreshAccessToken(
     }).toString(),
   })
   const body = (await res.json().catch(() => ({}))) as GoogleTokenResponse
+  if (body.error === 'invalid_grant') {
+    throw new GscAuthExpiredError(`gsc token refresh failed: ${res.status} invalid_grant`)
+  }
   if (!res.ok || !body.access_token) {
     throw new Error(`gsc token refresh failed: ${res.status} ${body.error ?? ''}`.trim())
   }

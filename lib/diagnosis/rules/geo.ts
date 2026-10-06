@@ -1,4 +1,4 @@
-import type { Rule, RuleHitDraft } from '../types'
+import type { Rule, RuleContext, RuleHitDraft } from '../types'
 import { isRenderDependent } from './technical'
 import { parseRobotsAllowed } from '@/lib/collection/robots'
 import { isWebSearchEnabledEngine } from '@/lib/probes/engine-capability'
@@ -6,10 +6,14 @@ import { isUgcPlatform } from '@/lib/probes/citation-platform'
 
 // P5 GEO 规则组：AI 抓取可见性与探针可见度。
 // —— 阈值为启发式经验值，随 RULES_VERSION 版本化 ——
-const AI_VISIBILITY_MIN_RATIO = 0.3 // 无品牌提问中主动召回品牌的占比低于此判为低可见（n=5 仅方向性，D5）
+// SP-A §5.3：小样本说明写探针实际采样 n（每条问题每个引擎），不再写死 n=5。
+const sampleNote = (ctx: RuleContext): string =>
+  `当前每条问题每个引擎采样 n=${ctx.probe?.samplesPerPromptPerEngine ?? 0}，结果仅供参考方向`
+
+const AI_VISIBILITY_MIN_RATIO = 0.3 // 无品牌提问中主动召回品牌的占比低于此判为低可见（n 见探针协议，仅方向性，D5）
 // G07：Reddit 近 N 月自然讨论 mentions 低于此阈值视为「第三方语料不足」（启发式，随 RULES_VERSION 固化）。
 const THIRD_PARTY_REDDIT_MIN_MENTIONS = 3
-// G09：含品牌样本中负面占比达到此比例即判「负面方向偏高」（启发式，随 RULES_VERSION 固化；n=5 恒方向性）。
+// G09：含品牌样本中负面占比达到此比例即判「负面方向偏高」（启发式，随 RULES_VERSION 固化；n 见探针协议，恒方向性）。
 const SENTIMENT_NEGATIVE_MIN_RATIO = 0.3
 // G10：branded 层 speculative 占比达到此比例即判「疑似编造」（词表启发式，随 RULES_VERSION 固化）。
 const AI_FABRICATION_MIN_RATIO = 0.3
@@ -24,10 +28,13 @@ const UGC_SHARE_THRESHOLD = 0.25
 // isWebSearchEnabledEngine（Wave 3 消除 summary.ts / geo.ts / components 三份复制）。
 
 // —— AI 爬虫 UA 注册表（ai_crawler_ua_registry，随 spec §11.1 版本化维护）——
-// 检索型：为 ChatGPT/Perplexity/Claude/Gemini 的即时检索取答供数，被屏蔽 = 放弃 AI 引用资格（error）。
-const SEARCH_CRAWLER_UAS = ['OAI-SearchBot', 'Claude-SearchBot', 'PerplexityBot', 'Google-Extended'] as const
+// 检索型：为 ChatGPT/Perplexity/Claude 的即时检索取答供数，被屏蔽 = 放弃 AI 引用资格（error）。
+const SEARCH_CRAWLER_UAS = ['OAI-SearchBot', 'Claude-SearchBot', 'PerplexityBot'] as const
 // 训练型：仅用于模型训练语料，屏蔽是品牌合理选择，仅作说明（notice）。
-const TRAINING_CRAWLER_UAS = ['GPTBot', 'ClaudeBot', 'CCBot', 'Bytespider'] as const
+// Google-Extended 归这一类：它是控制 Gemini 等产品使用内容的 robots 令牌（Gemini 训练 + Gemini 应用 / Vertex AI 的
+// Grounding），不影响 Google 搜索收录与排名（google-common-crawlers 文档 2026-07-14 版，SP-A §5.2 #4 / §9 #6）。
+const GOOGLE_EXTENDED = 'Google-Extended'
+const TRAINING_CRAWLER_UAS = ['GPTBot', 'ClaudeBot', 'CCBot', 'Bytespider', GOOGLE_EXTENDED] as const
 
 // 实体消歧权威节点：sameAs 指向这些域名才被视为可锚定实体身份（wikidata 最强，其余为业务/官方社媒权威）。
 const AUTHORITY_HOSTS = [
@@ -42,7 +49,7 @@ const AUTHORITY_HOSTS = [
   'youtube.com',
 ] as const
 // 被视为「组织实体」的 schema 类型。
-const ORG_TYPES = ['Organization', 'Brand'] as const
+export const ORG_TYPES = ['Organization', 'Brand'] as const
 
 function hostOfUrl(u: string): string | null {
   try {
@@ -108,7 +115,7 @@ const G05: Rule = {
     if (ratio >= AI_VISIBILITY_MIN_RATIO) return null
     return {
       title: 'AI 答案可见度偏低',
-      description: `无品牌提问中，AI 主动召回品牌仅 ${unbranded.present}/${unbranded.total} 次（占比 ${(ratio * 100).toFixed(0)}%，低于 30%；Wilson 95% 下限 ${(unbranded.wilsonLow * 100).toFixed(0)}%）。当前 n=5 为方向性样本，非硬指标。`,
+      description: `无品牌提问中，AI 主动召回品牌仅 ${unbranded.present}/${unbranded.total} 次（占比 ${(ratio * 100).toFixed(0)}%，低于 30%；Wilson 95% 下限 ${(unbranded.wilsonLow * 100).toFixed(0)}%）。${sampleNote(ctx)}，非硬指标。`,
       evidenceRefs: [probeEvidenceId],
       scope: 'site',
       detail: {
@@ -149,7 +156,7 @@ const G06: Rule = {
     const enginePromptPairs = onlineEngines.reduce((sum, e) => sum + e.promptsTotal, 0)
     return {
       title: '目标域在 AI 答案中零引用',
-      description: `检索型 AI 引擎（${onlineEngines.map((e) => e.engine).join('、')}）针对全部 ${promptsTotal} 个无品牌探针问题的答案中，品牌/目标域均未被主动召回或引用（记忆型引擎如 DeepSeek 不计入本判定；含品牌探针问题里模型复述问题文本自带品牌名，不计入本判定）。当前 n=5 为方向性样本。`,
+      description: `检索型 AI 引擎（${onlineEngines.map((e) => e.engine).join('、')}）针对全部 ${promptsTotal} 个无品牌探针问题的答案中，品牌/目标域均未被主动召回或引用（记忆型引擎如 DeepSeek 不计入本判定；含品牌探针问题里模型复述问题文本自带品牌名，不计入本判定）。${sampleNote(ctx)}。`,
       evidenceRefs: [probeEvidenceId],
       scope: 'site',
       detail: { promptsTotal, enginePromptPairs, engines: onlineEngines.map((e) => e.engine), directional: true },
@@ -184,7 +191,11 @@ const G01: Rule = {
     if (blockedTraining.length > 0) {
       hits.push({
         title: '训练型 AI 爬虫被 robots 屏蔽（合理选择，仅说明）',
-        description: `robots.txt 对训练型 AI 爬虫（${blockedTraining.join('、')}）Disallow /。屏蔽训练型爬虫是品牌对语料授权的合理选择，不影响检索型引用资格，仅作说明。`,
+        description: `robots.txt 对训练型 AI 爬虫（${blockedTraining.join('、')}）Disallow /。屏蔽训练型爬虫是品牌对语料授权的合理选择，不影响 ChatGPT / Perplexity / Claude 的检索型引用资格，仅作说明。${
+          (blockedTraining as readonly string[]).includes(GOOGLE_EXTENDED)
+            ? '其中 Google-Extended 不是独立爬虫，而是 robots 控制令牌：屏蔽后 Google 不把本站内容用于训练 Gemini 模型，也不用于 Gemini 应用与 Vertex AI 的 Grounding（作答时取材）；不影响 Google 搜索收录与排名。'
+            : ''
+        }`,
         evidenceRefs: [evId],
         scope: 'geo:robots',
         severity: 'notice',
@@ -234,7 +245,9 @@ const G02: Rule = {
   evaluate(ctx): RuleHitDraft | null {
     const { uaProbe } = ctx
     if (!uaProbe) return null
-    const blockedSearch = uaProbe.crawlers.filter((c) => c.kind === 'search' && c.blocked)
+    // 旧证据里 Google-Extended 曾被当作检索型 UA 探测；它没有独立的 HTTP UA，Google 不会用这个 UA 来抓，被拦不说明任何事。
+    // 旧证据里 5xx 也曾记成 blocked：服务端错误不是 CDN/WAF 封禁，不报（最终审查 F1-2）。
+    const blockedSearch = uaProbe.crawlers.filter((c) => c.kind === 'search' && c.blocked && c.ua !== GOOGLE_EXTENDED && !(typeof c.status === 'number' && c.status >= 500))
     if (blockedSearch.length === 0) return null
     const uas = blockedSearch.map((c) => c.ua).join('、')
     return {
@@ -249,8 +262,8 @@ const G02: Rule = {
   },
 }
 
-// G07：第三方语料缺失——无 Wikipedia 条目「且」Reddit 自然讨论不足（品牌提及与 AI 可见性相关 0.664，§2）。
-// 决策：只有当两路信号「都」不达标才报（无 wiki 且 reddit mentions 低于阈值）；任一达标即 null，避免噪音。
+// G07：第三方语料缺失——没有同名英文维基词条「且」Reddit 自然讨论不足（品牌提及与 AI 可见性相关 0.664，§2）。
+// 决策：两路都测到且都不达标才报；任一达标或任一采集失败即 null（避免噪音，也不把失败当缺失）。
 const G07: Rule = {
   id: 'G07',
   pillar: 'P5',
@@ -260,19 +273,22 @@ const G07: Rule = {
   evaluate(ctx): RuleHitDraft | null {
     const { thirdParty } = ctx
     if (!thirdParty) return null
-    const wikiPresent = thirdParty.wikipedia.exists
-    const redditEnough = thirdParty.reddit.mentions >= THIRD_PARTY_REDDIT_MIN_MENTIONS
-    // 任一权威语料信号达标 → 不报（只 wiki 或只 reddit 达标视为已有第三方存在度）。
-    if (wikiPresent || redditEnough) return null
+    // SP-A §4.4 判定表：只用状态为 ok 的子结果；任一路采集失败即无法判定（由报告显示"未检查"），不当成"无/0"。
+    const w = thirdParty.wikipedia
+    if (w.status !== 'ok') return null
+    if (w.exists) return null // 有同名词条 → 不缺失
+    const r = thirdParty.reddit
+    if (r.status !== 'ok') return null
+    if (r.mentions >= THIRD_PARTY_REDDIT_MIN_MENTIONS) return null
     return {
       title: '品牌第三方网络语料缺失',
-      description: `品牌第三方网络提及不足：无 Wikipedia 条目，Reddit 近 ${thirdParty.reddit.windowDays} 天自然讨论仅 ${thirdParty.reddit.mentions} 条（低于 ${THIRD_PARTY_REDDIT_MIN_MENTIONS}）。AI 引擎主要引用第三方权威语料（品牌提及与 AI 可见性相关 0.664，§2），第三方存在度不足会削弱被引用概率。`,
+      description: `未找到与品牌名或别名同名的英文维基词条；Reddit 近 ${r.windowDays} 天自然讨论仅 ${r.mentions} 条（低于 ${THIRD_PARTY_REDDIT_MIN_MENTIONS}）。AI 引擎主要引用第三方权威语料（品牌提及与 AI 可见性相关 0.664，§2），第三方存在度不足会削弱被引用概率。`,
       evidenceRefs: [thirdParty.evidenceId],
       scope: 'geo:thirdparty',
       detail: {
-        wikipediaExists: wikiPresent,
-        redditMentions: thirdParty.reddit.mentions,
-        redditWindowDays: thirdParty.reddit.windowDays,
+        wikipediaExists: false,
+        redditMentions: r.mentions,
+        redditWindowDays: r.windowDays,
         redditThreshold: THIRD_PARTY_REDDIT_MIN_MENTIONS,
       },
     }
@@ -302,7 +318,7 @@ const G08: Rule = {
 }
 
 // G09：AI 引用情感方向——含品牌样本中负面占比偏高（分类器为测量层解析器，可抽查原文，非 agent 结论）。
-// claim=inferred：负面「方向」在 n=5 下只作方向性推断，不下硬结论。
+// claim=inferred：负面「方向」在小样本（n 见探针协议）下只作方向性推断，不下硬结论。
 const G09: Rule = {
   id: 'G09',
   pillar: 'P5',
@@ -318,7 +334,7 @@ const G09: Rule = {
     if (negativeRatio < SENTIMENT_NEGATIVE_MIN_RATIO) return null
     return {
       title: 'AI 引用情感负面占比偏高',
-      description: `AI 答案中品牌提及的负面/比较劣势占比偏高（负面 ${sentiment.negative}/${sentiment.total}，占 ${(negativeRatio * 100).toFixed(0)}%）。当前 n=5 为方向性样本，情感分类为测量层解析器结果（随 parser_version 版本化），可抽查原文复核。`,
+      description: `AI 答案中品牌提及的负面/比较劣势占比偏高（负面 ${sentiment.negative}/${sentiment.total}，占 ${(negativeRatio * 100).toFixed(0)}%）。${sampleNote(ctx)}；情感分类为测量层解析器结果（随 parser_version 版本化），可抽查原文复核。`,
       evidenceRefs: [probeEvidenceId],
       scope: 'geo:sentiment',
       detail: {
@@ -404,7 +420,7 @@ const G11: Rule = {
     const ugcPlatforms = [...new Set(citedDomains.filter((d) => isUgcPlatform(d.platform)).map((d) => d.platform))].slice(0, 4)
     return {
       title: '品类回答的引用大量来自社区/UGC 平台，且未引用你的站点',
-      description: `无品牌提问的 AI 答案中，被引用来源里社区/UGC 平台（如${ugcPlatforms.join('、') || '社区讨论型平台'}）占比达 ${(ugcCitationShare * 100).toFixed(0)}%（高于 ${(UGC_SHARE_THRESHOLD * 100).toFixed(0)}%），而目标域名未出现在任何被引用来源中。当前 n=5 为方向性样本。`,
+      description: `无品牌提问的 AI 答案中，被引用来源里社区/UGC 平台（如${ugcPlatforms.join('、') || '社区讨论型平台'}）占比达 ${(ugcCitationShare * 100).toFixed(0)}%（高于 ${(UGC_SHARE_THRESHOLD * 100).toFixed(0)}%），而目标域名未出现在任何被引用来源中。${sampleNote(ctx)}。`,
       evidenceRefs: [probeEvidenceId],
       scope: 'geo:ugc-citation',
       detail: {

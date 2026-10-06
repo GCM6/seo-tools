@@ -20,8 +20,8 @@ const getRunMock = vi.fn(async (id: string) =>
     ? { id: 'run_base', projectId: 'proj_1', runType: 'baseline', status: 'reviewing', protocolVersion: 'v3' }
     : undefined,
 )
-const getProjectMock = vi.fn(async (id: string) =>
-  id === 'proj_1' ? { id: 'proj_1', domain: 'https://example.com/' } : null,
+const getProjectMock = vi.fn(async (id: string): Promise<{ id: string; domain: string; industry: string; market: string } | null> =>
+  id === 'proj_1' ? { id: 'proj_1', domain: 'https://example.com/', industry: 'document metadata removal tool', market: 'global-en' } : null,
 )
 const markRunStatusMock = vi.fn(async (...args: unknown[]) => {
   void args
@@ -105,6 +105,15 @@ describe('POST /api/runs/[id]/retest', () => {
   })
 
   // 同项目并发保护（spec §2.3）：已有进行中 run 时拒绝发起回测，不插入不派发。
+  it('SP-A §3.5：项目品类无效 → 422 category_required，不建回测 run、不派发', async () => {
+    getProjectMock.mockImplementationOnce(async () => ({ id: 'proj_1', domain: 'https://example.com/', industry: 'B2B SaaS · 项目协作', market: 'global-en' }))
+    const res = await post('run_base')
+    expect(res.status).toBe(422)
+    // 带 projectId：界面据此直链到向导补充品类/市场。
+    expect(await res.json()).toEqual({ error: 'category_required', projectId: 'proj_1' })
+    expect(sendMock).not.toHaveBeenCalled()
+  })
+
   it('returns 409 run_in_progress when the project already has an active run', async () => {
     findActiveRunMock.mockResolvedValue({ id: 'run_active', status: 'diagnosing' })
     const res = await post('run_base')

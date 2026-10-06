@@ -147,6 +147,32 @@ export interface ProbeSummary {
   // （不含 retrievedUrls，与 citedDomains 同口径），为 0 时无法计算比例，返回 null（不是 0%，
   // 避免"无数据"被误读为"测得 0%"）。
   ugcCitationShare: number | null
+  // SP-A §5.3：每个引擎、每条问题的实际采样次数（报告文案写这个 n，不再写死 n=5）。
+  // 各引擎取"有样本的问题"上最常见的样本数——个别问题采集失败不会把它拉成 0——再取各引擎最小值；没有问题集时为 0。
+  samplesPerPromptPerEngine: number
+}
+
+function samplesPerPromptPerEngine(promptIds: Set<string>, results: ProbeSummaryInput['results']): number {
+  if (promptIds.size === 0) return 0
+  const byEngine = new Map<string, Map<string, number>>() // engine → promptId → 样本数
+  for (const r of results) {
+    if (!promptIds.has(r.promptId)) continue
+    const engine = r.provider ?? 'unknown'
+    const perPrompt = byEngine.get(engine) ?? new Map<string, number>()
+    perPrompt.set(r.promptId, (perPrompt.get(r.promptId) ?? 0) + 1)
+    byEngine.set(engine, perPrompt)
+  }
+  let min = 0
+  for (const perPrompt of byEngine.values()) {
+    const freq = new Map<number, number>()
+    for (const c of perPrompt.values()) freq.set(c, (freq.get(c) ?? 0) + 1)
+    // 众数；频次并列时取较小的样本数（保守）。
+    let mode = 0
+    let best = 0
+    for (const [c, f] of freq) if (f > best || (f === best && c < mode)) [mode, best] = [c, f]
+    min = min === 0 ? mode : Math.min(min, mode)
+  }
+  return min
 }
 
 export function aggregateProbeSummary(input: ProbeSummaryInput): ProbeSummary | null {
@@ -351,5 +377,6 @@ export function aggregateProbeSummary(input: ProbeSummaryInput): ProbeSummary | 
     citationRate,
     citedDomains,
     ugcCitationShare,
+    samplesPerPromptPerEngine: samplesPerPromptPerEngine(new Set(ordered.map((p) => p.id)), results),
   }
 }

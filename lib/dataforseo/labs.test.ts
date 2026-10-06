@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createDataforseoClient } from './client'
 import { keywordData } from './labs'
+import { reasonOf } from '@/lib/collection/result'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -72,5 +73,16 @@ describe('keywordData', () => {
     const out = await keywordData(clientWith(fetchMock), [], { locationCode: 1, languageCode: 'en' })
     expect(fetchMock).not.toHaveBeenCalled()
     expect(out).toEqual([])
+  })
+})
+
+describe('keywordData：没有 result 与"有 result 但没有词"要区分（第二波审查 C1）', () => {
+  it('任务成功但 result 为 null → 抛错 empty_result', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ status_code: 20000, tasks: [{ status_code: 20000, result: null }] }))
+    expect(reasonOf(await keywordData(clientWith(fetchMock as unknown as typeof fetch), ['a'], { locationCode: 2840, languageCode: 'en' }).catch((e: unknown) => e))).toBe('empty_result')
+  })
+  it('有 result 但 items 为空 → []（这些词没有 Labs 数据，是测量结果）', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ status_code: 20000, tasks: [{ status_code: 20000, result: [{ items: [] }] }] }))
+    expect(await keywordData(clientWith(fetchMock as unknown as typeof fetch), ['a'], { locationCode: 2840, languageCode: 'en' })).toEqual([])
   })
 })

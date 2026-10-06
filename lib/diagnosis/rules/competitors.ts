@@ -67,7 +67,7 @@ const Q01: Rule = {
   },
 }
 
-// Q02 竞品 AI SoV 对比：复用既有探针 SoV，本站 vs 确认竞品在 AI 答案中的出现占比。measured_sample，方向性 n=5。
+// Q02 竞品 AI SoV 对比：复用既有探针 SoV，本站 vs 确认竞品在 AI 答案中的出现占比。measured_sample，小样本方向性（n 见探针协议）。
 // SP-A2 #6：SoV 现按确认竞品集重解析原文（解冻探针期匹配）+ 分引擎分列（引擎不可互推，§7.3）。
 const Q02: Rule = {
   id: 'Q02',
@@ -108,7 +108,7 @@ const Q02: Rule = {
     return {
       title: '竞品 AI 可见度（SoV）对比',
       description:
-        '在同一探针问题集上，统计本站与确认竞品在 AI 答案（ChatGPT/Perplexity/Gemini/Claude）中被提及的占比（Share of Voice）。SoV 按确认竞品集重解析原文得出；n=5 为方向性样本、非硬指标。已分引擎分列（引擎间引用不可互推）。',
+        `在同一探针问题集上，统计本站与确认竞品在 AI 答案（ChatGPT/Perplexity/Gemini/Claude）中被提及的占比（Share of Voice）。SoV 按确认竞品集重解析原文得出；每条问题每个引擎采样 n=${probe.samplesPerPromptPerEngine}，结果仅供参考方向、非硬指标。已分引擎分列（引擎间引用不可互推）。`,
       evidenceRefs: [probeEvidenceId],
       scope: 'competitors:ai-sov',
       detail: { comparison, perEngine, directional: true, totalSamples: probe.totalSamples },

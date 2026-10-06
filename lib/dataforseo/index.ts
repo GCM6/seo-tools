@@ -1,20 +1,6 @@
-// DataForSEO provider 公共入口：re-export 契约类型 + provider 工厂 + env 派生工厂/门控。
+// DataForSEO provider 公共入口：re-export 契约类型 + provider 工厂。
+// 凭据统一走 lib/credentials/dataforseo.ts 的 resolveDataforseoCredentials（DB 优先、env 回退，SP-A §4.6）；
+// 原先只读 env 的 isDataforseoConfigured / createDataforseoProviderFromEnv 已删除，避免再出现各链路各读各的凭据。
 
 export * from './types'
 export { createDataforseoProvider } from './provider'
-
-import { createDataforseoProvider } from './provider'
-import type { DataforseoProvider } from './types'
-
-// env 门控：DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD 均非空才算已配置（BYOK，V0 无 key 存储 UI）。
-export function isDataforseoConfigured(): boolean {
-  return Boolean(process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD)
-}
-
-// 从 env 构造 provider（缺失时 login/password 为空串 → isConfigured() 为 false）。
-export function createDataforseoProviderFromEnv(): DataforseoProvider {
-  return createDataforseoProvider({
-    login: process.env.DATAFORSEO_LOGIN ?? '',
-    password: process.env.DATAFORSEO_PASSWORD ?? '',
-  })
-}

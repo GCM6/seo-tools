@@ -2,9 +2,17 @@ import { describe, it, expect } from 'vitest'
 import { buildRuleContext } from './context'
 import { evaluateRules } from './engine'
 import { allRules } from './rules'
-import { generateRecommendation } from './recommend'
+import { generateRecommendation as generateOrNull } from './recommend'
 import { severityToFinding, type DiagnosisEvidenceRow } from './types'
 import type { SiteAuditPayload } from '@/lib/crawl/site-audit'
+
+// 非只记录型规则必有建议：取不到就让用例失败（G08 等只记录型规则的 null 断言直接用 generateOrNull）。
+const generateRecommendation = (...args: Parameters<typeof generateOrNull>) => {
+  const rec = generateOrNull(...args)
+  if (!rec) throw new Error('expected a recommendation draft')
+  return rec
+}
+
 
 // 端到端集成：真实模块（规则集 + 引擎 + 建议生成器，无 fake）跑一份贴近生产的证据，
 // 证明「采集证据 → findings → recommendations」这条链真能出数据，且每条 finding 满足

@@ -28,6 +28,8 @@ export interface RecommendationTemplate {
   // 覆盖按支柱派生的默认 validation_spec（spec §5.1-2）；Partial——只声明要覆盖的字段，
   // 其余按支柱默认 + hit 派生 scope 兜底。位次类（K02/K06）覆盖为 position/decrease。
   validationSpec?: Partial<ValidationSpec>
+  // 只记录型规则（SP-A §5.3）：命中照常生成发现，但不生成建议（如 G08 llms.txt 仅记录）。
+  recordOnly?: true
 }
 
 // google-seo-expert BLOCKERS 蒸馏为内容类 prompt 的全局否定约束（每条内容 prompt 必带）。
@@ -50,7 +52,7 @@ export const GLOBAL_CONTENT_BLOCKERS: string[] = [
 const CANONICAL_SNIPPET = '<!-- 每页 <head> 内，指向自身规范 URL（同域、绝对路径、与 sitemap/hreflang 一致） -->\n<link rel="canonical" href="https://example.com/current-page/" />'
 const META_INDEX_SNIPPET = '<!-- 需被收录的重点页/模板页，移除 noindex；如需显式允许： -->\n<meta name="robots" content="index, follow" />'
 const ROBOTS_ALLOW_SNIPPET = '# robots.txt —— 放开被误屏蔽的重点路径（不要 Disallow 收录页）\nUser-agent: Googlebot\nAllow: /\n# 仅屏蔽真正无价值路径，如：\nDisallow: /cart\nDisallow: /*?sort='
-const AI_CRAWLER_SNIPPET = '# robots.txt —— 放开检索型 AI 爬虫（影响 ChatGPT/Perplexity 可发现性）\nUser-agent: OAI-SearchBot\nAllow: /\nUser-agent: PerplexityBot\nAllow: /\nUser-agent: Claude-SearchBot\nAllow: /\n# 训练型爬虫（GPTBot/ClaudeBot/Google-Extended）是否放开按品牌策略自定，仅影响语料收录'
+const AI_CRAWLER_SNIPPET = '# robots.txt —— 放开检索型 AI 爬虫（影响 ChatGPT/Perplexity 可发现性）\nUser-agent: OAI-SearchBot\nAllow: /\nUser-agent: PerplexityBot\nAllow: /\nUser-agent: Claude-SearchBot\nAllow: /\n# 训练型爬虫（GPTBot/ClaudeBot）与 Google-Extended（管 Gemini 训练与 Grounding，不影响 Google 搜索）是否放开按品牌策略自定'
 const VIEWPORT_SNIPPET = '<!-- 移动优先索引必备，置于 <head> 首部 -->\n<meta name="viewport" content="width=device-width, initial-scale=1" />'
 const HREFLANG_SNIPPET = '<!-- 各语言版本互指 + x-default；语言-地区用 ISO 639-1 + ISO 3166-1（en-gb 而非 en-uk） -->\n<link rel="alternate" hreflang="en" href="https://example.com/" />\n<link rel="alternate" hreflang="zh-cn" href="https://example.com/zh/" />\n<link rel="alternate" hreflang="x-default" href="https://example.com/" />'
 const JSONLD_SNIPPET = '<!-- 有效 JSON-LD 示例（类型/属性须存在于 schema.org，值须与前端正文一致） -->\n<script type="application/ld+json">\n{\n  "@context": "https://schema.org",\n  "@type": "Product",\n  "name": "示例产品",\n  "offers": { "@type": "Offer", "price": "99.00", "priceCurrency": "USD" }\n}\n</script>'
@@ -139,6 +141,144 @@ export const templates: Record<string, RecommendationTemplate> = {
     validationMethod: '重新抓取确认重点页 depth ≤3。',
     promptType: 'technical',
   },
+  // —— 链接完整性 L01–L07（spec 2026-09-29-s2-link-integrity §6）——
+  L01: {
+    what: '修复站内断链：把指向 404/410 或重定向循环的内链改到有效目标；已删除页面设置 301 到最相关的现存页，循环跳转修正服务器跳转规则。优先修导航/页眉/页脚里的全站链接。',
+    whyHint: '断链把访客和抓取器带进错误页，浪费抓取预算，也中断了内链权重传递。',
+    effort: 'low',
+    validationMethod: '重新抓取确认站内断链目标数为 0（L01 不再命中）。',
+    promptType: 'technical',
+  },
+  L02: {
+    what: '把指向跳转 URL 的内链直接改成最终地址（含协议、www、末尾斜杠与大小写）。',
+    whyHint: '每条指向跳转的内链都多一跳重定向，拖慢访问并增加抓取成本。',
+    effort: 'low',
+    validationMethod: '重新抓取确认 L02 不再命中，内链目标均直接返回 200。',
+    promptType: 'technical',
+  },
+  L03: {
+    what: '检查被内链指向的 noindex / canonical 指向他页的页面：若应收录，移除 noindex 或改正 canonical；若不应收录，把内链改指向规范 URL。',
+    whyHint: '可跟随内链指向不参与排名的页面，传递的权重被浪费。',
+    effort: 'mid',
+    validationMethod: '重新抓取确认 L03 命中数下降，内链目标为可收录的规范 URL。',
+    promptType: 'technical',
+  },
+  L04: {
+    what: '为首页不可达的页面建立入口：从导航、分类/聚合页或相关正文加入可跟随链接，使其能从首页点击到达。',
+    whyHint: '只能靠 sitemap 发现的页面拿不到内链权重，抓取频率与排名潜力都受限。',
+    effort: 'mid',
+    validationMethod: '重新抓取确认这些页面出现在首页可达集合中（L04 不再命中），并有精确点击深度。',
+    promptType: 'technical',
+  },
+  L05: {
+    what: '为只能经 nofollow 链接到达的页面补一条可跟随的站内链接；站内导航链接不要加 nofollow。',
+    whyHint: '搜索引擎通常不沿 nofollow 链接发现页面，这些页面实际上与首页断开。',
+    effort: 'low',
+    validationMethod: '重新抓取确认 L05 不再命中，这些页面沿可跟随链接可达。',
+    promptType: 'technical',
+  },
+  L06: {
+    what: '给死胡同页加上站内链接：面包屑、相关内容、返回上级分类或主导航；若导航由 JS 渲染，改为服务端输出。',
+    whyHint: '没有出链的页面让访客与抓取器无路可走，权重也无法继续向下传递。',
+    effort: 'low',
+    validationMethod: '重新抓取确认这些页面初始 HTML 中存在站内链接（L06 不再命中）。',
+    promptType: 'technical',
+  },
+  L07: {
+    what: '替换或移除失效的站外链接：换成仍有效的同源资料，或链到存档版本。',
+    whyHint: '指向 404 的引用损害内容可信度，访客点击后得到错误页。',
+    effort: 'low',
+    validationMethod: '重新抽检站外链接确认 404/410 数为 0（L07 不再命中）。',
+    promptType: 'technical',
+  },
+  // —— 内链权重 W01–W04（spec 2026-09-29-s3-internal-link-equity）——
+  W01: {
+    what: '为高价值页增加站内可跟随入链：在相关文章/分类页正文中自然链入，并在导航或聚合页给出直达入口。',
+    whyHint: '有流量或重点转化页从站内获得的链接支持偏少（站内 PageRank 模型估算）。',
+    effort: 'mid',
+    validationMethod: '重新抓取后该页相对权重升至全站中位数的一半以上（W01 不再命中），GSC 观察展现/排名变化。',
+    promptType: 'technical',
+  },
+  W02: {
+    what: '减少全站模板（导航/页脚/侧栏）对 noindex、功能页、分页/标签页的链接，或把这些链接收进次级菜单，把位置让给需要排名的页面。',
+    whyHint: '站内估算权重集中在不参与排名或低价值的页面上。',
+    effort: 'mid',
+    validationMethod: '重新抓取确认站内 PageRank 前 10 中低价值页少于 3 个（W02 不再命中）。',
+    promptType: 'technical',
+  },
+  W03: {
+    what: '把指向高价值页的「了解更多」「Read more」类锚文本改成能说明目标页主题的描述性文字。',
+    whyHint: '泛化锚文本无法帮助搜索引擎与访客理解目标页内容。',
+    effort: 'low',
+    validationMethod: '重新抓取确认高价值页入链中泛化锚文本占比低于 50%（W03 不再命中）。',
+    promptType: 'technical',
+  },
+  W04: {
+    what: '在相关文章、案例、产品说明的正文中加入指向高价值页的上下文链接，而不只依赖导航与页脚。',
+    whyHint: '正文中的上下文链接更能说明页面之间的主题关系。',
+    effort: 'mid',
+    validationMethod: '重新抓取确认高价值页来自正文区的入链占比 ≥ 20%（W04 不再命中）。',
+    promptType: 'technical',
+  },
+  // —— 文章级 E-E-A-T / 数据支撑 / 信任页 / 社媒（spec 2026-09-29-s4）——
+  AR01: {
+    what: '为文章加上作者署名（可见署名 + Article/BlogPosting 结构化数据的 author），署名链接到作者介绍页。',
+    whyHint: '署名让读者知道内容由谁负责；属于可信度代理指标。',
+    effort: 'low',
+    validationMethod: '重新抓取确认缺作者署名的文章占比低于 50%（AR01 不再命中）。',
+    promptType: 'technical',
+  },
+  AR02: {
+    what: '为作者建立介绍页（经历、资质、相关作品），并从文章署名链接过去；结构化数据 author.url 指向该页。',
+    whyHint: '作者页集中展示经验与专业度证据；属于可信度代理指标。',
+    effort: 'mid',
+    validationMethod: '重新抓取确认有署名但无作者页的文章占比低于 70%（AR02 不再命中）。',
+    promptType: 'content',
+  },
+  AR03: {
+    what: '在文章中显示发布日期与最近更新日期，并写入结构化数据 datePublished / dateModified。',
+    whyHint: '日期帮助读者与搜索引擎判断内容时效。',
+    effort: 'low',
+    validationMethod: '重新抓取确认缺日期的文章占比低于 50%（AR03 不再命中）。',
+    promptType: 'technical',
+  },
+  AR04: {
+    what: '为文章中的关键结论补充数据与出处：写明数据来源（「据××统计」「according to」）并链接到原始报告或数据页；能用表格呈现的数据用表格。',
+    whyHint: '有数据、有出处的内容更可信，也更容易被 AI 答案引用（机制性推断）。',
+    effort: 'mid',
+    validationMethod: '重新抓取确认无数据支撑与来源引用的文章占比低于 50%（AR04 不再命中）。',
+    promptType: 'content',
+    negativeConstraints: ['不得编造数据、机构名称或报告链接；没有可靠来源的数字宁可删去'],
+  },
+  AR05: {
+    what: '优先引用一手、权威的来源：政府统计、行业协会、学术论文、知名研究机构，而不是转述它们的二手博客。',
+    whyHint: '来源的权威性影响内容的可信度判断。',
+    effort: 'mid',
+    validationMethod: '重新抓取确认带引用的文章中无权威来源的占比低于 70%（AR05 不再命中）。',
+    promptType: 'content',
+    negativeConstraints: ['不得虚构权威来源或把非官方页面标成官方数据'],
+  },
+  TR06: {
+    what: '补齐并在导航或页脚链接「关于我们」「联系方式」「隐私政策」「服务条款」页，写明经营主体、地址与联系渠道。',
+    whyHint: '信任页帮助访客确认经营主体与联系方式。',
+    effort: 'low',
+    validationMethod: '重新抓取确认四类信任页均存在且首页可达（TR06 不再命中）。',
+    promptType: 'technical',
+  },
+  SO01: {
+    what: '在页脚或关于页链接官方社媒主页（如 LinkedIn、YouTube、微信公众号介绍页、知乎机构号），使用主页链接而不是分享按钮。',
+    whyHint: '站内链接官方账号便于访客与搜索/AI 引擎把站点与品牌账号对应起来。',
+    effort: 'low',
+    validationMethod: '重新抓取确认至少一个页面链接了社媒主页（SO01 不再命中）。',
+    promptType: 'technical',
+  },
+  SO02: {
+    what: '让 Organization schema 的 sameAs 与站内实际链接的社媒主页保持一致：补齐缺失的平台，删除已停用的账号。',
+    whyHint: '两处一致有助于品牌实体与官方账号的对应。',
+    effort: 'low',
+    validationMethod: '重新抓取确认 sameAs 与站内社媒链接的平台集合一致（SO02 不再命中）。',
+    promptType: 'technical',
+  },
   T13: {
     what: '补齐移动端适配：加 viewport meta 并修复 PSI 移动端异常项。',
     whyHint: '移动优先索引下，缺 viewport 或移动端异常直接影响收录与排名。',
@@ -200,7 +340,7 @@ export const templates: Record<string, RecommendationTemplate> = {
   },
   C03: {
     what: '规范 H1：每页唯一 H1，与 title 有区分、承载页面主题。',
-    whyHint: 'H1 缺失/多个/与 title 完全重复会弱化主题表达。',
+    whyHint: 'H1 缺失或多个会弱化主题表达；H1 与 title 完全相同不是错误，差异化表达可覆盖更多相关说法。',
     effort: 'low',
     validationMethod: '重新抓取确认单一 H1 且与 title 有别。',
     promptType: 'content',
@@ -223,17 +363,17 @@ export const templates: Record<string, RecommendationTemplate> = {
   },
   C05b: {
     what: '修复 JSON-LD 语法与词汇错误：保证 JSON 可解析、@context 正确、类型/属性均存在于 schema.org 词汇表。',
-    whyHint: 'JSON 解析失败或用了不存在的类型/属性，结构化数据整体失效。',
+    whyHint: 'JSON 解析失败或 @context 缺失的块会被 Google 忽略，其中标注的信息不会生效。',
     effort: 'low',
     validationMethod: '用富媒体结果测试/Schema 校验确认无语法与词汇错误。',
     promptType: 'content',
     fixSnippet: JSONLD_SNIPPET,
   },
   C05c: {
-    what: '补齐 Google 富摘要必填/推荐字段（如 Product 的 offers/aggregateRating、Article 的 datePublished）。',
-    whyHint: '必填字段缺失会让富摘要无法生成。',
+    what: '按发现里列出的页面与类型补字段：先补 Google 要求的字段（含"至少一项"的三选一，如 Product 的 review / aggregateRating / offers），再按页面实际可见内容补推荐字段（如 Article 的 datePublished、image）；字段值必须与页面可见内容一致，页面没有的内容（如评分）不要为凑字段而标注。',
+    whyHint: '缺少 Google 要求的字段时，该类型不具备富媒体结果资格；推荐字段只影响展示完整度，不是硬性门槛。',
     effort: 'mid',
-    validationMethod: '富媒体结果测试确认必填字段齐备、无警告。',
+    validationMethod: '用 Google 富媒体结果测试逐页复测：必需字段不再报错，推荐字段提示减少。',
     promptType: 'content',
     fixSnippet: JSONLD_SNIPPET,
   },
@@ -332,6 +472,44 @@ export const templates: Record<string, RecommendationTemplate> = {
     promptType: 'technical',
     fixSnippet: '// 关键正文服务端渲染，勿仅客户端注入（Next.js 16 Server Component 默认服务端产出 HTML）',
   },
+  G02: {
+    what: '在 CDN/WAF 中为搜索与检索型 AI 爬虫（Googlebot、Bingbot、OAI-SearchBot、PerplexityBot 等）放行，并用对应 UA 复测返回 200。',
+    whyHint: '爬虫被拦截时，页面无法被收录或引用。',
+    effort: 'low',
+    validationMethod: '以被拦截的 UA 重新请求关键 URL，确认返回 200 且内容完整。',
+    promptType: 'technical',
+  },
+  // ——— GEO 可见度 / 引用 / 语料（content）———
+  G05: {
+    what: '围绕品类核心问题补充可被引用的内容：清晰的定义、对比、数据与案例，并争取在第三方权威页面被提及。',
+    whyHint: '无品牌提问中 AI 很少主动召回品牌，说明品牌与品类问题的关联还不够强。',
+    effort: 'high',
+    validationMethod: '同协议回测无品牌问题的召回率（同一问句集、同一引擎、同一 n）。',
+    promptType: 'content',
+  },
+  G06: {
+    what: '让检索型 AI 引擎能引用本站：为核心问题提供可直接引用的答案段落，并补齐结构化数据与来源出处。',
+    whyHint: '检索型引擎回答品类问题时没有引用本站。',
+    effort: 'high',
+    validationMethod: '同协议回测检索型引擎答案中对本站的引用。',
+    promptType: 'content',
+  },
+  G07: {
+    what: '建设第三方语料：在维基百科（满足关注度标准时）、行业社区与评测站获得真实提及与讨论，不刷帖。',
+    whyHint: 'AI 引擎主要引用第三方权威语料。',
+    effort: 'high',
+    validationMethod: '复查维基词条与社区提及数（采集成功时）。',
+    promptType: 'content',
+  },
+  // G08（llms.txt）只记录现状：不是任何引擎公认的排名/引用信号，不据此出建议。
+  G08: { recordOnly: true, what: '', whyHint: '', effort: 'low', validationMethod: '', promptType: 'technical' },
+  G09: {
+    what: '逐条核对 AI 答案中负面或比较劣势的说法：属实的就修正产品与文档，不属实的就用权威页面与第三方评价澄清。',
+    whyHint: 'AI 答案中品牌的负面提及占比偏高。',
+    effort: 'mid',
+    validationMethod: '同协议回测情感分布。',
+    promptType: 'content',
+  },
   G11: {
     what: '在被引用的社区平台建立真实第三方谈论面：真实参与相关社区讨论（以回答问题、提供价值为主，遵循 95/5 价值:提及比），并鼓励真实用户/客户在这些平台自发分享使用体验。',
     whyHint: '品类回答的引用大量来自社区/UGC 平台却始终未引用本站，说明 AI 在该品类下更依赖社区语料而非官方站点。',
@@ -406,6 +584,38 @@ export const templates: Record<string, RecommendationTemplate> = {
     validationMethod: '按匹配意图改造/新建页面后，复测该词排名是否上移。',
     promptType: 'content',
   },
+  IPF01: {
+    what: '为缺少主承接页的搜索意图建立「意图→页面」映射：先检查是否已有可改造页面；没有则新建专门承接页，并把该页加入导航/相关页/正文内链。',
+    whyHint: '有搜索需求但没有清晰承接页时，Google 和用户都难以判断哪个页面最适合该任务，泛页硬接会稀释相关性。',
+    effort: 'high',
+    validationMethod: '4-6 周后在 GSC 复测这批意图组是否出现稳定主落地页、展示与排名是否上升。',
+    promptType: 'content',
+    negativeConstraints: ['只有当搜索意图和页面任务真正不同才新建页面；禁止批量制造薄页或让多个页面抢同一意图'],
+  },
+  IPF02: {
+    what: '修正意图-页面承接错位：把查询指向合适页型，或重构当前页面的标题、H1、主体模块与 CTA，使其服务该搜索任务。',
+    whyHint: '当前 GSC 落地页与用户意图不匹配，会导致相关性、点击后满意度和转化路径同时受损。',
+    effort: 'mid',
+    validationMethod: '改造后复测该 query group 的主落地页是否收敛到目标页，平均排名/点击是否改善。',
+    promptType: 'content',
+    negativeConstraints: ['不要用博客页硬接交易/采购意图；不要用产品/服务页硬接纯信息或排错意图'],
+  },
+  IPF03: {
+    what: '拆解或重构过宽承接页：把明显不同的搜索任务分配到专门页面；无法拆分时，在同一页内明确主意图、子模块和内链路径。',
+    whyHint: '一个泛页面承接多个不同意图，会让页面主题焦点变弱，也让后续建议无法精确落到页面级动作。',
+    effort: 'high',
+    validationMethod: '复测这些意图组是否分别出现更匹配的主落地页，并确认原泛页不再承接过多无关 query。',
+    promptType: 'content',
+    negativeConstraints: ['拆页前必须确认意图差异和承接内容差异；禁止把同一意图拆成多个互相竞争的页面'],
+  },
+  IPF04: {
+    what: '补强意图承接页的站内入口：从相关 hub、上级页面、正文上下文、导航或页脚自然链接到目标页，并使用描述性但不过度精确的锚文本。',
+    whyHint: '承接页方向正确但内链弱，抓取优先级和权重传递不足；补内链通常比继续新增内容更直接。',
+    effort: 'mid',
+    validationMethod: '重新抓取确认目标页 inboundLinkCount 上升，并用 GSC 观察该意图组展示、排名和点击变化。',
+    promptType: 'content',
+    negativeConstraints: ['禁止全站模板化堆同一个精准关键词锚文本；内链必须来自语义相关页面'],
+  },
   // ——— P4 竞品对比（seo，证据源 DataForSEO SERP + 探针）———
   Q01: {
     what: '对照确认竞品的 Share of SERP 差距，锁定竞品覆盖而本站薄弱的词群与页型，制定针对性内容与内链补强计划。',
@@ -414,6 +624,13 @@ export const templates: Record<string, RecommendationTemplate> = {
     validationMethod: '复测本站与竞品在共同词集上的 Share of SERP 是否缩小差距。',
     promptType: 'content',
     risk: 'SERP 份额基于第三方 SERP 抽样（L3），作对比参考非绝对市场份额。',
+  },
+  Q02: {
+    what: '针对竞品被 AI 推荐而本站没有的问题，补齐对比页和差异化内容，并以真实数据支撑。',
+    whyHint: '确认竞品在 AI 答案中的份额高于本站。',
+    effort: 'high',
+    validationMethod: '同协议回测竞品与本站的 AI 份额。',
+    promptType: 'content',
   },
   Q03: {
     what: '参照确认竞品在缺口词上的内容形态（页面类型/字数量级/schema 使用），为本站对应承接页设定内容规格基线，避免形态性劣势。',
