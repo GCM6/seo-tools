@@ -16,7 +16,7 @@ import { fetchPageSpeedInsights, isPsiConfigured } from '@/lib/collection/psi'
 import { collectUaProbe } from '@/lib/collection/ua-probe'
 import { checkThirdPartyPresence } from '@/lib/collection/third-party-presence'
 import { checkSocialPresence } from '@/lib/collection/social-presence'
-import { isGscPlatformConfigured, refreshAccessToken } from '@/lib/gsc/oauth'
+import { GscAuthExpiredError, isGscPlatformConfigured, refreshAccessToken } from '@/lib/gsc/oauth'
 import { querySearchAnalytics, mapRowsToKeywordMetrics } from '@/lib/gsc/search-analytics'
 import { impressionWeightedAvgPosition } from '@/lib/gsc/avg-position'
 import { createDataforseoProvider } from '@/lib/dataforseo'
@@ -74,6 +74,7 @@ import {
   upsertKeyword,
   createKeywordMetrics,
   upsertCompetitor,
+  pruneCompetitorCandidates,
   upsertDataSourceStatus,
   getTargetKeywords,
   getGscKeywordHistory,
@@ -217,7 +218,7 @@ function defaultDeps(): CollectDeps {
         drainRaws: () => buf.splice(0),
       }
     },
-    runDataforseo: (args) => collectDataforseoStage(args, { createEvidenceArtifact, upsertCompetitor, linkEvidenceRaw }),
+    runDataforseo: (args) => collectDataforseoStage(args, { createEvidenceArtifact, upsertCompetitor, linkEvidenceRaw, pruneCompetitorCandidates }),
     aioProvider: createAioSerpProviderFromEnv(),
     resolveAioProvider: async () => {
       // AIO 与主采集共用 DataForSEO 凭据解析（DB>env，SP-A §4.6）。
@@ -569,14 +570,14 @@ export async function collectEvidenceHandler(
     await emit({ type: 'evidence_created', evidenceType: 'render_check' })
     await writeDss({ sourceKey: 'render', configured: true, authorized: true, attempted: true, status: 'collected', capturedEvidenceCount: 1 })
   } else {
-    // 没有托管浏览器也不阻断：本轮已持久化 page_fetch（初始 HTML）和 PSI。
-    // 明确写为 partial，而不是把静态抓取伪装成 render_check；诊断层会展示降级说明。
+    // 没有托管浏览器也不阻断，但如实记"未配置、未尝试"：渲染对比根本没做，不是"部分采集"（验收新发现 4）。
+    // 快照只说明本轮靠静态 HTML（page_fetch）兜底；PSI 在后面才采、可能失败，不预先列为兜底证据。
     await writeDss({
-      sourceKey: 'render', configured: false, authorized: false, attempted: true, status: 'partial',
+      sourceKey: 'render', configured: false, authorized: false, attempted: false, status: 'not_configured',
       capturedEvidenceCount: 0,
       protocolSnapshot: {
         mode: 'static_html_fallback',
-        evidence: ['page_fetch', 'psi'],
+        evidence: ['page_fetch'],
         limitation: 'rendered DOM and JavaScript content delta were not captured',
       },
     })
@@ -638,7 +639,15 @@ export async function collectEvidenceHandler(
     const siteUrl = settings.gscSiteUrl
     try {
       const gsc = await step.run('gsc-query', async () => {
-        const { accessToken } = await deps.refreshGscAccessToken(refreshToken)
+        let accessToken: string
+        try {
+          accessToken = (await deps.refreshGscAccessToken(refreshToken)).accessToken
+        } catch (err) {
+          // 授权失效（invalid_grant）重试也解决不了：标成不可重试，Inngest 不再退避重试（实测每轮白等约 2.5 分钟），
+          // 外层 catch 立即记 failed；StepError 沿用原消息，失败原因不变（验收新发现 2）。暂时性错误照常抛出、交给重试。
+          if (err instanceof GscAuthExpiredError) throw new NonRetriableError(err.message, { cause: err })
+          throw err
+        }
         const range = gscDateRange()
         const [queryRows, queryPageRows] = await Promise.all([
           deps.querySearchAnalytics(accessToken, siteUrl, { ...range, dimensions: ['query'], rowLimit: 1000, country: projectMarket?.gscCountry ?? null }),

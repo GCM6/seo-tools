@@ -13,6 +13,19 @@ function seed(keyword: string, items: SerpItem[]): SeedSerpEntry {
   return { keyword, items }
 }
 
+describe('平台域名的子域同样排除（验收新发现 1：learn / support / apps.microsoft.com 曾混进候选）', () => {
+  it('learn.microsoft.com、support.apple.com、docs.github.com 不进候选；spacex.com 不被当成 x.com 的子域', () => {
+    const serp = ['a', 'b', 'c'].map((k) =>
+      seed(k, [item('learn.microsoft.com', 1), item('support.apple.com', 2), item('docs.github.com', 3), item('spacex.com', 4), item('rival.com', 5)]),
+    )
+    const domains = identifyCompetitors({ serp, ownDomain: 'example.com', topN: 10 }).map((c) => c.domain)
+    expect(domains).toEqual(expect.arrayContaining(['spacex.com', 'rival.com']))
+    expect(domains).not.toContain('learn.microsoft.com')
+    expect(domains).not.toContain('support.apple.com')
+    expect(domains).not.toContain('docs.github.com')
+  })
+})
+
 describe('identifyCompetitors', () => {
   it('按 Search Overlap 降序识别竞品并计对（词数/加权位置分/overlap/topSharedKeywords）', () => {
     const serp: SeedSerpEntry[] = [

@@ -21,6 +21,7 @@ import { NonRetriableError } from 'inngest'
 import { collectEvidenceHandler } from './collect-evidence'
 import { SsrfBlockedError } from '@/lib/security/ssrf-guard'
 import { makeDeps, makeArgs, asCollectDeps } from '@/lib/test-fixtures/collect-evidence-deps'
+import { GscAuthExpiredError } from '@/lib/gsc/oauth'
 import { createBrowserlessRenderProvider } from '@/lib/render/browserless-provider'
 
 
@@ -250,6 +251,59 @@ describe('collectEvidenceHandler', () => {
     expect(deps.sendDiagnose).toHaveBeenCalled()
   })
 
+  it('GSC 授权失效（invalid_grant）→ step 内抛 NonRetriableError（Inngest 不再退避重试），状态记 failed、原因不变（验收新发现 2）', async () => {
+    const deps = makeDeps({
+      getProjectSettings: vi.fn(async () => ({
+        gscConnected: true, gscRefreshToken: 'refresh_tok', gscSiteUrl: 'sc-domain:example.com', crawlEnabled: false,
+      })),
+      isGscPlatformConfigured: vi.fn(() => true),
+      refreshGscAccessToken: vi.fn(async () => { throw new GscAuthExpiredError('gsc token refresh failed: 400 invalid_grant') }),
+    })
+    const { args } = makeArgs()
+    const stepErrors: { id: string; err: unknown }[] = []
+    const run = args.step.run
+    args.step.run = (<T,>(id: string, fn: () => Promise<T> | T) =>
+      run(id, async () => {
+        try {
+          return await fn()
+        } catch (err) {
+          stepErrors.push({ id, err })
+          throw err
+        }
+      })) as typeof args.step.run
+    await collectEvidenceHandler(args, asCollectDeps(deps))
+    const gscErr = stepErrors.find((e) => e.id === 'gsc-query')?.err
+    expect(gscErr).toBeInstanceOf(NonRetriableError)
+    expect((gscErr as Error).message).toBe('gsc token refresh failed: 400 invalid_grant')
+    expect(deps.writeDataSourceStatus).toHaveBeenCalledWith(expect.objectContaining({ sourceKey: 'gsc', status: 'failed', failureReason: 'gsc token refresh failed: 400 invalid_grant' }))
+  })
+
+  it('GSC 换 token 遇到暂时性错误（网络等）→ 照常抛原错误，交给 Inngest 重试', async () => {
+    const deps = makeDeps({
+      getProjectSettings: vi.fn(async () => ({
+        gscConnected: true, gscRefreshToken: 'refresh_tok', gscSiteUrl: 'sc-domain:example.com', crawlEnabled: false,
+      })),
+      isGscPlatformConfigured: vi.fn(() => true),
+      refreshGscAccessToken: vi.fn(async () => { throw new TypeError('fetch failed') }),
+    })
+    const { args } = makeArgs()
+    const stepErrors: { id: string; err: unknown }[] = []
+    const run = args.step.run
+    args.step.run = (<T,>(id: string, fn: () => Promise<T> | T) =>
+      run(id, async () => {
+        try {
+          return await fn()
+        } catch (err) {
+          stepErrors.push({ id, err })
+          throw err
+        }
+      })) as typeof args.step.run
+    await collectEvidenceHandler(args, asCollectDeps(deps))
+    const gscErr = stepErrors.find((e) => e.id === 'gsc-query')?.err
+    expect(gscErr).toBeInstanceOf(TypeError)
+    expect(gscErr).not.toBeInstanceOf(NonRetriableError)
+  })
+
   it('collects GSC keyword evidence + metrics when the project is connected', async () => {
     const deps = makeDeps({
       getProjectSettings: vi.fn(async () => ({
@@ -402,9 +456,10 @@ describe('collectEvidenceHandler', () => {
       'collected',
       expect.objectContaining({ failureReason: null, finishedAt: expect.any(String) }),
     )
+    // 没有托管浏览器：如实记"未配置、未尝试"（不是"部分采集"），快照说明本轮只有静态 HTML 兜底（验收新发现 4）。
     expect(deps.writeDataSourceStatus).toHaveBeenCalledWith(expect.objectContaining({
-      sourceKey: 'render', status: 'partial', attempted: true,
-      protocolSnapshot: expect.objectContaining({ mode: 'static_html_fallback' }),
+      sourceKey: 'render', status: 'not_configured', configured: false, attempted: false,
+      protocolSnapshot: expect.objectContaining({ mode: 'static_html_fallback', evidence: ['page_fetch'] }),
     }))
   })
 

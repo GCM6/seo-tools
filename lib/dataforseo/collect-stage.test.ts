@@ -59,6 +59,7 @@ function makeDeps() {
   return {
     createEvidenceArtifact: vi.fn(async (row: { id: string; type: string; payload: unknown; claimLevel: string }) => [row]),
     upsertCompetitor: vi.fn(async (row: { domain: string; status?: string; source?: string }) => [row]),
+    pruneCompetitorCandidates: vi.fn(async (projectId: string, keep: string[]) => { void projectId; void keep }),
     linkEvidenceRaw: vi.fn(async (ids: string[], evidenceId: string) => { void ids; void evidenceId }),
   }
 }
@@ -229,6 +230,20 @@ describe('市场单一真源（SP-A §3.1）', () => {
     expect(provider.seedSerp).not.toHaveBeenCalled()
     expect(provider.backlinksSummary).not.toHaveBeenCalled()
     expect(outcomes.map((o) => [o.status, o.reason])).toEqual(Array(5).fill(['failed', 'market_unmapped']))
+  })
+})
+
+describe('候选竞品换代（验收新发现 1）', () => {
+  it('种子 SERP 采集成功 → 用本次识别出的候选清理旧 candidate', async () => {
+    const deps = makeDeps()
+    await collectDataforseoStage(makeArgs(), asStageDeps(deps))
+    expect(deps.pruneCompetitorCandidates).toHaveBeenCalledWith('proj_1', ['rival.com'])
+  })
+  it('种子 SERP 失败 → 不清理（失败不能抹掉已有候选）', async () => {
+    const deps = makeDeps()
+    const provider = fakeProvider({ seedSerp: vi.fn(async () => { throw new Error('dataforseo request failed: 500') }) })
+    await collectDataforseoStage(makeArgs({ provider }), asStageDeps(deps))
+    expect(deps.pruneCompetitorCandidates).not.toHaveBeenCalled()
   })
 })
 

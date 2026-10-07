@@ -52,6 +52,8 @@ function normDomain(domain: string): string {
 // 是否平台/基础设施域：白名单命中，或 amazon 的任意区域站。
 function isPlatformDomain(domain: string): boolean {
   if (PLATFORM_SET.has(domain)) return true
+  // 平台的子域同样排除（learn.microsoft.com、support.apple.com 等；验收新发现 1）。要求点号分隔，spacex.com 不算 x.com 的子域。
+  if (PLATFORM_DOMAINS.some((p) => domain.endsWith(`.${p}`))) return true
   // amazon.com（已在白名单）+ amazon.co.uk / amazon.de / amazon.co.jp 等区域站。
   return /^amazon\.[a-z.]+$/.test(domain)
 }

@@ -2,7 +2,7 @@ import { sha256Hex } from '@/lib/collection/hash'
 import { reasonOf, type RawResponse } from '@/lib/collection/result'
 import { identifyCompetitors } from '@/lib/diagnosis/competitor-identify'
 import type { RunProgressMessage } from '@/lib/inngest/channels'
-import type { createEvidenceArtifact, linkEvidenceRaw, upsertCompetitor } from '@/lib/repositories'
+import type { createEvidenceArtifact, linkEvidenceRaw, pruneCompetitorCandidates, upsertCompetitor } from '@/lib/repositories'
 import type { DataSourceStatus } from '@/db/schema'
 import type { DataforseoProvider, SeedSerpResult } from './types'
 import type { Seed } from '@/lib/diagnosis/seed-keywords'
@@ -48,6 +48,7 @@ export interface DataforseoStageDeps {
   createEvidenceArtifact: typeof createEvidenceArtifact
   upsertCompetitor: typeof upsertCompetitor
   linkEvidenceRaw: typeof linkEvidenceRaw
+  pruneCompetitorCandidates: typeof pruneCompetitorCandidates
 }
 
 // 落一条 dataforseo 证据的公共封装：request 记录协议、payload 原样、rawText=payload JSON + hash。
@@ -151,22 +152,22 @@ export async function collectDataforseoStage(args: DataforseoStageArgs, deps: Da
 
         // 候选竞品：Search Overlap 识别 → upsert 为 candidate（人工闸门后才进 gap/对比）。
         const candidates = identifyCompetitors({ serp: serp.results, ownDomain: domain, topN: competitorTopN })
-        if (candidates.length) {
-          await step.run('dfs-upsert-competitors', async () => {
-            for (const c of candidates) {
-              await deps.upsertCompetitor({
-                id: `cmp_${crypto.randomUUID()}`,
-                projectId,
-                domain: c.domain,
-                source: 'serp_overlap',
-                overlapScore: String(c.overlapScore),
-                sharedKeywordsCount: c.sharedKeywordsCount,
-                status: 'candidate',
-                evidenceId: serpEvId,
-              })
-            }
-          })
-        }
+        // 种子 SERP 采集成功就换代：写入本次候选，再删掉本次没被识别出来的旧 candidate（验收新发现 1）。
+        await step.run('dfs-upsert-competitors', async () => {
+          for (const c of candidates) {
+            await deps.upsertCompetitor({
+              id: `cmp_${crypto.randomUUID()}`,
+              projectId,
+              domain: c.domain,
+              source: 'serp_overlap',
+              overlapScore: String(c.overlapScore),
+              sharedKeywordsCount: c.sharedKeywordsCount,
+              status: 'candidate',
+              evidenceId: serpEvId,
+            })
+          }
+          await deps.pruneCompetitorCandidates(projectId, candidates.map((c) => c.domain))
+        })
       }
     } catch (err) {
       // HTTP / 信封级错误（鉴权、额度）：无候选竞品、无 gap 依据；其余子阶段继续。

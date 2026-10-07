@@ -1,4 +1,4 @@
-import { eq, asc, desc, and, isNull, isNotNull, inArray, ne, or, sql, getTableColumns } from 'drizzle-orm'
+import { eq, asc, desc, and, isNull, isNotNull, inArray, notInArray, ne, or, sql, getTableColumns } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { runs, findings, recommendations, generatedPrompts, evidenceArtifacts, projects, projectSettings, brandFacts, retestSnapshots, prompts, aiProbeResults, serpAioResults, sitePages, urlTemplates, keywords, keywordMetrics, competitors, keywordGaps, referenceArtifacts, ruleChangeProposals, providerCredentials, reportShares, dataSourceStatuses, evidenceRaw } from '@/db/schema'
 import type { DataSourceStatus } from '@/db/schema'
@@ -330,8 +330,17 @@ export const getRunKeywordMetrics = (runId: string) =>
 export const upsertCompetitor = (row: typeof competitors.$inferInsert) =>
   db.insert(competitors).values(row).onConflictDoUpdate({
     target: [competitors.projectId, competitors.domain],
-    set: { overlapScore: row.overlapScore ?? null, sharedKeywordsCount: row.sharedKeywordsCount ?? 0 },
+    // 再次识别时证据引用指向最新一轮（状态保持不变：确认 / 忽略过的不会被重置成候选）。
+    set: { overlapScore: row.overlapScore ?? null, sharedKeywordsCount: row.sharedKeywordsCount ?? 0, evidenceId: row.evidenceId ?? null },
   }).returning()
+// 候选换代：种子 SERP 成功后，删掉本次没被识别出来的旧 candidate（confirmed / dismissed 一律不动）。
+// competitors 没有被其他表引用，删除不会级联到测量数据（验收新发现 1）。
+export const pruneCompetitorCandidates = (projectId: string, keepDomains: string[]) =>
+  db.delete(competitors).where(and(
+    eq(competitors.projectId, projectId),
+    eq(competitors.status, 'candidate'),
+    ...(keepDomains.length > 0 ? [notInArray(competitors.domain, keepDomains)] : []),
+  ))
 export const getCompetitors = (projectId: string) =>
   db.select().from(competitors).where(eq(competitors.projectId, projectId))
 export const getConfirmedCompetitors = (projectId: string) =>
