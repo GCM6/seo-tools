@@ -32,7 +32,7 @@ sqlite3 -readonly veris.db "select count(*), max(created_at) from __drizzle_migr
 
 ```bash
 cp veris.db "veris.$(date +%Y%m%d%H%M)-backup.db"   # 文件名以 .db 结尾才被 .gitignore 的 *.db 忽略
-node scripts/apply-local-migrations.mjs "$PWD/veris.db" 0011,0015,0016,0017 --record
+node scripts/apply-local-migrations.mjs "$PWD/veris.db" 0011,0015,0016,0017,0018 --record
 ```
 
 - 备份文件名必须以 `.db` 结尾（`.gitignore` 只忽略 `*.db`、`*.db-*`、`*.db.bak`）；`veris.db.bak-时间戳` 这种名字不会被忽略，可能把带用户数据的库误提交。
@@ -49,6 +49,8 @@ node scripts/apply-local-migrations.mjs "$PWD/veris.db" 0011,0015,0016,0017 --re
 - `pragma foreign_key_check` 为 60 行，全部是迁移前就存在的 `ai_probe_results → evidence_artifacts` 孤儿行，迁移前后相同。
 - 在演练副本上执行 `drizzle-kit migrate`：无待执行迁移，文件逐字节未变。
 - 回滚：停掉 dev 服务后，用备份文件覆盖 `veris.db`。
+
+**执行记录（2026-10-07）**：补执行 0018（`runs.baseline_run_id`，回测基线持久化）。备份 `veris.2026-10-07-pre-0018.db`；当日副本演练后执行正式库；迁移表 19 行，run 5 个不变，外键检查仍为迁移前的 60 行；`drizzle-kit migrate` 对副本无操作。注意：drizzle-kit 为 SQLite 生成 ADD COLUMN 时会丢掉 `ON DELETE` 子句，0018 已手动补上 `ON DELETE set null`。
 
 ### 2.3 校验
 

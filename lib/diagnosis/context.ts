@@ -10,6 +10,7 @@ import type {
   DataforseoBacklinksPayload,
 } from '@/lib/dataforseo/types'
 import { extractMainText } from '@/lib/collection/page-parser'
+import { organicPosition } from '@/lib/dataforseo/serp-position'
 
 // buildRuleContext：把一轮 run 的已落库证据行 + 项目 + 探针聚合，规约为规则引擎可直接消费的
 // 规范化上下文。纯函数、无 IO——采集/查询在调用方（generate-findings 编排层）完成后传入。
@@ -69,6 +70,17 @@ function parseRawJsonLd(rawText: string): unknown[] {
   }
 }
 
+// SERP 条目交给规则前统一换成自然排名：rank = organicPosition，广告等模块剔除（验收新发现 3）。
+// 规则（Q01/Q02、K05、页型匹配等）读到的 rank 一律是自然名次。
+function organicItems(items: { domain: string; url: string; rank?: number; rankGroup?: number | null; type?: string }[] | undefined) {
+  const out: { domain: string; url: string; rank: number }[] = []
+  for (const it of items ?? []) {
+    const position = organicPosition({ type: it.type, rank: num(it.rank), rankGroup: it.rankGroup ?? null })
+    if (position !== null) out.push({ domain: it.domain, url: it.url, rank: position })
+  }
+  return out
+}
+
 // —— DataForSEO 证据解析（Phase C）——：dataforseo_serp 按 payload.kind 分流；labs/backlinks 各一类。
 // configured = 存在任一 dataforseo_* 证据；未采集时各集合空、依赖规则整组 no-op。
 function buildDataforseo(evidence: DiagnosisEvidenceRow[]): RuleContext['dataforseo'] {
@@ -89,7 +101,7 @@ function buildDataforseo(evidence: DiagnosisEvidenceRow[]): RuleContext['datafor
           if (!r.keyword) continue
           out.serpByKeyword.push({
             keyword: r.keyword,
-            items: (r.items ?? []).map((it) => ({ domain: it.domain, url: it.url, rank: num(it.rank) })),
+            items: organicItems(r.items),
             evidenceId: e.id,
           })
         }
@@ -100,7 +112,7 @@ function buildDataforseo(evidence: DiagnosisEvidenceRow[]): RuleContext['datafor
           brandQuery: p.brandQuery ?? '',
           hasKnowledgePanel: !!p.hasKnowledgePanel,
           ownDomainPresent: !!p.ownDomainPresent,
-          items: (p.items ?? []).map((it) => ({ domain: it.domain, url: it.url, rank: num(it.rank) })),
+          items: organicItems(p.items),
           evidenceId: e.id,
         }
       }

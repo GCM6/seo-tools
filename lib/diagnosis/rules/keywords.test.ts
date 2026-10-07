@@ -309,3 +309,24 @@ describe('IPF Intent-to-Page Fit rules', () => {
     expect(kws[0]).toMatchObject({ currentUrl: 'https://example.com/services/seo', currentPageRole: 'service' })
   })
 })
+
+describe('K05 按自然排名判断品牌词首位（验收新发现 3：竞品在品牌词投广告不等于"首位被第三方占位"）', () => {
+  it('竞品广告占绝对第 1、官网是自然第 1 → 不报', async () => {
+    const { buildRuleContext } = await import('../context')
+    const ctx = buildRuleContext({
+      project: { domain: 'https://example.com/', industry: 'tool', market: 'global-en', language: 'en', competitors: [] },
+      evidence: [{
+        id: 'ev_bs', type: 'dataforseo_serp', claimLevel: 'L3', source: 'example.com', sitePageId: null, rawText: '',
+        payload: {
+          kind: 'brand_serp', engine: 'google', brandQuery: 'example', hasKnowledgePanel: false, ownDomainPresent: true,
+          items: [
+            { domain: 'competitor.com', url: 'https://competitor.com/lp', rank: 1, rankGroup: 1, type: 'paid' },
+            { domain: 'example.com', url: 'https://example.com/', rank: 2, rankGroup: 1, type: 'organic' },
+          ],
+        },
+      }],
+      probe: null,
+    })
+    expect(rule('K05').evaluate(ctx)).toBeNull()
+  })
+})

@@ -41,6 +41,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       // 现场打当前版本，不从 baseline 复制——跨版本回测横幅据此触发（spec §11.3）。
       rulesVersion: RULES_VERSION,
       startedAt: new Date().toISOString(),
+      // 基线 id 落库：重试回测时据此把基线带回事件，保证同协议（验收新发现 5）。
+      baselineRunId: baseline.id,
     })
     .returning()
 

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const okProject = { id: 'proj_1', domain: 'https://example.com/', industry: 'document metadata removal tool', market: 'global-en' }
-const state: { run: { id: string; projectId: string; status: string; runType?: string } | null; sendThrows: boolean; project: typeof okProject; sends: number } = {
-  run: { id: 'run_1', projectId: 'proj_1', status: 'failed' }, sendThrows: false, project: okProject, sends: 0,
+const state: { run: { id: string; projectId: string; status: string; runType?: string; baselineRunId?: string | null } | null; sendThrows: boolean; project: typeof okProject; sends: number; lastEvent: { data: Record<string, unknown> } | null } = {
+  run: { id: 'run_1', projectId: 'proj_1', status: 'failed' }, sendThrows: false, project: okProject, sends: 0, lastEvent: null,
 }
 const marks: { status: string }[] = []
 vi.mock('@/lib/repositories', () => ({
@@ -11,7 +11,7 @@ vi.mock('@/lib/repositories', () => ({
   markRunStatus: async (_id: string, status: string) => { marks.push({ status }) },
 }))
 vi.mock('@/lib/inngest/client', () => ({
-  inngest: { send: async () => { state.sends++; if (state.sendThrows) throw new Error('dev server down') } },
+  inngest: { send: async (evt: { data: Record<string, unknown> }) => { state.sends++; state.lastEvent = evt; if (state.sendThrows) throw new Error('dev server down') } },
 }))
 
 const { POST } = await import('./route')
@@ -24,10 +24,19 @@ describe('POST /api/runs/[id]/retry', () => {
     state.sendThrows = false
     state.project = okProject
     state.sends = 0
+    state.lastEvent = null
   })
 
-  it('失败的回测 run → 409 retest_retry_unsupported，不改状态、不派发（重派事件会丢掉基线，变成不同协议；最终审查 F5-1）', async () => {
-    state.run = { id: 'run_1', projectId: 'proj_1', status: 'failed', runType: 'retest' }
+  it('失败的回测 run 已存基线 → 正常重试，重派事件带上基线 id（同协议；验收新发现 5）', async () => {
+    state.run = { id: 'run_1', projectId: 'proj_1', status: 'failed', runType: 'retest', baselineRunId: 'run_base' }
+    const res = await call()
+    expect(res.status).toBe(200)
+    expect(state.sends).toBe(1)
+    expect(state.lastEvent?.data).toMatchObject({ runId: 'run_1', baselineRunId: 'run_base' })
+  })
+
+  it('迁移前建的旧回测 run（没存基线）→ 仍 409 retest_retry_unsupported，不改状态、不派发（最终审查 F5-1）', async () => {
+    state.run = { id: 'run_1', projectId: 'proj_1', status: 'failed', runType: 'retest', baselineRunId: null }
     const res = await call()
     expect(res.status).toBe(409)
     expect(await res.json()).toEqual({ error: 'retest_retry_unsupported', projectId: 'proj_1' })

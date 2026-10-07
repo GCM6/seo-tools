@@ -13,6 +13,20 @@ function seed(keyword: string, items: SerpItem[]): SeedSerpEntry {
   return { keyword, items }
 }
 
+describe('只按自然排名识别竞品（验收新发现 3）', () => {
+  it('只以广告出现在每个种子词 SERP 的域名 → 不进候选', () => {
+    const paid = (domain: string): SerpItem => ({ domain, url: `https://${domain}/`, rank: 1, rankGroup: 1, title: domain, type: 'paid' })
+    const serp = ['a', 'b', 'c'].map((k) => seed(k, [paid('advertiser.com'), { ...item('rival.com', 4), rankGroup: 2 }]))
+    const domains = identifyCompetitors({ serp, ownDomain: 'example.com', topN: 10 }).map((c) => c.domain)
+    expect(domains).toEqual(['rival.com'])
+  })
+  it('加权位置分用自然名次 rank_group（绝对位置 4、自然第 2 → 每词 1/2）', () => {
+    const serp = ['a', 'b'].map((k) => seed(k, [{ ...item('rival.com', 4), rankGroup: 2 }]))
+    const [c] = identifyCompetitors({ serp, ownDomain: 'example.com', topN: 10 })
+    expect(c.weightedPositionScore).toBeCloseTo(1, 5)
+  })
+})
+
 describe('平台域名的子域同样排除（验收新发现 1：learn / support / apps.microsoft.com 曾混进候选）', () => {
   it('learn.microsoft.com、support.apple.com、docs.github.com 不进候选；spacex.com 不被当成 x.com 的子域', () => {
     const serp = ['a', 'b', 'c'].map((k) =>

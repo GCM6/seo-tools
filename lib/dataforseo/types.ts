@@ -10,7 +10,8 @@ import type { RawResponse } from '@/lib/collection/result'
 export interface SerpItem {
   domain: string
   url: string
-  rank: number // rankAbsolute，1..N
+  rank: number // rankAbsolute，1..N（含 AI Overview / PAA / 广告等模块；排名比较请用 organicPosition）
+  rankGroup?: number | null // rank_group：同类条目内的名次（自然结果即自然排名）；旧证据没有
   title: string
   type: string // organic / featured_snippet / knowledge_graph 等
 }
@@ -44,7 +45,7 @@ export interface BrandSerpResult {
   brandQuery: string
   hasKnowledgePanel: boolean
   ownDomainPresent: boolean
-  items: { domain: string; url: string; rank: number }[]
+  items: { domain: string; url: string; rank: number; rankGroup?: number | null; type?: string }[]
 }
 
 // DataForSEO Labs 关键词数据（K03/K04 搜索量·难度·意图；E03 品牌词搜索量）。

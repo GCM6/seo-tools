@@ -5,6 +5,7 @@
 // 分级提醒：竞品候选仅是启发式识别，须经人工确认（人在环）后才参与 gap / SoV 对比。
 
 import type { SeedSerpEntry } from '@/lib/dataforseo/types'
+import { organicPosition } from '@/lib/dataforseo/serp-position'
 
 // —— 基础设施 / 平台域白名单：这些域高频出现在几乎所有词的 SERP，
 // 属"平台竞争者"而非目标站的商业竞品，识别时单独排除（不进候选）。
@@ -90,14 +91,16 @@ export function identifyCompetitors(input: {
     for (const item of entry.items) {
       const domain = normDomain(item.domain)
       if (domain === own || isPlatformDomain(domain)) continue
-      if (item.rank <= 0) continue // 非法 rank 防御，避免除零/负分
+      // 只按自然排名识别：广告、本地服务等模块不算竞品信号（验收新发现 3）；非法名次一并跳过，避免除零/负分。
+      const position = organicPosition(item)
+      if (position === null) continue
 
       let agg = byDomain.get(domain)
       if (!agg) {
         agg = { domain, keywordSet: new Set(), orderedKeywords: [], weightedPositionScore: 0 }
         byDomain.set(domain, agg)
       }
-      agg.weightedPositionScore += 1 / item.rank
+      agg.weightedPositionScore += 1 / position
       if (!seenThisKeyword.has(domain)) {
         seenThisKeyword.add(domain)
         if (!agg.keywordSet.has(entry.keyword)) {

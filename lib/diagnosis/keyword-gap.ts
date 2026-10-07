@@ -3,6 +3,7 @@
 // 无 IO、不碰 DB/provider。缺口只在"竞品占位而本站缺席/弱势"时成立——依赖人在环确认的竞品集。
 
 import type { SeedSerpEntry, LabsKeywordDatum } from '@/lib/dataforseo/types'
+import { organicPosition } from '@/lib/dataforseo/serp-position'
 
 // gapType 语义：
 //   missing = 本站无排名 且 ≥2 个确认竞品进 Top10（真缺口，最高优先）
@@ -36,13 +37,14 @@ function normDomain(domain: string): string {
   return host.replace(/^www\./, '')
 }
 
-// 求某域在一条 SERP items 中的最优（最小）rank，未出现返回 null。
+// 求某域在一条 SERP items 中的最优自然排名（organicPosition），未出现或只以广告等模块出现返回 null（验收新发现 3）。
 function bestRank(items: SeedSerpEntry['items'], target: string): number | null {
   let best: number | null = null
   for (const item of items) {
-    if (item.rank <= 0) continue
     if (normDomain(item.domain) !== target) continue
-    if (best === null || item.rank < best) best = item.rank
+    const position = organicPosition(item)
+    if (position === null) continue
+    if (best === null || position < best) best = position
   }
   return best
 }

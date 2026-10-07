@@ -6,6 +6,7 @@
 import type { DataforseoClient } from './client'
 import { DataforseoTaskError, asNumber, asRecord, asString, firstResultOrThrow, itemsOf, itemsOrThrow, normalizeDomain } from './client'
 import type { BingIndexResult, BrandSerpResult, SeedSerpEntry, SeedSerpResult, SerpItem } from './types'
+import { organicPosition } from './serp-position'
 
 // live 端点一次请求只收 1 个 task：多 task 时每个 task 都回 40000「You can set only one task at a time」
 // （2026-10-03 端到端实测；原先按「上限约 100」批量发送，SERP 采集从未成功过）。逐词请求、有界并发。
@@ -36,6 +37,7 @@ function toSerpItem(raw: unknown): SerpItem | null {
     domain: normalizeDomain(domain),
     url,
     rank,
+    rankGroup: asNumber(item.rank_group),
     title: asString(item.title) ?? '',
     type: asString(item.type) ?? 'organic',
   }
@@ -156,7 +158,7 @@ export async function brandSerp(
   const rawItems = tasks === null ? [] : itemsOrThrow(firstResultOrThrow(tasks))
 
   let hasKnowledgePanel = false
-  const items: { domain: string; url: string; rank: number }[] = []
+  const items: BrandSerpResult['items'] = []
 
   for (const raw of rawItems) {
     const item = asRecord(raw)
@@ -167,7 +169,7 @@ export async function brandSerp(
     const url = asString(item.url)
     const rank = asNumber(item.rank_absolute)
     if (d && url && rank !== null) {
-      items.push({ domain: normalizeDomain(d), url, rank })
+      items.push({ domain: normalizeDomain(d), url, rank, rankGroup: asNumber(item.rank_group), type: asString(item.type) ?? 'organic' })
     }
   }
 
@@ -175,7 +177,8 @@ export async function brandSerp(
     engine: 'google',
     brandQuery,
     hasKnowledgePanel,
-    ownDomainPresent: items.some((it) => it.domain === ownDomain),
+    // 只看自然结果（含精选摘要）：官网只以广告出现不算"在品牌词首页"（验收新发现 3）。
+    ownDomainPresent: items.some((it) => it.domain === ownDomain && organicPosition(it) !== null),
     items,
   }
 }

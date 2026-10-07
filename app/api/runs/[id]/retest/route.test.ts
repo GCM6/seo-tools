@@ -91,6 +91,11 @@ describe('POST /api/runs/[id]/retest', () => {
     expect(event.data.url).toBe('https://example.com/')
   })
 
+  it('回测 run 落库时记下基线 id（重试回测时据此还原同协议；验收新发现 5）', async () => {
+    await post('run_base')
+    expect(insertedRuns[0]).toMatchObject({ runType: 'retest', baselineRunId: 'run_base' })
+  })
+
   it('marks the retest run failed and returns 503 when dispatch fails', async () => {
     sendMock.mockRejectedValue(new Error('ECONNREFUSED 127.0.0.1:8288'))
     const res = await post('run_base')

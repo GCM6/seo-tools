@@ -13,6 +13,22 @@ function labs(over: Partial<LabsKeywordDatum> & { keyword: string }): LabsKeywor
   return { searchVolume: null, difficulty: null, cpc: null, intent: null, ...over }
 }
 
+describe('关键词缺口按自然排名判断首页（验收新发现 3）', () => {
+  it('官网自然第 8、绝对位置 11（前面有 AI Overview / PAA 等模块）→ winning，不是"未进前 10"', () => {
+    const own: SerpItem = { ...item('example.com', 11), rankGroup: 8 }
+    const gaps = computeKeywordGaps({ serp: [seed('kw', [own, { ...item('rival.com', 3), rankGroup: 1 }])], ownDomain: 'example.com', confirmedCompetitorDomains: ['rival.com'] })
+    expect(gaps[0]).toMatchObject({ gapType: 'winning', ourPosition: 8 })
+  })
+  it('官网只以广告出现 → 不算排名（两个竞品在前 10 → missing）', () => {
+    const ad: SerpItem = { domain: 'example.com', url: 'https://example.com/lp', rank: 1, rankGroup: 1, title: 'ad', type: 'paid' }
+    const gaps = computeKeywordGaps({
+      serp: [seed('kw', [ad, { ...item('rival.com', 2), rankGroup: 1 }, { ...item('other.com', 3), rankGroup: 2 }])],
+      ownDomain: 'example.com', confirmedCompetitorDomains: ['rival.com', 'other.com'],
+    })
+    expect(gaps[0]).toMatchObject({ gapType: 'missing', ourPosition: null })
+  })
+})
+
 describe('computeKeywordGaps', () => {
   it('missing：本站无排名 且 ≥2 竞品 Top10', () => {
     const serp: SeedSerpEntry[] = [

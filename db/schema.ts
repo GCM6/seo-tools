@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, blob, check, uniqueIndex, index } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, blob, check, uniqueIndex, index, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 import type { InternalLinkDetail, ExternalLinkDetail } from '../lib/crawl/light-check'
 
@@ -71,6 +71,9 @@ export const runs = sqliteTable('runs', {
   failureReason: text('failure_reason'),
   // 知识脑工作流兼容桥：legacy /api/runs 会自动创建 analysis_session 并回填此字段。
   analysisSessionId: text('analysis_session_id'),
+  // 回测的基线 run（retest 才有）：原先只在首次派发的事件里，重试回测会丢失、变成不同协议（验收新发现 5）。
+  // 基线被删除时置空，回测本身保留。
+  baselineRunId: text('baseline_run_id').references((): AnySQLiteColumn => runs.id, { onDelete: 'set null' }),
 }, (t) => [
   check('runs_type', sql`${t.runType} in ('baseline','retest')`),
   check('runs_status', sql`${t.status} in ('draft','collecting','collected','diagnosing','reviewing','output','failed')`),

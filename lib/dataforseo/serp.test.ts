@@ -48,8 +48,8 @@ describe('seedSerp', () => {
         {
           keyword: 'seo tools',
           items: [
-            { domain: 'ahrefs.com', url: 'https://ahrefs.com/a', rank: 1, title: 'A', type: 'organic' },
-            { domain: 'moz.com', url: 'https://moz.com/b', rank: 2, title: 'B', type: 'featured_snippet' },
+            { domain: 'ahrefs.com', url: 'https://ahrefs.com/a', rank: 1, rankGroup: null, title: 'A', type: 'organic' },
+            { domain: 'moz.com', url: 'https://moz.com/b', rank: 2, rankGroup: null, title: 'B', type: 'featured_snippet' },
           ],
         },
       ],
@@ -126,10 +126,25 @@ describe('brandSerp', () => {
       hasKnowledgePanel: true,
       ownDomainPresent: true,
       items: [
-        { domain: 'veris.app', url: 'https://veris.app', rank: 1 },
-        { domain: 'wikipedia.org', url: 'https://wikipedia.org/veris', rank: 2 },
+        { domain: 'veris.app', url: 'https://veris.app', rank: 1, rankGroup: null, type: 'organic' },
+        { domain: 'wikipedia.org', url: 'https://wikipedia.org/veris', rank: 2, rankGroup: null, type: 'organic' },
       ],
     })
+  })
+
+  it('官网只以广告出现在品牌词 SERP → ownDomainPresent 为 false（广告不是自然排名；验收新发现 3）', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        status_code: 20000,
+        tasks: [{ status_code: 20000, result: [{ keyword: 'veris', items: [
+          { type: 'paid', domain: 'veris.app', url: 'https://veris.app/lp', rank_group: 1, rank_absolute: 1 },
+          { type: 'organic', domain: 'other.com', url: 'https://other.com', rank_group: 1, rank_absolute: 2 },
+        ] }] }],
+      }),
+    )
+    const out = await brandSerp(clientWith(fetchMock), 'veris', 'veris.app', { locationCode: 2840, languageCode: 'en' })
+    expect(out.ownDomainPresent).toBe(false)
+    expect(out.items[0]).toMatchObject({ domain: 'veris.app', type: 'paid', rankGroup: 1 })
   })
 
   it('reports no knowledge panel and absent own domain', async () => {
@@ -290,5 +305,16 @@ describe('任务成功、JSON 合法但缺 items（最终审查 F1-1：缺字段
   })
   it('brandSerp：result 为 [{}] → 抛错 invalid_shape（不是"官网不在品牌词首页 / 无知识面板"）', async () => {
     expect(reasonOf(await brandSerp(clientReturning([{}]), 'example', 'example.com', loc).catch((e: unknown) => e))).toBe('invalid_shape')
+  })
+})
+
+describe('seedSerp 保存 rank_group（官方示例，验收新发现 3）', () => {
+  it('自然结果 rank_group 26 / rank_absolute 30；广告 rank_group 1 且 type 为 paid', async () => {
+    const { DFS_SERP_GOOGLE_ORGANIC_LIVE_ADVANCED_DOC } = await import('@/lib/test-fixtures/real-shapes')
+    const client = createDataforseoClient({ login: 'u', password: 'p', fetchImpl: vi.fn(async () => new Response(DFS_SERP_GOOGLE_ORGANIC_LIVE_ADVANCED_DOC, { status: 200, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch })
+    const out = await seedSerp(client, ['flight ticket new york san francisco'], { locationCode: 2840, languageCode: 'en' })
+    const items = out.results[0].items
+    expect(items.find((i) => i.type === 'organic')).toMatchObject({ domain: 't-mobile.com', rank: 30, rankGroup: 26 })
+    expect(items.find((i) => i.type === 'paid')).toMatchObject({ rank: 1, rankGroup: 1 })
   })
 })
