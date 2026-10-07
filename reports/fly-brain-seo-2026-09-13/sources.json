@@ -1,0 +1,284 @@
+[
+  [
+    "相关研究入口",
+    "2020—2026",
+    [
+      [
+        "FLYNN 预印本",
+        "https://arxiv.org/html/2607.00025v1"
+      ],
+      [
+        "BioHash ICML 2020",
+        "https://proceedings.mlr.press/v119/ryali20a.html"
+      ]
+    ]
+  ],
+  [
+    "DenisSergeevitch 与贡献者",
+    "2026，核查版本 32b0001",
+    [
+      [
+        "DesktopFly README",
+        "https://github.com/DenisSergeevitch/desktop-fly/tree/32b00011e83c3dc85fa3ea0b3934155b04f1635d"
+      ],
+      [
+        "circuit.json",
+        "https://github.com/DenisSergeevitch/desktop-fly/blob/32b00011e83c3dc85fa3ea0b3934155b04f1635d/data/circuit.json"
+      ]
+    ]
+  ],
+  [
+    "DesktopFly 源码",
+    "2026，32b0001",
+    [
+      [
+        "Sim.swift",
+        "https://github.com/DenisSergeevitch/desktop-fly/blob/32b00011e83c3dc85fa3ea0b3934155b04f1635d/Sim.swift"
+      ],
+      [
+        "main.swift",
+        "https://github.com/DenisSergeevitch/desktop-fly/blob/32b00011e83c3dc85fa3ea0b3934155b04f1635d/main.swift"
+      ]
+    ]
+  ],
+  [
+    "DesktopFly 作者评估",
+    "2026 年 9 月",
+    [
+      [
+        "EVALUATION.md",
+        "https://github.com/DenisSergeevitch/desktop-fly/blob/32b00011e83c3dc85fa3ea0b3934155b04f1635d/EVALUATION.md"
+      ]
+    ]
+  ],
+  [
+    "上游数据与模型",
+    "2022—2024",
+    [
+      [
+        "FlyWire",
+        "https://flywire.ai/"
+      ],
+      [
+        "Shiu 等脑模型论文",
+        "https://www.nature.com/articles/s41586-024-07763-9"
+      ],
+      [
+        "NeuroMechFly 身体模型论文",
+        "https://www.nature.com/articles/s41592-022-01466-7"
+      ]
+    ]
+  ],
+  [
+    "Lappalainen 等与 TuragaLab",
+    "2024，代码核查于 2026 年 9 月",
+    [
+      [
+        "视觉网络论文",
+        "https://www.nature.com/articles/s41586-024-07939-3"
+      ],
+      [
+        "Flyvis 官方代码",
+        "https://github.com/TuragaLab/flyvis"
+      ]
+    ]
+  ],
+  [
+    "Benquan Wang 与 Jingdao Chen",
+    "2026，预印本 v1",
+    [
+      [
+        "FLYNN Robust Neural Network for Robot Navigation using Fly Brain Topology",
+        "https://arxiv.org/html/2607.00025v1"
+      ]
+    ]
+  ],
+  [
+    "Zehao Jin 等",
+    "2026，预印本及项目页",
+    [
+      [
+        "FlyGM 论文 v1",
+        "https://arxiv.org/html/2602.17997v1"
+      ],
+      [
+        "FlyGM 官方项目页",
+        "https://lnsgroup.cc/research/FlyGM/"
+      ]
+    ]
+  ],
+  [
+    "Dasgupta 等与 Ryali 等",
+    "2017 与 2020",
+    [
+      [
+        "A neural algorithm for a fundamental computing problem",
+        "https://www.its.caltech.edu/~jkenny/nb250c/papers/Dasgupta-2017.pdf"
+      ],
+      [
+        "Bio Inspired Hashing for Unsupervised Similarity Search",
+        "https://proceedings.mlr.press/v119/ryali20a.html"
+      ]
+    ]
+  ],
+  [
+    "Eon Systems",
+    "2026 年 3 月 10 日",
+    [
+      [
+        "How the Eon Team Produced a Virtual Embodied Fly",
+        "https://eon.systems/updates/embodied-brain-emulation"
+      ]
+    ]
+  ],
+  [
+    "cnqso",
+    "2026，02d8f9a",
+    [
+      [
+        "Infinite Sugar README",
+        "https://github.com/cnqso/infinite-sugar/tree/02d8f9a236821727ed9801cc5bbec2f314dda8b8"
+      ]
+    ]
+  ],
+  [
+    "Evan Sinclair Smith",
+    "2026，核查于 9 月 13 日",
+    [
+      [
+        "NeuroCraft Fly 项目与发行状态",
+        "https://github.com/evnsnclr/neurocraft-fly-public"
+      ]
+    ]
+  ],
+  [
+    "dylankainth",
+    "2026，97e02fb",
+    [
+      [
+        "Fruit Fly Brain Flight Controller",
+        "https://github.com/dylankainth/flybrain/tree/97e02fb7c8d19fd5267c3fa9194f8001e08fb613"
+      ]
+    ]
+  ],
+  [
+    "lixiang1076",
+    "2026，f6d525a",
+    [
+      [
+        "Chat with a Fruit Fly Brain",
+        "https://github.com/lixiang1076/fly-brain/tree/f6d525ab10c7a3ed4853d3d8b4b5e73f24cfe52b"
+      ]
+    ]
+  ],
+  [
+    "theflyRH",
+    "2026，核查于 9 月 13 日",
+    [
+      [
+        "The Fly Brain 范围与触发机制",
+        "https://github.com/theflyRH/thefly-brain"
+      ]
+    ]
+  ],
+  [
+    "lixiang1076 聊天实现",
+    "2026，f6d525a",
+    [
+      [
+        "fly_chat.py",
+        "https://github.com/lixiang1076/fly-brain/blob/f6d525ab10c7a3ed4853d3d8b4b5e73f24cfe52b/fly_chat.py"
+      ]
+    ]
+  ],
+  [
+    "lixiang1076 学习实现",
+    "2026，f6d525a",
+    [
+      [
+        "dopamine_learning.py",
+        "https://github.com/lixiang1076/fly-brain/blob/f6d525ab10c7a3ed4853d3d8b4b5e73f24cfe52b/dopamine_learning.py"
+      ],
+      [
+        "fast_learning.py",
+        "https://github.com/lixiang1076/fly-brain/blob/f6d525ab10c7a3ed4853d3d8b4b5e73f24cfe52b/fast_learning.py"
+      ],
+      [
+        "chat_with_fly.py",
+        "https://github.com/lixiang1076/fly-brain/blob/f6d525ab10c7a3ed4853d3d8b4b5e73f24cfe52b/chat_with_fly.py"
+      ]
+    ]
+  ],
+  [
+    "dylankainth 控制实现",
+    "2026，97e02fb",
+    [
+      [
+        "Tello 实际连接入口",
+        "https://github.com/dylankainth/flybrain/blob/97e02fb7c8d19fd5267c3fa9194f8001e08fb613/flybrain_tello_real_brain.py"
+      ],
+      [
+        "混合控制器",
+        "https://github.com/dylankainth/flybrain/blob/97e02fb7c8d19fd5267c3fa9194f8001e08fb613/drone_brain_controller.py"
+      ]
+    ]
+  ],
+  [
+    "cnqso 结果与动作说明",
+    "2026，02d8f9a",
+    [
+      [
+        "阶段结果",
+        "https://github.com/cnqso/infinite-sugar/blob/02d8f9a236821727ed9801cc5bbec2f314dda8b8/docs/05-results-phase1-3.md"
+      ],
+      [
+        "脚步模式说明",
+        "https://github.com/cnqso/infinite-sugar/blob/02d8f9a236821727ed9801cc5bbec2f314dda8b8/docs/07-neural-shuffle.md"
+      ]
+    ]
+  ],
+  [
+    "Google Search Console",
+    "官方文档，访问于 2026 年 9 月 13 日",
+    [
+      [
+        "Getting your performance data",
+        "https://developers.google.com/webmaster-tools/v1/how-tos/all-your-data"
+      ]
+    ]
+  ],
+  [
+    "DesktopFly 开发与测试约定",
+    "2026，32b0001",
+    [
+      [
+        "CLAUDE.md",
+        "https://github.com/DenisSergeevitch/desktop-fly/blob/32b00011e83c3dc85fa3ea0b3934155b04f1635d/CLAUDE.md"
+      ]
+    ]
+  ],
+  [
+    "DesktopFly 数据许可",
+    "2026，32b0001",
+    [
+      [
+        "DATA_LICENSE.md",
+        "https://github.com/DenisSergeevitch/desktop-fly/blob/32b00011e83c3dc85fa3ea0b3934155b04f1635d/data/DATA_LICENSE.md"
+      ]
+    ]
+  ],
+  [
+    "Google Search Central",
+    "官方文档，访问于 2026 年 9 月 13 日",
+    [
+      [
+        "Spam policies for Google web search",
+        "https://developers.google.com/search/docs/essentials/spam-policies"
+      ],
+      [
+        "生成式内容指导",
+        "https://developers.google.com/search/docs/fundamentals/using-gen-ai-content"
+      ]
+    ]
+  ]
+]
