@@ -1,12 +1,15 @@
 import { setRequestLocale, getTranslations } from 'next-intl/server'
 import { notFound } from 'next/navigation'
-import Link from 'next/link'
 import { RunWorkspace } from '@/components/RunWorkspace'
 import { BrandFactRow, type FactStatus } from '@/components/BrandFactRow'
+import { SectionHeader } from '@/components/SectionHeader'
+import { EmptyState } from '@/components/EmptyState'
+import { Notice } from '@/components/Notice'
+import { Button } from '@/components/Button'
 import { getRun, getProject, getBrandFacts } from '@/lib/repositories'
 import { addBrandFact, setBrandFactStatus, removeBrandFact } from './actions'
 
-// 品牌事实管理（spec §5.1-1）。Server Component（Next 16：await params）。
+// 品牌事实（ux-blueprint §3.6；spec §5.1-1）。Server Component（Next 16：await params）。
 // 列出 project 级 brand_facts + 添加表单；verified 是人在环闸门——只有它可注入提示词。
 export default async function FactsPage({
   params,
@@ -23,111 +26,109 @@ export default async function FactsPage({
 
   const facts = await getBrandFacts(project.id)
 
+  const verifiedCount = facts.filter((f) => f.status === 'verified').length
+
   return (
     <RunWorkspace runId={id} locale={locale} current="facts">
-      <section className="screen show">
-        <div className="sec-h">
-          <div>
-            <Link href={`/${locale}/runs/${id}`} className="rec-back-link">
-              <span aria-hidden="true">←</span>
-              {t('backToDiagnosis')}
-            </Link>
-            <h2>{t('title')}</h2>
-            <span className="meta">{t('meta')}</span>
+      <section className="ui-section">
+        <SectionHeader title={t('title')} note={t('countLine', { total: facts.length, verified: verifiedCount })} />
+        <div className="grid grid-cols-1 gap-8">
+          <div className="grid grid-cols-1 gap-3">
+            <Notice>{t('gateNotice')}</Notice>
+            {facts.length ? (
+              <ul className="ui-panel ui-facts-list">
+                {facts.map((f) => (
+                  <BrandFactRow
+                    key={f.id}
+                    fact={{
+                      id: f.id,
+                      factType: f.factType,
+                      factText: f.factText,
+                      sourceUrl: f.sourceUrl,
+                      sourceNote: f.sourceNote,
+                      status: f.status as FactStatus,
+                    }}
+                    labels={{
+                      verify: t('verify'),
+                      verified: t('verified'),
+                      unverify: t('unverify'),
+                      retire: t('retire'),
+                      restore: t('restore'),
+                      retired: t('retired'),
+                      draft: t('draft'),
+                      remove: t('remove'),
+                      removeConfirm: t('removeConfirm'),
+                      cancel: t('cancel'),
+                      sourceLabel: t('colSource'),
+                      error: t('error'),
+                    }}
+                    onSetStatus={async (fid, status) => {
+                      'use server'
+                      await setBrandFactStatus(fid, status, id, locale)
+                    }}
+                    onRemove={async (fid) => {
+                      'use server'
+                      await removeBrandFact(fid, id, locale)
+                    }}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <div className="ui-panel"><EmptyState title={t('emptyTitle')} description={t('empty')} /></div>
+            )}
           </div>
-          <div className="sec-h-actions">
-            <Link href={`/${locale}/runs/${id}/report`} className="underline underline-offset-2">
-              {t('viewReport')}
-            </Link>
-          </div>
-        </div>
 
-        <div className="note" style={{ marginBottom: 12 }}>
-          {t('gateNotice')}
-        </div>
-
-        <div className="card facts-list-card">
-          {facts.length ? (
-            facts.map((f) => (
-              <BrandFactRow
-                key={f.id}
-                fact={{
-                  id: f.id,
-                  factType: f.factType,
-                  factText: f.factText,
-                  sourceUrl: f.sourceUrl,
-                  sourceNote: f.sourceNote,
-                  status: f.status as FactStatus,
-                }}
-                labels={{
-                  verify: t('verify'),
-                  verified: t('verified'),
-                  retire: t('retire'),
-                  retired: t('retired'),
-                  draft: t('draft'),
-                  remove: t('remove'),
-                  sourceLabel: t('colSource'),
-                }}
-                onSetStatus={async (fid, status) => {
-                  'use server'
-                  await setBrandFactStatus(fid, status, id, locale)
-                }}
-                onRemove={async (fid) => {
-                  'use server'
-                  await removeBrandFact(fid, id, locale)
-                }}
-              />
-            ))
-          ) : (
-            <div className="pending-block">{t('empty')}</div>
-          )}
-        </div>
-
-        <div className="sec-h" style={{ marginTop: 20 }}>
-          <h2>{t('addTitle')}</h2>
-        </div>
-        <form
-          className="card facts-form"
-          action={async (formData: FormData) => {
-            'use server'
-            await addBrandFact({
-              projectId: project.id,
-              runId: id,
-              locale,
-              factType: String(formData.get('factType') ?? ''),
-              factText: String(formData.get('factText') ?? ''),
-              sourceUrl: String(formData.get('sourceUrl') ?? ''),
-              sourceNote: String(formData.get('sourceNote') ?? ''),
-            })
-          }}
-        >
-          <label className="facts-field facts-field-wide">
-            <span className="facts-field-label">{t('typeLabel')}</span>
-            <input className="facts-input" name="factType" required placeholder={t('typePlaceholder')} />
-          </label>
-          <label className="facts-field facts-field-wide">
-            <span className="facts-field-label">{t('factLabel')}</span>
-            <textarea className="facts-textarea" name="factText" rows={5} required placeholder={t('factPlaceholder')} />
-          </label>
-          <label className="facts-field">
-            <span className="facts-field-label">{t('sourceUrlLabel')}</span>
-            <input className="facts-input" name="sourceUrl" type="url" placeholder="https://…" />
-          </label>
-          <label className="facts-field">
-            <span className="facts-field-label">{t('sourceNoteLabel')}</span>
-            <input className="facts-input" name="sourceNote" placeholder={t('sourceNotePlaceholder')} />
-          </label>
-          <div className="facts-form-actions">
-            <button type="submit" className="act accept">
-              {t('add')}
-            </button>
-          </div>
-        </form>
-
-        <div className="note" style={{ marginTop: 16 }}>
-          <Link href={`/${locale}/runs/${id}/output`} className="underline underline-offset-2">
-            {t('backToOutput')}
-          </Link>
+          <section className="ui-subsec" aria-labelledby="facts-add">
+            <h3 id="facts-add" className="ui-subsec__title">
+              {t('addTitle')}
+            </h3>
+            <form
+              className="ui-panel ui-form"
+              action={async (formData: FormData) => {
+                'use server'
+                await addBrandFact({
+                  projectId: project.id,
+                  runId: id,
+                  locale,
+                  factType: String(formData.get('factType') ?? ''),
+                  factText: String(formData.get('factText') ?? ''),
+                  sourceUrl: String(formData.get('sourceUrl') ?? ''),
+                  sourceNote: String(formData.get('sourceNote') ?? ''),
+                })
+              }}
+            >
+              <div className="ui-field">
+                <label className="ui-label" htmlFor="fact-type">
+                  {t('typeLabel')}
+                </label>
+                <input id="fact-type" className="ui-input" name="factType" required placeholder={t('typePlaceholder')} />
+              </div>
+              <div className="ui-field ui-form__wide">
+                <label className="ui-label" htmlFor="fact-text">
+                  {t('factLabel')}
+                </label>
+                <textarea id="fact-text" className="ui-textarea" name="factText" rows={4} required placeholder={t('factPlaceholder')} />
+                <p className="ui-hint">{t('factHint')}</p>
+              </div>
+              <div className="ui-field">
+                <label className="ui-label" htmlFor="fact-source-url">
+                  {t('sourceUrlLabel')}
+                </label>
+                <input id="fact-source-url" className="ui-input" name="sourceUrl" type="url" placeholder="https://…" />
+              </div>
+              <div className="ui-field">
+                <label className="ui-label" htmlFor="fact-source-note">
+                  {t('sourceNoteLabel')}
+                </label>
+                <input id="fact-source-note" className="ui-input" name="sourceNote" placeholder={t('sourceNotePlaceholder')} />
+              </div>
+              <div className="ui-form__actions">
+                <Button type="submit" variant="primary">
+                  {t('add')}
+                </Button>
+              </div>
+            </form>
+          </section>
         </div>
       </section>
     </RunWorkspace>

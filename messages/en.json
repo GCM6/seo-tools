@@ -766,6 +766,14 @@
     "legend": "Evidence grades: Measured = raw data you can re-check (L4); Sampled = measured on a fixed-protocol sample (L3); Inferred = derived from evidence, not measured directly (L2); Suspected = an unverified guess (L1)"
   },
   "facts": {
+    "countLine": "{total} facts, {verified} verified",
+    "unverify": "Unverify",
+    "restore": "Restore",
+    "removeConfirm": "Confirm delete",
+    "cancel": "Cancel",
+    "error": "Not saved. Please try again.",
+    "emptyTitle": "No brand facts yet",
+    "factHint": "Write facts that can be checked, not slogans. A fact is injected into execution prompts only after you verify it.",
     "backToDiagnosis": "Back to diagnostic dashboard",
     "title": "Brand facts",
     "meta": "Only \"verified\" brand facts are injected into execution prompts (§6.2 human-in-the-loop gate)",
@@ -836,6 +844,8 @@
     }
   },
   "competitors": {
+    "domainCol": "Domain",
+    "actionsLabel": "Actions",
     "backToDiagnosis": "Back to diagnostic dashboard",
     "title": "Competitors",
     "subtitle": "SERP-overlap candidates. Confirm the ones that are real organic competitors — only confirmed competitors enter gap analysis and comparison (human-in-the-loop).",
@@ -898,6 +908,13 @@
     "claimUndetermined": "This AI engine has no web-search capability at all (it only answers from training memory), so it can't be held to the same \"show your source\" bar as a search-backed engine — it's neither grounded nor unverified, just its own category."
   },
   "site": {
+    "subtitle": "Site health, link structure, URL templates and pages from this crawl.",
+    "statsHeading": "Site health",
+    "linkStructureHeading": "Link structure",
+    "noTemplates": "No URL templates were identified in this crawl.",
+    "filterLabel": "Filter by crawl status",
+    "actionsLabel": "Actions",
+    "noPagesForFilter": "No pages match this filter.",
     "backToDiagnosis": "Back to diagnostic dashboard",
     "title": "Site structure",
     "inferredBadge": "Inferred template",
@@ -1268,12 +1285,14 @@
         }
       },
       "estimateNote": "Search volume / difficulty are third-party estimates (L3), not measured.",
+      "sourceNote": "Clicks, impressions, CTR and position come from Google Search Console. Gaps, search volume and opportunity are third-party DataForSEO estimates (L3), not measurements.",
       "gapsTitle": "Keyword gaps",
       "empty": "GSC / DataForSEO not connected — no keyword data.",
       "expandAll": "Show all ({count} rows)",
       "collapse": "Collapse",
       "col": {
         "keyword": "Keyword",
+        "gap": "Gap (estimate)",
         "type": "Type",
         "clicks": "Clicks",
         "impressions": "Impressions",
@@ -1416,7 +1435,8 @@
     "backToProjects": "Back to projects"
   },
   "runError": {
-    "title": "Failed to load this page",
+    "title": "This page couldn't load",
+    "backToProjects": "Back to projects",
     "description": "Sorry, something went wrong loading this page's data. You can retry; if it keeps failing, go back to the run overview and re-enter.",
     "retry": "Retry",
     "backToOverview": "Back to run overview"

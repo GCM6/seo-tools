@@ -3,11 +3,16 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { RunWorkspace } from '@/components/RunWorkspace'
 import { SitePageActions } from '@/components/SitePageActions'
-import { EmptyStateCTA } from '@/components/EmptyStateCTA'
+import { SectionHeader } from '@/components/SectionHeader'
+import { EmptyState } from '@/components/EmptyState'
+import { EvidenceBadge } from '@/components/EvidenceBadge'
+import { Notice } from '@/components/Notice'
+import { StatGrid } from '@/components/StatGrid'
+import { Tag } from '@/components/Tag'
+import { Button } from '@/components/Button'
 import { Term } from '@/components/Term'
 import {
   getRun,
-  getProject,
   getSitePages,
   getProjectTemplates,
   getSiteAuditEvidence,
@@ -18,7 +23,8 @@ import { filterToSnapshot, depthCellsFor, linkStructureCounts, snapshotStatusFor
 import { equityRelativeFor } from '@/lib/crawl/link-equity'
 import { toggleKeyPageAction, setRepresentativeAction } from './actions'
 
-// 站点结构面板：全站健康统计（site_audit 快照，L4 实测）+ 推断模板列表 + 页面清单。
+// 站点结构（ux-blueprint §3.6 原始数据）：全站健康统计（site_audit 快照，L4 实测）+ 链接结构 +
+// 推断模板列表 + 页面清单。统一结构：区段标题 → 汇总数字 → 主表格。
 // Next 16：params / searchParams 是 Promise，必须 await。
 export default async function SiteStructurePage({
   params,
@@ -31,10 +37,9 @@ export default async function SiteStructurePage({
   const { status: statusFilter } = await searchParams
   setRequestLocale(locale)
   // terms 命名空间：术语解释文案统一放这，供本页与 ReportView 共用同一份解释（P1-3 修复）。
-  const [t, tt, run] = await Promise.all([getTranslations('site'), getTranslations('terms'), getRun(id)])
+  const [t, tt, tRoot, run] = await Promise.all([getTranslations('site'), getTranslations('terms'), getTranslations(), getRun(id)])
   if (!run) notFound()
-  const [project, pages, templates, audit, runEvidence] = await Promise.all([
-    getProject(run.projectId),
+  const [pages, templates, audit, runEvidence] = await Promise.all([
     getSitePages(run.projectId),
     getProjectTemplates(run.projectId),
     getSiteAuditEvidence(id),
@@ -59,30 +64,9 @@ export default async function SiteStructurePage({
   if (!payload) {
     return (
       <RunWorkspace runId={id} locale={locale} current="site">
-        <section className="screen show">
-          <Link href={`/${locale}/runs/${id}`} className="rec-back-link">
-            <span aria-hidden="true">←</span>
-            {t('backToDiagnosis')}
-          </Link>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="ui-sec-head__title">{t('title')}</h2>
-            <div className="flex items-center gap-3 text-xs">
-              <Link href={`/${locale}/runs/${id}/report`} className="underline underline-offset-2">
-                {t('viewReport')}
-              </Link>
-              <Link href={`/${locale}/runs/${id}/output`} className="underline underline-offset-2">
-                {t('goToOutput')}
-              </Link>
-            </div>
-          </div>
-          <div className="mt-4">
-            <EmptyStateCTA
-              title={t('emptyTitle')}
-              impact={t('noData')}
-              actionLabel={t('backToDiagnosis')}
-              href={`/${locale}/runs/${id}`}
-            />
-          </div>
+        <section className="ui-section">
+          <SectionHeader title={t('title')} note={t('subtitle')} />
+          <div className="ui-panel"><EmptyState title={t('emptyTitle')} description={t('noData')} /></div>
         </section>
       </RunWorkspace>
     )
@@ -124,196 +108,197 @@ export default async function SiteStructurePage({
       ]
     : []
 
+  const statItems = (list: typeof stats) =>
+    list.map((s) => ({
+      key: s.key,
+      label: s.term ? <Term explain={s.term}>{s.label}</Term> : s.label,
+      value: s.value,
+      warn: Boolean(s.problem) && s.value > 0,
+    }))
+  const templateById = new Map(templates.map((tp) => [tp.id, tp.pattern]))
+  const measured = <EvidenceBadge grade="hard" label={tRoot('common.tag.measured')} />
+
   return (
     <RunWorkspace runId={id} locale={locale} current="site">
-      <section className="screen show">
-        <Link href={`/${locale}/runs/${id}`} className="rec-back-link">
-          <span aria-hidden="true">←</span>
-          {t('backToDiagnosis')}
-        </Link>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="ui-sec-head__title">
-            {project?.domain} · {t('title')}
-          </h2>
-          <div className="flex items-center gap-3 text-xs">
-            <Link href={`/${locale}/runs/${id}/report`} className="underline underline-offset-2">
-              {t('viewReport')}
-            </Link>
-            <Link href={`/${locale}/runs/${id}/output`} className="underline underline-offset-2">
-              {t('goToOutput')}
-            </Link>
-          </div>
-        </div>
+      <section className="ui-section">
+        <SectionHeader title={t('title')} note={t('subtitle')} />
+        <div className="grid grid-cols-1 gap-8">
+          {/* 全站健康（L4 实测） */}
+          <section className="ui-subsec" aria-labelledby="site-stats">
+            <h3 id="site-stats" className="ui-subsec__title">
+              {t('statsHeading')} {measured}
+            </h3>
+            <StatGrid items={statItems(stats)} />
+            {payload.stats.truncated > 0 ? (
+              <Notice tone="warn">{t('truncatedNotice', { maxPages: payload.protocol.maxPages, count: payload.stats.truncated })}</Notice>
+            ) : null}
+          </section>
 
-        <div className="mt-4">
-          <h2 className="text-sm font-medium">{t('statsTitle')}</h2>
-          <div className="stats mt-2">
-            {stats.map((s) => {
-              const isWarn = Boolean(s.problem) && s.value > 0
-              return (
-                <div key={s.key} className={isWarn ? 'card stat bg-gap-bg' : 'card stat'}>
-                  <div className="k">{s.term ? <Term explain={s.term}>{s.label}</Term> : s.label}</div>
-                  <div className={isWarn ? 'v text-gap' : 'v'}>{s.value}</div>
-                </div>
-              )
-            })}
-          </div>
-          {payload.stats.truncated > 0 && (
-            <p className="mt-2 text-xs text-warning">
-              {t('truncatedNotice', { maxPages: payload.protocol.maxPages, count: payload.stats.truncated })}
-            </p>
-          )}
-        </div>
+          {/* 链接结构（历史快照没有链接图谱时整块不显示） */}
+          {linkCounts ? (
+            <section className="ui-subsec" aria-labelledby="site-links">
+              <h3 id="site-links" className="ui-subsec__title">
+                {t('linkStructureHeading')} {measured}
+              </h3>
+              {linkCounts.entryNoLinks ? (
+                <Notice tone="warn">{t('entryNoLinksNotice')}</Notice>
+              ) : (
+                <>
+                  <StatGrid items={statItems(linkStats)} />
+                  {!linkCounts.closureComplete ? <Notice tone="warn">{t('linkPartialNotice')}</Notice> : null}
+                  {hasEquity ? <p className="ui-footnote">{t('linkEquityNote')}</p> : null}
+                </>
+              )}
+            </section>
+          ) : null}
 
-        {linkCounts && (
-          <div className="mt-6">
-            <h2 className="text-sm font-medium">{t('linkStructureTitle')}</h2>
-            {linkCounts.entryNoLinks ? (
-              <p className="mt-2 text-xs text-warning">{t('entryNoLinksNotice')}</p>
-            ) : (
-              <>
-                <div className="stats mt-2">
-                  {linkStats.map((s) => {
-                    const isWarn = Boolean(s.problem) && s.value > 0
-                    return (
-                      <div key={s.key} className={isWarn ? 'card stat bg-gap-bg' : 'card stat'}>
-                        <div className="k">{s.label}</div>
-                        <div className={isWarn ? 'v text-gap' : 'v'}>{s.value}</div>
-                      </div>
-                    )
-                  })}
-                </div>
-                {!linkCounts.closureComplete && (
-                  <p className="mt-2 text-xs text-warning">{t('linkPartialNotice')}</p>
-                )}
-                {hasEquity && <p className="mt-1 text-xs text-ghost">{t('linkEquityNote')}</p>}
-              </>
-            )}
-          </div>
-        )}
-
-        <div className="mt-6">
-          <h2 className="text-sm font-medium">
-            {t('templatesTitle')}{' '}
-            <span className="tag i">
-              <span className="dot" />
-              {t('inferredBadge')}
-            </span>
-          </h2>
-          <div className="report-table-wrap mt-2">
-            <table className="report-table">
-              <thead>
-                <tr>
-                  <th><Term explain={tt('urlPattern')}>{t('pattern')}</Term></th>
-                  <th>{t('pageCount')}</th>
-                  <th>{t('representative')}</th>
-                  <th><Term explain={tt('renderDelta')}>{t('renderDelta')}</Term></th>
-                </tr>
-              </thead>
-              <tbody>
-                {templates.map((tpl) => {
-                  const rep = tpl.representativePageId ? pageById.get(tpl.representativePageId) : undefined
-                  const delta = tpl.representativePageId
-                    ? renderDeltaBySitePageId.get(tpl.representativePageId)
-                    : undefined
-                  return (
-                    <tr key={tpl.id}>
-                      <td className="font-mono text-xs">{tpl.pattern}</td>
-                      <td>{tpl.pageCount}</td>
-                      <td className="max-w-xs truncate">
-                        {rep?.url ?? '—'}
-                        {tpl.source === 'user' && (
-                          <span className="ml-1 text-xs text-ghost">{t('userPinned')}</span>
-                        )}
-                      </td>
-                      <td>{delta !== undefined ? `${delta > 0 ? '+' : ''}${delta}` : '—'}</td>
+          {/* URL 模板（推断） */}
+          <section className="ui-subsec" aria-labelledby="site-templates">
+            <h3 id="site-templates" className="ui-subsec__title">
+              {t('templatesTitle')} <EvidenceBadge grade="inferred" label={tRoot('common.tag.inferred')} />
+            </h3>
+            {templates.length ? (
+              <div className="ui-panel ui-table-wrap">
+                <table className="ui-table">
+                  <thead>
+                    <tr>
+                      <th>
+                        <Term explain={tt('urlPattern')}>{t('pattern')}</Term>
+                      </th>
+                      <th className="ui-num">{t('pageCount')}</th>
+                      <th>{t('representative')}</th>
+                      <th className="ui-num">
+                        <Term explain={tt('renderDelta')}>{t('renderDelta')}</Term>
+                      </th>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                  </thead>
+                  <tbody>
+                    {templates.map((tpl) => {
+                      const rep = tpl.representativePageId ? pageById.get(tpl.representativePageId) : undefined
+                      const delta = tpl.representativePageId ? renderDeltaBySitePageId.get(tpl.representativePageId) : undefined
+                      return (
+                        <tr key={tpl.id}>
+                          <td className="ui-mono">{tpl.pattern}</td>
+                          <td className="ui-num">{tpl.pageCount}</td>
+                          <td>
+                            <span className="ui-cell-url ui-mono" title={rep?.url}>
+                              {rep?.url ?? '—'}
+                            </span>
+                            {tpl.source === 'user' ? <span className="ui-footnote"> {t('userPinned')}</span> : null}
+                          </td>
+                          <td className="ui-num">{delta !== undefined ? `${delta > 0 ? '+' : ''}${delta}` : '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="ui-result__note">{t('noTemplates')}</p>
+            )}
+          </section>
 
-        <div className="mt-6">
-          <h2 className="text-sm font-medium">{t('pagesTitle')}</h2>
-          <nav className="mt-1 space-x-2 text-xs">
-            <a href={`/${locale}/runs/${id}/site`} className={!statusFilter ? 'font-semibold' : 'underline'}>
-              {t('filterAll')}
-            </a>
-            {statuses.map((s) => (
-              <a
-                key={s}
-                href={`/${locale}/runs/${id}/site?status=${s}`}
-                className={statusFilter === s ? 'font-semibold' : 'underline'}
-              >
-                {t(`status.${s}`)}
-              </a>
-            ))}
-          </nav>
-          <div className="report-table-wrap mt-2">
-            <table className="report-table">
-              <thead>
-                <tr>
-                  <th>URL</th>
-                  <th><Term explain={tt('httpStatus')}>HTTP</Term></th>
-                  <th><Term explain={tt('clickDepth')}>{t('clickDepth')}</Term></th>
-                  <th>{t('inboundLinks')}</th>
-                  <th><Term explain={tt('linkEquity')}>{t('linkEquity')}</Term></th>
-                  <th><Term explain={tt('urlPattern')}>{t('pattern')}</Term></th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {visiblePages.map((p) => {
-                  const cell = depthCell(p.url)
-                  return (
-                  <tr key={p.id}>
-                    <td className="max-w-md truncate font-mono text-xs">
-                      {p.url}
-                      {p.isKeyPage && (
-                        <span className="ml-1 rounded-full bg-primary-muted px-1.5 py-0.5 text-xs text-primary">
-                          {t('keyPageBadge')}
-                        </span>
-                      )}
-                    </td>
-                    <td>{statusOf(p).httpStatus ?? t(`status.${statusOf(p).checkStatus}`)}</td>
-                    <td>{depthLabel(cell)}</td>
-                    <td>{cell.inAll ?? '—'}</td>
-                    <td>{equityLabel(equity(p.url))}</td>
-                    <td className="font-mono text-xs">
-                      {p.templateId ? templates.find((tp) => tp.id === p.templateId)?.pattern ?? '—' : '—'}
-                    </td>
-                    <td className="space-x-2 text-right">
-                      <SitePageActions
-                        pageId={p.id}
-                        isKeyPage={p.isKeyPage}
-                        labels={{ mark: t('markKeyPage'), unmark: t('unmarkKeyPage'), notice: t('nextRunNotice') }}
-                        onToggleKeyPage={async (pageId, next) => {
-                          'use server'
-                          await toggleKeyPageAction(pageId, next, id, locale)
-                        }}
-                      />
-                      {p.templateId && p.checkStatus === 'checked' && (
-                        <form
-                          className="inline"
-                          action={async () => {
-                            'use server'
-                            await setRepresentativeAction(p.templateId!, p.id, id, locale)
-                          }}
-                        >
-                          <button type="submit" className="text-xs text-muted underline underline-offset-2">
-                            {t('setRepresentative')}
-                          </button>
-                        </form>
-                      )}
-                    </td>
-                  </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          {/* 页面清单：按本次快照的抓取状态筛选 */}
+          <section className="ui-subsec" aria-labelledby="site-pages">
+            <h3 id="site-pages" className="ui-subsec__title">
+              {t('pagesTitle')} <span className="ui-subsec__count">{visiblePages.length}</span>
+            </h3>
+            <nav className="ui-chips" aria-label={t('filterLabel')}>
+              <Link href={`/${locale}/runs/${id}/site`} className="ui-chip" aria-current={!statusFilter ? 'page' : undefined}>
+                {t('filterAll')}
+              </Link>
+              {statuses.map((s) => (
+                <Link
+                  key={s}
+                  href={`/${locale}/runs/${id}/site?status=${s}`}
+                  className="ui-chip"
+                  aria-current={statusFilter === s ? 'page' : undefined}
+                >
+                  {t(`status.${s}`)}
+                </Link>
+              ))}
+            </nav>
+            {visiblePages.length ? (
+              <div className="ui-panel ui-table-wrap">
+                <table className="ui-table">
+                  <thead>
+                    <tr>
+                      <th>URL</th>
+                      <th>
+                        <Term explain={tt('httpStatus')}>HTTP</Term>
+                      </th>
+                      <th className="ui-num">
+                        <Term explain={tt('clickDepth')}>{t('clickDepth')}</Term>
+                      </th>
+                      <th className="ui-num">{t('inboundLinks')}</th>
+                      <th className="ui-num">
+                        <Term explain={tt('linkEquity')}>{t('linkEquity')}</Term>
+                      </th>
+                      <th>
+                        <Term explain={tt('urlPattern')}>{t('pattern')}</Term>
+                      </th>
+                      <th>
+                        <span className="sr-only">{t('actionsLabel')}</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visiblePages.map((p) => {
+                      const cell = depthCell(p.url)
+                      return (
+                        <tr key={p.id}>
+                          <td>
+                            <span className="ui-cell-url ui-mono" title={p.url}>
+                              {p.url}
+                            </span>
+                            {p.isKeyPage ? (
+                              <>
+                                {' '}
+                                <Tag tone="accent">{t('keyPageBadge')}</Tag>
+                              </>
+                            ) : null}
+                          </td>
+                          <td>{statusOf(p).httpStatus ?? t(`status.${statusOf(p).checkStatus}`)}</td>
+                          <td className="ui-num">{depthLabel(cell)}</td>
+                          <td className="ui-num">{cell.inAll ?? '—'}</td>
+                          <td className="ui-num">{equityLabel(equity(p.url))}</td>
+                          <td className="ui-mono">{p.templateId ? templateById.get(p.templateId) ?? '—' : '—'}</td>
+                          <td>
+                            <span className="ui-row-actions">
+                              <SitePageActions
+                                pageId={p.id}
+                                isKeyPage={p.isKeyPage}
+                                labels={{ mark: t('markKeyPage'), unmark: t('unmarkKeyPage'), notice: t('nextRunNotice') }}
+                                onToggleKeyPage={async (pageId, next) => {
+                                  'use server'
+                                  await toggleKeyPageAction(pageId, next, id, locale)
+                                }}
+                              />
+                              {p.templateId && p.checkStatus === 'checked' ? (
+                                <form
+                                  action={async () => {
+                                    'use server'
+                                    await setRepresentativeAction(p.templateId!, p.id, id, locale)
+                                  }}
+                                >
+                                  <Button type="submit" size="sm" variant="quiet">
+                                    {t('setRepresentative')}
+                                  </Button>
+                                </form>
+                              ) : null}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="ui-result__note">{t('noPagesForFilter')}</p>
+            )}
+            <p className="ui-footnote">{t('nextRunNotice')}</p>
+          </section>
         </div>
       </section>
     </RunWorkspace>

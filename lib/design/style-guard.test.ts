@@ -11,7 +11,6 @@ const PENDING_MIGRATION = new Set([
   'app/[locale]/rules/RulesAdminClient.tsx',
   'app/[locale]/settings/SettingsClient.tsx',
   'components/BrandAliasesCard.tsx',
-  'components/BrandFactRow.tsx',
   'components/GscConnectCard.tsx',
   'components/NewAnalysisForm.tsx',
   'components/ProjectList.tsx',

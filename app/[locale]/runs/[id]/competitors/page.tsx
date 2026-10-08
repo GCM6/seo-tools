@@ -1,12 +1,17 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
-import Link from 'next/link'
 import { RunWorkspace } from '@/components/RunWorkspace'
-import { EmptyStateCTA } from '@/components/EmptyStateCTA'
+import { SectionHeader } from '@/components/SectionHeader'
+import { EmptyState } from '@/components/EmptyState'
+import { Notice } from '@/components/Notice'
+import { Tag } from '@/components/Tag'
+import { Button, ButtonLink } from '@/components/Button'
 import { getRun, getProject, getCompetitors, getRunEvidence } from '@/lib/repositories'
+import { displayDomain } from '@/lib/runs/workspace'
 import { confirmCompetitorAction, dismissCompetitorAction, restoreCompetitorAction } from './actions'
 
-// 竞品确认面板（Phase C，spec §7.4-4）：SERP 重叠候选竞品 → 人工确认闸门 → 对比矩阵。
+// 竞品（ux-blueprint §3.6；Phase C，spec §7.4-4）：SERP 重叠候选竞品 → 人工确认闸门 → 对比矩阵。
+// 候选竞品用表格行 + 行内「确认 / 驳回」，不用两列卡片。
 // 只有 confirmed 竞品才进入 gap 分析与对比（人在环）。确认动作触发增量再评估（两段式诊断）。
 // Server Component（Next 16）：await params、pin locale；确认/驳回走 Server Action。
 export default async function CompetitorsPage({
@@ -47,142 +52,136 @@ export default async function CompetitorsPage({
   const dismissed = competitors.filter((c) => c.status === 'dismissed')
   const pct = (s: string | null) => (s == null ? '—' : `${Math.round(Number(s) * 100)}%`)
 
+  const own = project ? displayDomain(project.domain) : ''
+
   return (
     <RunWorkspace runId={id} locale={locale} current="competitors">
-      <section className="screen show">
-        <Link href={`/${locale}/runs/${id}`} className="rec-back-link">
-          <span aria-hidden="true">←</span>
-          {t('backToDiagnosis')}
-        </Link>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="ui-sec-head__title">
-            {project?.domain} · {t('title')}
-          </h2>
-          <div className="flex items-center gap-3 text-xs">
-            <Link href={`/${locale}/runs/${id}/report`} className="underline underline-offset-2">
-              {t('viewReport')}
-            </Link>
-            <Link href={`/${locale}/runs/${id}/output`} className="underline underline-offset-2">
-              {t('goToOutput')}
-            </Link>
-          </div>
-        </div>
-        <p className="mt-1 max-w-3xl text-sm text-muted">{t('subtitle')}</p>
+      <section className="ui-section">
+        <SectionHeader title={t('title')} note={t('subtitle')} />
 
         {competitors.length === 0 ? (
-          <div className="mt-6">
-            <EmptyStateCTA
+          <div className="ui-panel">
+            <EmptyState
               title={t('emptyTitle')}
-              impact={t('noData')}
-              actionLabel={t('emptyCta')}
-              href={`/${locale}/settings#source-dataforseo`}
+              description={t('noData')}
+              action={
+                <ButtonLink href={`/${locale}/settings#source-dataforseo`} size="sm">
+                  {t('emptyCta')}
+                </ButtonLink>
+              }
             />
           </div>
         ) : (
-          <>
-            {/* —— 候选竞品（待确认）—— */}
-            {candidates.length > 0 && (
-              <div className="mt-6">
-                <h2 className="text-sm font-medium">{t('candidatesTitle')}</h2>
-                <p className="mt-1 text-xs text-warning">{t('reevalNotice')}</p>
-                <div className="mt-2 grid gap-2 md:grid-cols-2">
-                  {candidates.map((c) => (
-                    <div key={c.id} className="card p-3">
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-sm">{c.domain}</span>
-                        <span className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted">
-                          {t('candidateBadge')}
-                        </span>
-                      </div>
-                      <dl className="mt-2 grid grid-cols-2 gap-1 text-xs text-muted">
-                        <div>
-                          {t('overlapScore')}: <b>{pct(c.overlapScore)}</b>
-                        </div>
-                        <div>
-                          {t('sharedKeywords')}: <b>{c.sharedKeywordsCount}</b>
-                        </div>
-                      </dl>
-                      {topKw(c.domain).length > 0 && (
-                        <div className="mt-2 text-xs text-muted">
-                          <span className="text-ghost">{t('topKeywords')}:</span> {topKw(c.domain).join(' · ')}
-                        </div>
-                      )}
-                      <div className="mt-3 flex gap-2">
-                        <form
-                          action={async () => {
-                            'use server'
-                            await confirmCompetitorAction(c.id, run.projectId, id, locale)
-                          }}
-                        >
-                          <button
-                            type="submit"
-                            className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-on-primary hover:bg-primary-hover"
-                          >
-                            {t('confirm')}
-                          </button>
-                        </form>
-                        <form
-                          action={async () => {
-                            'use server'
-                            await dismissCompetitorAction(c.id, id, locale)
-                          }}
-                        >
-                          <button
-                            type="submit"
-                            className="rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:bg-surface-2"
-                          >
-                            {t('dismiss')}
-                          </button>
-                        </form>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* —— 确认竞品对比矩阵 —— */}
-            <div className="mt-6">
-              <h2 className="text-sm font-medium">{t('matrixTitle')}</h2>
-              {confirmed.length === 0 ? (
-                <p className="mt-2 pending-block">{t('matrixEmpty')}</p>
-              ) : (
-                <div className="report-table-wrap mt-2">
-                  <table className="report-table">
+          <div className="grid grid-cols-1 gap-8">
+            {/* 候选竞品（待确认）：确认后才进入缺口分析与对比（人在环） */}
+            {candidates.length > 0 ? (
+              <section className="ui-subsec" aria-labelledby="comp-candidates">
+                <h3 id="comp-candidates" className="ui-subsec__title">
+                  {t('candidatesTitle')} <span className="ui-subsec__count">{candidates.length}</span>
+                </h3>
+                <Notice>{t('reevalNotice')}</Notice>
+                <div className="ui-panel ui-table-wrap">
+                  <table className="ui-table">
                     <thead>
                       <tr>
-                        <th>{t('confirmedTitle')}</th>
-                        <th>{t('overlapScore')}</th>
-                        <th>{t('sharedKeywords')}</th>
+                        <th>{t('domainCol')}</th>
+                        <th className="ui-num">{t('overlapScore')}</th>
+                        <th className="ui-num">{t('sharedKeywords')}</th>
                         <th>{t('topKeywords')}</th>
-                        <th></th>
+                        <th>
+                          <span className="sr-only">{t('actionsLabel')}</span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr className="bg-primary-muted">
-                        <td className="font-mono text-xs font-semibold">{project?.domain} ({t('you')})</td>
+                      {candidates.map((c) => (
+                        <tr key={c.id}>
+                          <td className="ui-mono">{c.domain}</td>
+                          <td className="ui-num">{pct(c.overlapScore)}</td>
+                          <td className="ui-num">{c.sharedKeywordsCount}</td>
+                          <td className="ui-cell-muted">{topKw(c.domain).join(' · ') || '—'}</td>
+                          <td>
+                            <span className="ui-row-actions">
+                              <form
+                                action={async () => {
+                                  'use server'
+                                  await confirmCompetitorAction(c.id, run.projectId, id, locale)
+                                }}
+                              >
+                                <Button type="submit" size="sm" variant="primary">
+                                  {t('confirm')}
+                                </Button>
+                              </form>
+                              <form
+                                action={async () => {
+                                  'use server'
+                                  await dismissCompetitorAction(c.id, id, locale)
+                                }}
+                              >
+                                <Button type="submit" size="sm" variant="quiet">
+                                  {t('dismiss')}
+                                </Button>
+                              </form>
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ) : null}
+
+            {/* 已确认竞品对比 */}
+            <section className="ui-subsec" aria-labelledby="comp-matrix">
+              <h3 id="comp-matrix" className="ui-subsec__title">
+                {t('matrixTitle')}
+              </h3>
+              {confirmed.length === 0 ? (
+                <p className="ui-result__note">{t('matrixEmpty')}</p>
+              ) : (
+                <div className="ui-panel ui-table-wrap">
+                  <table className="ui-table">
+                    <thead>
+                      <tr>
+                        <th>{t('domainCol')}</th>
+                        <th className="ui-num">{t('overlapScore')}</th>
+                        <th className="ui-num">{t('sharedKeywords')}</th>
+                        <th>{t('topKeywords')}</th>
+                        <th>
+                          <span className="sr-only">{t('actionsLabel')}</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="ui-row-own">
+                        <td className="ui-mono">
+                          {own} <Tag tone="accent">{t('you')}</Tag>
+                        </td>
+                        <td className="ui-num">—</td>
+                        <td className="ui-num">—</td>
                         <td>—</td>
-                        <td>—</td>
-                        <td>—</td>
-                        <td></td>
+                        <td />
                       </tr>
                       {confirmed.map((c) => (
                         <tr key={c.id}>
-                          <td className="font-mono text-xs">{c.domain}</td>
-                          <td>{pct(c.overlapScore)}</td>
-                          <td>{c.sharedKeywordsCount}</td>
-                          <td className="max-w-xs truncate text-xs text-muted">{topKw(c.domain).join(' · ') || '—'}</td>
-                          <td className="text-right">
-                            <form
-                              action={async () => {
-                                'use server'
-                                await dismissCompetitorAction(c.id, id, locale)
-                              }}
-                            >
-                              <button type="submit" className="text-xs text-muted underline underline-offset-2">
-                                {t('dismiss')}
-                              </button>
-                            </form>
+                          <td className="ui-mono">{c.domain}</td>
+                          <td className="ui-num">{pct(c.overlapScore)}</td>
+                          <td className="ui-num">{c.sharedKeywordsCount}</td>
+                          <td className="ui-cell-muted">{topKw(c.domain).join(' · ') || '—'}</td>
+                          <td>
+                            <span className="ui-row-actions">
+                              <form
+                                action={async () => {
+                                  'use server'
+                                  await dismissCompetitorAction(c.id, id, locale)
+                                }}
+                              >
+                                <Button type="submit" size="sm" variant="quiet">
+                                  {t('dismiss')}
+                                </Button>
+                              </form>
+                            </span>
                           </td>
                         </tr>
                       ))}
@@ -190,33 +189,35 @@ export default async function CompetitorsPage({
                   </table>
                 </div>
               )}
-              <p className="mt-2 text-xs text-ghost">{t('estimateNote')}</p>
-            </div>
+              <p className="ui-footnote">{t('estimateNote')}</p>
+            </section>
 
-            {/* —— 已驳回（可恢复）—— */}
-            {dismissed.length > 0 && (
-              <div className="mt-6">
-                <h2 className="text-sm font-medium text-muted">{t('dismissedTitle')}</h2>
-                <ul className="mt-2 space-y-1">
+            {/* 已驳回（可恢复） */}
+            {dismissed.length > 0 ? (
+              <section className="ui-subsec" aria-labelledby="comp-dismissed">
+                <h3 id="comp-dismissed" className="ui-subsec__title">
+                  {t('dismissedTitle')} <span className="ui-subsec__count">{dismissed.length}</span>
+                </h3>
+                <ul className="ui-panel ui-plainlist">
                   {dismissed.map((c) => (
-                    <li key={c.id} className="flex items-center gap-3 text-sm text-muted">
-                      <span className="font-mono text-xs line-through">{c.domain}</span>
+                    <li key={c.id}>
+                      <span className="ui-mono ui-muted">{c.domain}</span>
                       <form
                         action={async () => {
                           'use server'
                           await restoreCompetitorAction(c.id, id, locale)
                         }}
                       >
-                        <button type="submit" className="text-xs text-muted underline underline-offset-2">
+                        <Button type="submit" size="sm" variant="quiet">
                           {t('restore')}
-                        </button>
+                        </Button>
                       </form>
                     </li>
                   ))}
                 </ul>
-              </div>
-            )}
-          </>
+              </section>
+            ) : null}
+          </div>
         )}
       </section>
     </RunWorkspace>

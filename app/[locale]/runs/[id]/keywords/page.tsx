@@ -1,12 +1,14 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
-import Link from 'next/link'
 import { RunWorkspace } from '@/components/RunWorkspace'
 import { KeywordTable } from '@/components/KeywordTable'
-import { EmptyStateCTA } from '@/components/EmptyStateCTA'
-import { getRun, getProject, getRunKeywordMetrics, getRunKeywordGaps, getKeywords } from '@/lib/repositories'
+import { SectionHeader } from '@/components/SectionHeader'
+import { EmptyState } from '@/components/EmptyState'
+import { ButtonLink } from '@/components/Button'
+import { getRun, getRunKeywordMetrics, getRunKeywordGaps, getKeywords } from '@/lib/repositories'
 
-// 关键词现状 tab（Screen 2 子页，active={2}）。复用 KeywordTable。
+// 关键词现状（ux-blueprint §3.6 原始数据）：区段标题 → 关键词表（GSC 实测 + DataForSEO 缺口合并为一行）。
+// 两个数据源都没有数据时，分别说明缺什么、去哪接入。
 export default async function KeywordsPage({
   params,
 }: {
@@ -16,8 +18,7 @@ export default async function KeywordsPage({
   setRequestLocale(locale)
   const [t, run] = await Promise.all([getTranslations('keywords'), getRun(id)])
   if (!run) notFound()
-  const [project, keywordMetrics, keywordGaps, keywords] = await Promise.all([
-    getProject(run.projectId),
+  const [keywordMetrics, keywordGaps, keywords] = await Promise.all([
     getRunKeywordMetrics(id),
     getRunKeywordGaps(id),
     getKeywords(run.projectId),
@@ -29,42 +30,31 @@ export default async function KeywordsPage({
   const isEmpty = !keywordMetrics.length && !keywordGaps.length
   return (
     <RunWorkspace runId={id} locale={locale} current="keywords">
-      <section className="screen show">
-        <Link href={`/${locale}/runs/${id}`} className="rec-back-link">
-          <span aria-hidden="true">←</span>
-          {t('backToDiagnosis')}
-        </Link>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="ui-sec-head__title">
-            {project?.domain} · {t('title')}
-          </h2>
-          <div className="flex items-center gap-3 text-xs">
-            <Link href={`/${locale}/runs/${id}/report`} className="underline underline-offset-2">
-              {t('viewReport')}
-            </Link>
-            <Link href={`/${locale}/runs/${id}/output`} className="underline underline-offset-2">
-              {t('goToOutput')}
-            </Link>
-          </div>
-        </div>
-        <p className="mt-1 text-sm text-muted">{t('subtitle')}</p>
+      <section className="ui-section">
+        <SectionHeader title={t('title')} note={t('subtitle')} />
         {isEmpty ? (
-          <div className="mt-4 flex flex-col gap-3">
-            <EmptyStateCTA
+          <div className="ui-empty-pair">
+            <EmptyState
               title={t('emptyGscTitle')}
-              impact={t('emptyGscImpact')}
-              actionLabel={t('emptyGscCta')}
-              href={`/${locale}/projects/${run.projectId}`}
+              description={t('emptyGscImpact')}
+              action={
+                <ButtonLink href={`/${locale}/projects/${run.projectId}#gsc`} size="sm">
+                  {t('emptyGscCta')}
+                </ButtonLink>
+              }
             />
-            <EmptyStateCTA
+            <EmptyState
               title={t('emptyDataforseoTitle')}
-              impact={t('emptyDataforseoImpact')}
-              actionLabel={t('emptyDataforseoCta')}
-              href={`/${locale}/settings#source-dataforseo`}
+              description={t('emptyDataforseoImpact')}
+              action={
+                <ButtonLink href={`/${locale}/settings#source-dataforseo`} size="sm">
+                  {t('emptyDataforseoCta')}
+                </ButtonLink>
+              }
             />
           </div>
         ) : (
-          <div className="mt-4 report-table-wrap">
+          <div className="grid grid-cols-1 gap-3">
             <KeywordTable keywordMetrics={keywordMetrics} keywordGaps={keywordGaps} keywordText={keywordText} />
           </div>
         )}

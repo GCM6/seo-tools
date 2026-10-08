@@ -766,6 +766,14 @@
     "legend": "证据等级：实测=有可复查的原始数据（L4）；抽样实测=按固定协议抽样测得（L3）；推断=基于证据推出，未直接测量（L2）；疑似=待验证的猜测（L1）"
   },
   "facts": {
+    "countLine": "共 {total} 条，已验证 {verified} 条",
+    "unverify": "取消验证",
+    "restore": "恢复",
+    "removeConfirm": "确认删除",
+    "cancel": "取消",
+    "error": "没有保存成功，请重试。",
+    "emptyTitle": "还没有品牌事实",
+    "factHint": "写可以核验的事实，不写宣传语；保存后要人工验证，才会注入执行提示词。",
     "backToDiagnosis": "返回诊断看板",
     "title": "品牌事实管理",
     "meta": "只有「已验证」的品牌事实才会被注入执行提示词（§6.2 人在环闸门）",
@@ -836,6 +844,8 @@
     }
   },
   "competitors": {
+    "domainCol": "域名",
+    "actionsLabel": "操作",
     "backToDiagnosis": "返回诊断看板",
     "title": "竞品",
     "subtitle": "基于 SERP 重叠自动识别的候选竞品。请确认真正的自然搜索竞品——只有确认后的竞品才进入缺口分析与对比（人在环闸门）。",
@@ -898,6 +908,13 @@
     "claimUndetermined": "这个 AI 引擎本身不具备联网查资料的能力（只靠训练记忆回答），没法要求它像联网引擎一样「给出处」，所以既不算「有依据」也不算「无依据」，单独归为一类。"
   },
   "site": {
+    "subtitle": "本次抓取的全站健康、链接结构、URL 模板和页面清单。",
+    "statsHeading": "全站健康",
+    "linkStructureHeading": "链接结构",
+    "noTemplates": "本次没有识别出 URL 模板。",
+    "filterLabel": "按抓取状态筛选",
+    "actionsLabel": "操作",
+    "noPagesForFilter": "这个筛选下没有页面。",
     "backToDiagnosis": "返回诊断看板",
     "title": "站点结构",
     "inferredBadge": "推断模板",
@@ -1268,12 +1285,14 @@
         }
       },
       "estimateNote": "搜索量 / 难度为第三方估算（L3），非实测。",
+      "sourceNote": "点击、展现、点击率、排名来自 Google Search Console；缺口、搜索量和机会分是 DataForSEO 第三方估算（L3），不是实测。",
       "gapsTitle": "关键词缺口",
       "empty": "未接入 GSC / DataForSEO，暂无关键词数据。",
       "expandAll": "显示全部（共 {count} 条）",
       "collapse": "收起",
       "col": {
         "keyword": "关键词",
+        "gap": "缺口（估算）",
         "type": "类型",
         "clicks": "点击",
         "impressions": "展现",
@@ -1416,7 +1435,8 @@
     "backToProjects": "返回项目列表"
   },
   "runError": {
-    "title": "页面加载失败",
+    "title": "这个页面没能加载",
+    "backToProjects": "返回项目列表",
     "description": "抱歉，加载本页数据时出了问题。你可以重试；若持续失败，请返回诊断总览重新进入。",
     "retry": "重试",
     "backToOverview": "返回诊断总览"

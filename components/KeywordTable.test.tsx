@@ -85,7 +85,7 @@ describe('KeywordTable — 格式化（沿用既有断言，合并单表后行�
 })
 
 describe('KeywordTable — 合并单表（P1-8：同一关键词的实测指标与缺口不再拆两张表）', () => {
-  it('同一 keywordId 既有 metrics 又有 gap 时合并为一行，两枚类型徽标同显', () => {
+  it('同一 keywordId 既有 metrics 又有 gap 时合并为一行；「实测」只在表格上方说明一次，缺口类型单独一列', () => {
     render(
       <KeywordTable
         keywordMetrics={[metricRow({ id: 'km_1', keywordId: 'kw_dup', clicks: 5 })]}
@@ -95,8 +95,10 @@ describe('KeywordTable — 合并单表（P1-8：同一关键词的实测指标�
     )
     const rows = keywordRowTexts()
     expect(rows).toHaveLength(1)
-    expect(within(rows[0]).getByText('实测')).toBeInTheDocument()
-    expect(within(rows[0]).getByText('缺口 · 薄弱')).toBeInTheDocument()
+    // ux-blueprint §3.6：每行的「实测」是噪音，改为表格上方一次性说明。
+    expect(within(rows[0]).queryByText('实测')).not.toBeInTheDocument()
+    expect(screen.getAllByText('实测')).toHaveLength(1)
+    expect(within(rows[0]).getByText('薄弱')).toBeInTheDocument()
   })
 
   it('无数据的空态：两个数组都为空时展示空态提示', () => {

@@ -1,14 +1,14 @@
 'use client'
 
 import { useEffect } from 'react'
-import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { Button, ButtonLink } from '@/components/Button'
 
-// Run 分支（/runs/[id] 及其子页）的路由级 error 边界（P2-2）。子页目录不单独建
+// Run 分支（/runs/[id] 及其子页）的路由级 error 边界（ux-blueprint §0「错误边界」）。子页目录不单独建
 // error.tsx，统一由这一层兜底——App Router 的 error 边界按目录树向上找最近的一个。
-// 只给"重试 / 返回诊断总览"两个出口，不向用户暴露 error.message 等技术细节
-// （message 只写 console，供排查用）。
+// 「这个页面没能加载」+ 一句原因 + [重试]（主按钮）+ 返回入口（次按钮）：子页出错回诊断概览，
+// 概览本身出错就回项目列表，避免把人送回同一个出错页。不向用户暴露 error.message（只写 console）。
 export default function RunError({
   error,
   reset,
@@ -18,27 +18,27 @@ export default function RunError({
 }) {
   const t = useTranslations('runError')
   const params = useParams<{ locale?: string; id?: string }>()
+  const pathname = usePathname()
 
   useEffect(() => {
     console.error(error)
   }, [error])
 
+  const locale = params?.locale ?? 'zh'
+  const overviewHref = params?.id ? `/${locale}/runs/${params.id}` : null
+  const onOverview = overviewHref !== null && pathname === overviewHref
+  const backHref = overviewHref && !onOverview ? overviewHref : `/${locale}/projects`
+  const backLabel = overviewHref && !onOverview ? t('backToOverview') : t('backToProjects')
+
   return (
-    <section className="screen show card" style={{ padding: '16px' }} role="alert">
-      <h2>{t('title')}</h2>
-      <p className="note">{t('description')}</p>
-      <div className="flex gap-4" style={{ marginTop: '16px' }}>
-        <button type="button" className="act acc on" onClick={() => reset()}>
+    <section className="ui-panel ui-error-page" role="alert">
+      <h2 className="ui-error-page__title">{t('title')}</h2>
+      <p className="ui-result__note">{t('description')}</p>
+      <div className="ui-inline-actions">
+        <Button variant="primary" onClick={() => reset()}>
           {t('retry')}
-        </button>
-        {params?.locale && params?.id ? (
-          <Link
-            href={`/${params.locale}/runs/${params.id}`}
-            className="text-sm underline underline-offset-2"
-          >
-            {t('backToOverview')}
-          </Link>
-        ) : null}
+        </Button>
+        <ButtonLink href={backHref}>{backLabel}</ButtonLink>
       </div>
     </section>
   )

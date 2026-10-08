@@ -187,7 +187,7 @@ function SortableHeader({
   children: React.ReactNode
 }) {
   return (
-    <th aria-sort={active ? (dir === 'desc' ? 'descending' : 'ascending') : 'none'}>
+    <th className="ui-num" aria-sort={active ? (dir === 'desc' ? 'descending' : 'ascending') : 'none'}>
       <button type="button" className="ui-th-sort" onClick={onClick}>
         {children}
         <span aria-hidden="true" className="ui-th-sort__icon">
@@ -242,13 +242,17 @@ export function KeywordTable({
 
   return (
     <>
-      <p className="ui-footnote">{t('keywords.estimateNote')}</p>
-      <div className="ui-table-wrap">
+      {/* 口径一次说明（ux-blueprint §3.6）：指标列全部来自 Search Console（实测），不再每行重复「实测」；
+          只有口径不同的缺口词（DataForSEO 第三方估算）在行内单独标出。 */}
+      <p className="ui-footnote">
+        <EvidenceBadge grade="hard" label={t('keywords.type.measured')} /> {t('keywords.sourceNote')}
+      </p>
+      <div className="ui-panel ui-table-wrap">
         <table className="ui-table">
           <thead>
             <tr>
               <th>{t('keywords.col.keyword')}</th>
-              <th>{t('keywords.col.type')}</th>
+              <th>{t('keywords.col.gap')}</th>
               {SORTABLE_KEYS.map((key) => (
                 <SortableHeader
                   key={key}
@@ -265,20 +269,13 @@ export function KeywordTable({
             {visibleRows.map((row) => (
               <tr key={row.keywordId}>
                 <td>{row.text}</td>
-                <td>
-                  <div className="flex flex-col items-start gap-1">
-                    {row.hasMetric ? <EvidenceBadge grade="hard" label={t('keywords.type.measured')} /> : null}
-                    {row.hasGap ? (
-                      <Tag>{`${t('keywords.type.gap')} · ${t(`keywords.gapType.${row.gapType}`)}`}</Tag>
-                    ) : null}
-                  </div>
-                </td>
-                <td>{row.clicks ?? '—'}</td>
-                <td>{row.impressions ?? '—'}</td>
-                <td>{fmtCtr(row.ctr)}</td>
-                <td>{fmtNumeric(row.position ?? row.ourPosition)}</td>
-                <td>{fmtNumeric(row.opportunity)}</td>
-                <td>{row.volume ?? '—'}</td>
+                <td>{row.hasGap ? <Tag>{t(`keywords.gapType.${row.gapType}`)}</Tag> : '—'}</td>
+                <td className="ui-num">{row.clicks ?? '—'}</td>
+                <td className="ui-num">{row.impressions ?? '—'}</td>
+                <td className="ui-num">{fmtCtr(row.ctr)}</td>
+                <td className="ui-num">{fmtNumeric(row.position ?? row.ourPosition)}</td>
+                <td className="ui-num">{fmtNumeric(row.opportunity)}</td>
+                <td className="ui-num">{row.volume ?? '—'}</td>
               </tr>
             ))}
           </tbody>

@@ -1,6 +1,8 @@
 'use client'
 
-import { useOptimistic, useState, startTransition } from 'react'
+import { useOptimistic, useState, useTransition } from 'react'
+import { Button } from './Button'
+import { StatusText, type StatusKind } from './StatusText'
 
 export type FactStatus = 'verified' | 'draft' | 'retired'
 
@@ -13,9 +15,12 @@ export interface BrandFactRowFact {
   status: FactStatus
 }
 
-// 单条品牌事实的人工操作行（client 叶子）。状态切换与删除都乐观更新 + 失败回滚，
-// action 由 Server Component 以闭包传入（同 SitePageActions 模式）。verified 视觉强调：
-// 只有它可被注入执行提示词（§6.2），所以要在 UI 上明显区分。
+// 品牌事实状态 → 全站统一的状态文字样式（ux-blueprint §3.6：已核验 / 草稿 / 已停用）。
+const STATUS_KIND: Record<FactStatus, StatusKind> = { verified: 'accepted', draft: 'draft', retired: 'rejected' }
+
+// 单条品牌事实的人工操作行（client 叶子）。状态切换与删除都乐观更新，失败时回滚并在行内说明；
+// action 由 Server Component 以闭包传入（同 SitePageActions 模式）。只有「已验证」可注入执行提示词
+// （§6.2），所以状态用文字明确写出，不只靠颜色。删除是破坏性操作，先在行内确认一次。
 export function BrandFactRow({
   fact,
   labels,
@@ -26,46 +31,51 @@ export function BrandFactRow({
   labels: {
     verify: string
     verified: string
+    unverify: string
     retire: string
+    restore: string
     retired: string
     draft: string
     remove: string
+    removeConfirm: string
+    cancel: string
     sourceLabel: string
+    error: string
   }
   onSetStatus: (id: string, status: FactStatus) => void | Promise<void>
   onRemove: (id: string) => void | Promise<void>
 }) {
   const [status, setStatus] = useState<FactStatus>(fact.status)
-  const [optimisticStatus, setOptimisticStatus] = useOptimistic<FactStatus, FactStatus>(
-    status,
-    (_current, next) => next,
-  )
+  const [optimisticStatus, setOptimisticStatus] = useOptimistic<FactStatus, FactStatus>(status, (_current, next) => next)
   const [removed, setRemoved] = useState(false)
-  const [optimisticRemoved, setOptimisticRemoved] = useOptimistic<boolean, boolean>(
-    removed,
-    (_current, next) => next,
-  )
+  const [optimisticRemoved, setOptimisticRemoved] = useOptimistic<boolean, boolean>(removed, (_current, next) => next)
+  const [confirming, setConfirming] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const [pending, startTransition] = useTransition()
 
   const changeStatus = (next: FactStatus) => {
+    setFailed(false)
     startTransition(async () => {
       setOptimisticStatus(next)
       try {
         await onSetStatus(fact.id, next)
         setStatus(next)
       } catch {
-        // 失败：保持持久状态，optimistic 覆盖层回滚
+        setFailed(true)
       }
     })
   }
 
   const remove = () => {
+    setFailed(false)
     startTransition(async () => {
       setOptimisticRemoved(true)
       try {
         await onRemove(fact.id)
         setRemoved(true)
       } catch {
-        // 失败回滚
+        setFailed(true)
+        setConfirming(false)
       }
     })
   }
@@ -77,70 +87,54 @@ export function BrandFactRow({
   const statusLabel = verified ? labels.verified : retired ? labels.retired : labels.draft
 
   return (
-    <div
-      className={`fact-row${verified ? ' verified' : ''}${retired ? ' retired' : ''}`}
-      style={{
-        display: 'flex',
-        gap: 12,
-        alignItems: 'flex-start',
-        padding: '10px 12px',
-        borderLeft: verified ? '3px solid var(--ds-success)' : '3px solid transparent',
-        opacity: retired ? 0.5 : 1,
-      }}
-    >
-      <div style={{ flex: 1 }}>
-        <div className="fact-text" style={{ fontWeight: verified ? 600 : 400 }}>
-          {fact.factText}
-        </div>
-        <div className="fact-meta" style={{ fontSize: 12, color: 'var(--ds-muted)', marginTop: 2 }}>
+    <li className={retired ? 'ui-fact ui-fact--retired' : 'ui-fact'} aria-busy={pending || undefined}>
+      <div className="ui-fact__main">
+        <p className="ui-fact__text">{fact.factText}</p>
+        <p className="ui-fact__meta">
           <span>{fact.factType}</span>
           {fact.sourceUrl ? (
             <>
               {' · '}
-              <a href={fact.sourceUrl} target="_blank" rel="noreferrer" className="underline">
+              <a href={fact.sourceUrl} target="_blank" rel="noreferrer">
                 {labels.sourceLabel}
               </a>
             </>
           ) : null}
           {fact.sourceNote ? <> · {fact.sourceNote}</> : null}
-        </div>
+        </p>
+        {failed ? (
+          <p className="ui-error" role="status">
+            {labels.error}
+          </p>
+        ) : null}
       </div>
-
-      <span
-        className={`fact-status ${optimisticStatus}`}
-        style={{
-          fontSize: 12,
-          padding: '2px 8px',
-          borderRadius: 4,
-          background: verified ? 'var(--ds-success-muted)' : retired ? 'var(--ds-surface-2)' : 'var(--ds-warning-muted)',
-          color: verified ? 'var(--ds-success)' : retired ? 'var(--ds-muted)' : 'var(--ds-warning)',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {statusLabel}
+      <StatusText status={STATUS_KIND[optimisticStatus]} label={statusLabel} />
+      <span className="ui-row-actions">
+        {confirming ? (
+          <>
+            <Button size="sm" variant="danger" onClick={remove}>
+              {labels.removeConfirm}
+            </Button>
+            <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>
+              {labels.cancel}
+            </Button>
+          </>
+        ) : (
+          <>
+            {retired ? null : (
+              <Button size="sm" variant={verified ? 'quiet' : 'secondary'} onClick={() => changeStatus(verified ? 'draft' : 'verified')}>
+                {verified ? labels.unverify : labels.verify}
+              </Button>
+            )}
+            <Button size="sm" variant="quiet" onClick={() => changeStatus(retired ? 'draft' : 'retired')}>
+              {retired ? labels.restore : labels.retire}
+            </Button>
+            <Button size="sm" variant="quiet" onClick={() => setConfirming(true)}>
+              {labels.remove}
+            </Button>
+          </>
+        )}
       </span>
-
-      <div className="fact-actions" style={{ display: 'flex', gap: 6 }}>
-        <button
-          type="button"
-          className={`act accept${verified ? ' on' : ''}`}
-          aria-pressed={verified}
-          onClick={() => changeStatus(verified ? 'draft' : 'verified')}
-        >
-          {verified ? labels.verified : labels.verify}
-        </button>
-        <button
-          type="button"
-          className={`act${retired ? ' on' : ''}`}
-          aria-pressed={retired}
-          onClick={() => changeStatus(retired ? 'draft' : 'retired')}
-        >
-          {labels.retire}
-        </button>
-        <button type="button" className="act rej" onClick={remove}>
-          {labels.remove}
-        </button>
-      </div>
-    </div>
+    </li>
   )
 }
