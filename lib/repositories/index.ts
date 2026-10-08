@@ -590,11 +590,23 @@ export const getFindingStatRecords = async () => {
 
 export const getRecStatRecords = async () => {
   const rows = await db
-    .select({ id: recommendations.id, ruleId: findings.ruleId, outcome: recommendations.outcome })
+    .select({
+      id: recommendations.id,
+      ruleId: findings.ruleId,
+      outcome: recommendations.outcome,
+      status: recommendations.status,
+      appliedAt: recommendations.appliedAt,
+    })
     .from(recommendations)
     .innerJoin(findings, eq(recommendations.findingId, findings.id))
     .where(isNotNull(findings.ruleId))
-  return rows as { id: string; ruleId: string; outcome: 'unknown' | 'effective' | 'ineffective' | 'regressed' }[]
+  return rows as {
+    id: string
+    ruleId: string
+    outcome: 'unknown' | 'effective' | 'ineffective' | 'regressed'
+    status: string
+    appliedAt: string | null
+  }[]
 }
 
 // —— BYOK 凭据读写（SP-G1c）——

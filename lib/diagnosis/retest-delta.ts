@@ -71,6 +71,30 @@ export function summarizeFindingDelta(deltas: FindingDelta[]): FindingDeltaSumma
 // —— 建议 outcome 判定（spec §5 生命周期 + §9：恒 inferred，只由回测 delta 计算写入）——
 export type RecommendationOutcome = 'unknown' | 'effective' | 'ineffective' | 'regressed'
 
+// —— 回测归因对象（2026-10-08 修复）——
+// 只有「回测开始前已执行」的建议才判效果：没执行的建议不能被判「无效」，否则「没做」会被记成
+// 「做了没用」，还会流进规则进化的效果统计（rule-stats.ts）。不满足的一律写 unknown。
+export interface RecExecutionRef {
+  status: string
+  appliedAt: string | null
+}
+
+// 执行过 = 人工闸门通过（accepted/edited）且标记过已执行。改回否决/待确认时 appliedAt 不会被
+// 清空（app/api/recommendations/[id]/route.ts 只改 status），所以必须同时看状态。
+export function isExecutedRecommendation(rec: RecExecutionRef): boolean {
+  return (rec.status === 'accepted' || rec.status === 'edited') && rec.appliedAt != null
+}
+
+// 本次回测的归因对象：执行过，且执行时间不晚于回测开始（回测开始后才改的，这次回测测不到）。
+// 回测开始时间缺失时无法比较，只看是否执行过；执行时间无法解析时保守不归因。
+export function isRetestAttributable(rec: RecExecutionRef, retestStartedAt: string | null): boolean {
+  if (!isExecutedRecommendation(rec)) return false
+  const applied = Date.parse(rec.appliedAt as string)
+  if (!Number.isFinite(applied)) return false
+  const started = retestStartedAt ? Date.parse(retestStartedAt) : Number.NaN
+  return Number.isFinite(started) ? applied <= started : true
+}
+
 // 标量指标对：baseline/retest 两轮的同名指标值（回测执行器按 validation_spec.metric 取；取不到传 null）。
 export interface MetricPair {
   baseline: number

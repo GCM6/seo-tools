@@ -3,6 +3,8 @@ import {
   computeFindingDelta,
   summarizeFindingDelta,
   computeOutcome,
+  isExecutedRecommendation,
+  isRetestAttributable,
   buildRetestSnapshotRows,
   type FindingRef,
 } from './retest-delta'
@@ -96,5 +98,47 @@ describe('buildRetestSnapshotRows', () => {
   it('omits health row when scores missing', () => {
     const rows = buildRetestSnapshotRows({ resolved: 0, persistent: 0, new: 0, regressed: 0 })
     expect(rows.some((r) => r.metricName === 'health.overall')).toBe(false)
+  })
+})
+
+// 回测只给「回测开始前已执行」的建议判效果：没执行的建议不能被判「无效」（2026-10-08 修复）。
+describe('isExecutedRecommendation', () => {
+  it('只有 accepted/edited 且标记过已执行才算执行过', () => {
+    expect(isExecutedRecommendation({ status: 'accepted', appliedAt: '2026-01-01T00:00:00.000Z' })).toBe(true)
+    expect(isExecutedRecommendation({ status: 'edited', appliedAt: '2026-01-01T00:00:00.000Z' })).toBe(true)
+    expect(isExecutedRecommendation({ status: 'accepted', appliedAt: null })).toBe(false)
+    expect(isExecutedRecommendation({ status: 'draft', appliedAt: null })).toBe(false)
+  })
+
+  it('改回否决/待确认时 appliedAt 不会被清空，状态不在闸门内就不算执行', () => {
+    expect(isExecutedRecommendation({ status: 'rejected', appliedAt: '2026-01-01T00:00:00.000Z' })).toBe(false)
+    expect(isExecutedRecommendation({ status: 'draft', appliedAt: '2026-01-01T00:00:00.000Z' })).toBe(false)
+  })
+})
+
+describe('isRetestAttributable', () => {
+  const start = '2026-02-01T00:00:00.000Z'
+
+  it('回测开始前标记已执行 → 是本次回测的归因对象', () => {
+    expect(isRetestAttributable({ status: 'accepted', appliedAt: '2026-01-15T00:00:00.000Z' }, start)).toBe(true)
+  })
+
+  it('回测开始后才标记已执行 → 本次回测测不到它的改动，不归因', () => {
+    expect(isRetestAttributable({ status: 'accepted', appliedAt: '2026-02-03T00:00:00.000Z' }, start)).toBe(false)
+  })
+
+  it('没执行的建议（待确认 / 已接受未执行 / 已否决）一律不归因', () => {
+    expect(isRetestAttributable({ status: 'draft', appliedAt: null }, start)).toBe(false)
+    expect(isRetestAttributable({ status: 'accepted', appliedAt: null }, start)).toBe(false)
+    expect(isRetestAttributable({ status: 'rejected', appliedAt: '2026-01-15T00:00:00.000Z' }, start)).toBe(false)
+  })
+
+  it('回测开始时间缺失时不做时间判断，只看是否执行过', () => {
+    expect(isRetestAttributable({ status: 'accepted', appliedAt: '2026-01-15T00:00:00.000Z' }, null)).toBe(true)
+    expect(isRetestAttributable({ status: 'draft', appliedAt: null }, null)).toBe(false)
+  })
+
+  it('执行时间无法解析 → 保守不归因', () => {
+    expect(isRetestAttributable({ status: 'accepted', appliedAt: 'not-a-date' }, start)).toBe(false)
   })
 })

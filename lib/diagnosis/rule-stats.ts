@@ -6,6 +6,7 @@
 // 保持既有 import 路径（./rule-stats）不破坏。
 export { wilsonLowerBound } from '@/lib/stats/wilson'
 import { wilsonLowerBound } from '@/lib/stats/wilson'
+import { isExecutedRecommendation } from './retest-delta'
 
 export interface FindingStatRecord {
   id: string
@@ -17,6 +18,8 @@ export interface RecStatRecord {
   id: string
   ruleId: string
   outcome: 'unknown' | 'effective' | 'ineffective' | 'regressed'
+  status: string
+  appliedAt: string | null
 }
 
 export interface RuleStatsOptions {
@@ -72,8 +75,10 @@ export function aggregateRuleStats(
     }
   }
 
-  // ineffective 率：(ineffective + regressed) / 已判 outcome（!= unknown）的建议
-  const judged = recs.filter((r) => r.outcome !== 'unknown')
+  // ineffective 率：(ineffective + regressed) / 已判 outcome（!= unknown）的建议。
+  // 只统计执行过的建议：库里可能残留「没执行却被判 ineffective」的旧行（2026-10-08 前的回测），
+  // 不能只信 outcome 字段。
+  const judged = recs.filter((r) => r.outcome !== 'unknown' && isExecutedRecommendation(r))
   for (const [ruleId, rows] of groupBy(judged, (r) => r.ruleId)) {
     const total = rows.length
     if (total < nMin) continue

@@ -21,6 +21,10 @@ function makeHit(overrides: Partial<RuleHit> = {}): RuleHit {
   }
 }
 
+// 回测开始时间；基线建议的 appliedAt 早于它才算本次回测的归因对象。
+const RETEST_STARTED_AT = '2026-02-01T00:00:00.000Z'
+const APPLIED_BEFORE = '2026-01-15T00:00:00.000Z'
+
 function makeDeps(overrides: Record<string, unknown> = {}) {
   return {
     getRunEvidence: vi.fn(async () => [
@@ -45,6 +49,8 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     getRecommendations: vi.fn(async () => []),
     createRetestSnapshots: vi.fn(async (rows: unknown[]) => rows),
     setRecommendationOutcome: vi.fn(async () => undefined),
+    // 回测 run 本身：startedAt 用来判断基线建议是否在回测开始前已执行。
+    getRun: vi.fn(async (rid: string) => ({ id: rid, runType: 'retest', startedAt: RETEST_STARTED_AT })),
     // 引擎/上下文构造注入 fake：evaluateRules 直接返回预置 hits，忽略 ctx。
     buildRuleContext: vi.fn(() => ({}) as never),
     evaluateRules: vi.fn(() => [makeHit(), makeHit({ ruleId: 'C01', side: 'seo', claimType: 'inferred', title: '标题缺失', evidenceRefs: ['ev_1'] })]),
@@ -233,8 +239,8 @@ describe('generateFindingsHandler', () => {
   // rec_b1(P3/gsc impressions)：目标 widget，baseline 100→retest 300 → effective（真标量压过 fp_1 四态 resolved 也仍 effective）
   // rec_b2(P5/probe brand_presence)：fp_2 persistent（四态=ineffective），但 presence 2/10→5/10 上升 → effective（真标量翻盘）
   const baseRecs = [
-    { id: 'rec_b1', runId: 'run_base', findingId: 'f_b1', validationSpec: { metricSource: 'gsc', metric: 'impressions', scope: 'keywords', direction: 'increase', windowDays: 28 } },
-    { id: 'rec_b2', runId: 'run_base', findingId: 'f_b2', validationSpec: { metricSource: 'probe', metric: 'brand_presence', scope: 'site', direction: 'increase', windowDays: 28 } },
+    { id: 'rec_b1', runId: 'run_base', findingId: 'f_b1', status: 'accepted', appliedAt: APPLIED_BEFORE, validationSpec: { metricSource: 'gsc', metric: 'impressions', scope: 'keywords', direction: 'increase', windowDays: 28 } },
+    { id: 'rec_b2', runId: 'run_base', findingId: 'f_b2', status: 'accepted', appliedAt: APPLIED_BEFORE, validationSpec: { metricSource: 'probe', metric: 'brand_presence', scope: 'site', direction: 'increase', windowDays: 28 } },
   ]
 
   const gscEv = (id: string, impressions: number) => ({
@@ -306,8 +312,8 @@ describe('generateFindingsHandler', () => {
       getRecommendations: vi.fn(async (rid: string) =>
         rid === 'run_base'
           ? [
-              { id: 'rec_b1', runId: 'run_base', findingId: 'f_b1', validationSpec: null },
-              { id: 'rec_b2', runId: 'run_base', findingId: 'f_b2', validationSpec: null },
+              { id: 'rec_b1', runId: 'run_base', findingId: 'f_b1', status: 'accepted', appliedAt: APPLIED_BEFORE, validationSpec: null },
+              { id: 'rec_b2', runId: 'run_base', findingId: 'f_b2', status: 'edited', appliedAt: APPLIED_BEFORE, validationSpec: null },
             ]
           : [],
       ),
@@ -354,7 +360,7 @@ describe('generateFindingsHandler', () => {
       ),
       getRecommendations: vi.fn(async (rid: string) =>
         rid === 'run_base'
-          ? [{ id: 'rec_gsc', runId: 'run_base', findingId: 'f_gb', validationSpec: { metricSource: 'gsc', metric: 'impressions', scope: 'keywords', direction: 'increase', windowDays: 28 } }]
+          ? [{ id: 'rec_gsc', runId: 'run_base', findingId: 'f_gb', status: 'accepted', appliedAt: APPLIED_BEFORE, validationSpec: { metricSource: 'gsc', metric: 'impressions', scope: 'keywords', direction: 'increase', windowDays: 28 } }]
           : [],
       ),
       getRunEvidence: vi.fn(async (rid: string) => [rid === 'run_base' ? gizmoEv('g_b', 100) : gizmoEv('g_r', 300)]),
@@ -401,7 +407,7 @@ describe('generateFindingsHandler', () => {
     // 不会被误判成 modify_threshold 信号。
     const drafts = aggregateRuleStats(
       [],
-      [{ id: 'rec_b2', ruleId: 'G_probe_rule', outcome: 'unknown' }],
+      [{ id: 'rec_b2', ruleId: 'G_probe_rule', outcome: 'unknown', status: 'accepted', appliedAt: APPLIED_BEFORE }],
       { nMin: 1 },
     )
     expect(drafts).toEqual([])
@@ -483,6 +489,35 @@ describe('generateFindingsHandler', () => {
     const names = snapRows.map((r) => r.metricName)
     expect(names).not.toContain('aio.present_rate')
     expect(names).not.toContain('aio.owned_cited_rate')
+  })
+
+  // 2026-10-08 修复：只有「回测开始前已执行」的建议才判效果；没执行的不能被判「无效」，一律写 unknown，
+  // 同时覆盖掉旧回测留下的判定（每次回测都对基线全部建议重写一遍，口径一致）。
+  it('没执行的基线建议（待确认 / 已接受未执行 / 已否决 / 回测开始后才执行）outcome 一律写 unknown', async () => {
+    const recs = [
+      { id: 'rec_draft', runId: 'run_base', findingId: 'f_b2', status: 'draft', appliedAt: null, validationSpec: null },
+      { id: 'rec_not_applied', runId: 'run_base', findingId: 'f_b2', status: 'accepted', appliedAt: null, validationSpec: null },
+      { id: 'rec_rejected', runId: 'run_base', findingId: 'f_b2', status: 'rejected', appliedAt: APPLIED_BEFORE, validationSpec: null },
+      { id: 'rec_late', runId: 'run_base', findingId: 'f_b2', status: 'accepted', appliedAt: '2026-02-03T00:00:00.000Z', validationSpec: null },
+      { id: 'rec_done', runId: 'run_base', findingId: 'f_b2', status: 'accepted', appliedAt: APPLIED_BEFORE, validationSpec: null },
+    ]
+    const deps = makeDeps({
+      getFindings: vi.fn(async (rid: string) => (rid === 'run_base' ? baselineFindings : retestFindings)),
+      getRecommendations: vi.fn(async (rid: string) => (rid === 'run_base' ? recs : [])),
+      setRecommendationOutcome: vi.fn(async () => undefined),
+      createRetestSnapshots: vi.fn(async (r: unknown[]) => r),
+    })
+    const { args } = makeArgs({ baselineRunId: 'run_base' })
+
+    await generateFindingsHandler(args, asDeps(deps))
+
+    // f_b2 → fp_2 两轮都在（persistent）：只有回测前已执行的 rec_done 被判 ineffective。
+    expect(deps.getRun).toHaveBeenCalledWith('run_1')
+    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_done', 'ineffective')
+    for (const id of ['rec_draft', 'rec_not_applied', 'rec_rejected', 'rec_late']) {
+      expect(deps.setRecommendationOutcome).toHaveBeenCalledWith(id, 'unknown')
+    }
+    expect(deps.setRecommendationOutcome).toHaveBeenCalledTimes(5)
   })
 
   it('无 baselineRunId 时不触发回测 delta（保持原行为）', async () => {

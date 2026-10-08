@@ -24,6 +24,11 @@ const mkFindings = (ruleId: string, dismissed: number, open: number): FindingSta
   ...Array.from({ length: open }, (_, i) => ({ id: `f_o_${ruleId}_${i}`, ruleId, status: 'open' as const })),
 ]
 
+// 执行过的建议（accepted 且标记已执行）——只有这类建议的 outcome 才进效果统计。
+const mkRec = (id: string, ruleId: string, outcome: RecStatRecord['outcome'], exec: Partial<RecStatRecord> = {}): RecStatRecord => ({
+  id, ruleId, outcome, status: 'accepted', appliedAt: '2026-01-15T00:00:00.000Z', ...exec,
+})
+
 describe('aggregateRuleStats', () => {
   it('样本量 < N_MIN 不出提案', () => {
     const out = aggregateRuleStats(mkFindings('A01', 10, 0), [])
@@ -44,10 +49,10 @@ describe('aggregateRuleStats', () => {
 
   it('低效（ineffective+regressed）率高 + 足够已判样本 → effectiveness_stats 提案', () => {
     const recs: RecStatRecord[] = [
-      ...Array.from({ length: 18 }, (_, i) => ({ id: `r_i_${i}`, ruleId: 'A03', outcome: 'ineffective' as const })),
-      ...Array.from({ length: 3 }, (_, i) => ({ id: `r_r_${i}`, ruleId: 'A03', outcome: 'regressed' as const })),
-      ...Array.from({ length: 2 }, (_, i) => ({ id: `r_e_${i}`, ruleId: 'A03', outcome: 'effective' as const })),
-      { id: 'r_u', ruleId: 'A03', outcome: 'unknown' as const }, // unknown 不计入分母
+      ...Array.from({ length: 18 }, (_, i) => mkRec(`r_i_${i}`, 'A03', 'ineffective')),
+      ...Array.from({ length: 3 }, (_, i) => mkRec(`r_r_${i}`, 'A03', 'regressed')),
+      ...Array.from({ length: 2 }, (_, i) => mkRec(`r_e_${i}`, 'A03', 'effective')),
+      mkRec('r_u', 'A03', 'unknown'), // unknown 不计入分母
     ]
     const out = aggregateRuleStats([], recs)
     expect(out).toHaveLength(1)
@@ -55,5 +60,28 @@ describe('aggregateRuleStats', () => {
     expect(out[0].target).toBe('A03')
     expect(out[0].diff.signal).toBe('low_effectiveness')
     expect(out[0].evidenceRefs).not.toContain('r_u') // unknown 被排除
+  })
+
+  // 2026-10-08 修复：库里已有没执行却被判 ineffective 的旧行，统计时必须按「是否执行过」再过滤一遍，
+  // 不能只信 outcome 字段。
+  it('没执行的建议即使 outcome=ineffective 也不进效果统计', () => {
+    const recs: RecStatRecord[] = [
+      ...Array.from({ length: 12 }, (_, i) => mkRec(`r_draft_${i}`, 'A04', 'ineffective', { status: 'draft', appliedAt: null })),
+      ...Array.from({ length: 6 }, (_, i) => mkRec(`r_acc_${i}`, 'A04', 'ineffective', { appliedAt: null })),
+      ...Array.from({ length: 6 }, (_, i) => mkRec(`r_rej_${i}`, 'A04', 'ineffective', { status: 'rejected' })),
+    ]
+    expect(aggregateRuleStats([], recs)).toEqual([])
+  })
+
+  it('执行过的建议照常计入：混入的未执行行不改变提案的证据列表', () => {
+    const recs: RecStatRecord[] = [
+      ...Array.from({ length: 21 }, (_, i) => mkRec(`r_done_${i}`, 'A05', 'ineffective')),
+      ...Array.from({ length: 2 }, (_, i) => mkRec(`r_ok_${i}`, 'A05', 'effective')),
+      ...Array.from({ length: 5 }, (_, i) => mkRec(`r_draft_${i}`, 'A05', 'ineffective', { status: 'draft', appliedAt: null })),
+    ]
+    const out = aggregateRuleStats([], recs)
+    expect(out).toHaveLength(1)
+    expect(out[0].diff.sampleSize).toBe(23)
+    expect(out[0].evidenceRefs.some((id) => id.startsWith('r_draft_'))).toBe(false)
   })
 })

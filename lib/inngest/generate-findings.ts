@@ -29,6 +29,7 @@ import {
   computeFindingDelta,
   summarizeFindingDelta,
   computeOutcome,
+  isRetestAttributable,
   buildRetestSnapshotRows,
   type FindingRef,
 } from '@/lib/diagnosis/retest-delta'
@@ -46,6 +47,7 @@ import {
   getRecommendations,
   createRetestSnapshots,
   setRecommendationOutcome,
+  getRun,
 } from '@/lib/repositories'
 
 interface DiagnoseStep {
@@ -74,6 +76,8 @@ interface GenerateFindingsDeps {
   getRecommendations: typeof getRecommendations
   createRetestSnapshots: typeof createRetestSnapshots
   setRecommendationOutcome: typeof setRecommendationOutcome
+  // 回测 run 的开始时间：判断基线建议是否在回测开始前已执行（isRetestAttributable）。
+  getRun: typeof getRun
   evaluateRules: typeof evaluateRules
   buildRuleContext: typeof buildRuleContext
   buildIntentPageFitMap: typeof buildIntentPageFitMap
@@ -112,6 +116,7 @@ function defaultDeps(): GenerateFindingsDeps {
     getRecommendations,
     createRetestSnapshots,
     setRecommendationOutcome,
+    getRun,
     evaluateRules,
     buildRuleContext,
     buildIntentPageFitMap,
@@ -298,11 +303,13 @@ async function computeRetestDelta(
   baselineRunId: string,
   retestRunId: string,
 ): Promise<{ snapshots: number }> {
-  const [baselineRows, retestRows, baseRecs] = await Promise.all([
+  const [baselineRows, retestRows, baseRecs, retestRun] = await Promise.all([
     deps.getFindings(baselineRunId),
     deps.getFindings(retestRunId),
     deps.getRecommendations(baselineRunId),
+    deps.getRun(retestRunId),
   ])
+  const retestStartedAt = retestRun?.startedAt ?? null
 
   // 为一轮 run 构建可比标量来源（probe 品牌级 + GSC query 维关键词 + AIO 实测曝光）。
   // 域名归一复用 lib/probes/summary.ts 的 normalizeProjectDomain（与 run-rules step 同一份逻辑）。
@@ -366,6 +373,8 @@ async function computeRetestDelta(
 
   // ② baseline 建议 outcome：per-rec 取 finding.metricTarget → buildMetricPair；
   //    有真标量则压过四态，无则回退按 fingerprint→四态兜底（恒 inferred）。
+  //    只给「回测开始前已执行」的建议判效果；其余（待确认 / 已接受未执行 / 已否决 / 回测开始后才执行）
+  //    一律写 unknown，同时覆盖旧回测留下的判定（2026-10-08 修复：没执行不能被判「无效」）。
   // 缺陷1 守卫延伸：probe 口径（brand_presence/brand_sov）指标若两轮 unbranded 口径不可比，
   // computeOutcome 会短路为 'unknown'，不产出会误导用户、污染 F3 rule-stats 的 effective/
   // ineffective/regressed（判定复用 retest-metrics.ts 的 checkUnbrandedComparability，两轮
@@ -374,6 +383,7 @@ async function computeRetestDelta(
   const idToFinding = new Map(baselineRows.map((r) => [r.id, r]))
   await Promise.all(
     baseRecs.map((rec) => {
+      if (!isRetestAttributable(rec, retestStartedAt)) return deps.setRecommendationOutcome(rec.id, 'unknown')
       const f = idToFinding.get(rec.findingId)
       const fp = f?.fingerprint ?? null
       const state = (fp ? fpToState.get(fp) : undefined) ?? null
