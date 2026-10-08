@@ -9,15 +9,15 @@ export interface RunLike {
   finishedAt: string | null
 }
 
-// 从项目的全部 run 里挑「最近一次」：优先 startedAt 大者，startedAt 为 null 的排最后。
+// 排序用的时间：startedAt，没有就回落 finishedAt。2026-10-08 前建的基线 run 从不写 startedAt
+// （只有回测路由写），只按 startedAt 排会让唯一带时间的回测抢走「最近一次」、回测锚点落到最早的基线。
+const runTime = (r: RunLike) => r.startedAt ?? r.finishedAt ?? ''
+
+// 从项目的全部 run 里挑「最近一次」：按 runTime 取最大者，两个时间都为 null 的排最后。
 // 都为 null 时按传入顺序稳定回退（保底不抛）。空数组 → null。
 export function pickLatestRun<T extends RunLike>(runs: T[]): T | null {
   if (runs.length === 0) return null
-  return runs.reduce((best, cur) => {
-    const b = best.startedAt ?? ''
-    const c = cur.startedAt ?? ''
-    return c > b ? cur : best
-  })
+  return runs.reduce((best, cur) => (runTime(cur) > runTime(best) ? cur : best))
 }
 
 // 进行中的 run（spec §2.1 修订：status ∈ {draft,collecting,collected,diagnosing}）——

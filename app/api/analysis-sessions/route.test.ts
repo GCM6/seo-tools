@@ -66,7 +66,10 @@ describe('analysis-sessions 入口的建 run 闸门（SP-A §3.5）', () => {
   it('合规品类与市场 → 建 run 并派发；项目语言恒为 en，不再写 market_location', async () => {
     const res = await post({ goal: GOAL, domain: 'metadocu.com', industry: 'document metadata removal tool', market: 'gb' })
     expect(res.status).toBe(201)
-    expect(await db.select().from(runs)).toHaveLength(1)
+    const created = await db.select().from(runs)
+    expect(created).toHaveLength(1)
+    // 与回测路由同语义：创建即写 startedAt（项目列表「最近诊断」与回测锚点按它排序）。
+    expect(created[0].startedAt).toEqual(expect.any(String))
     expect(sendMock).toHaveBeenCalledTimes(1)
     const [project] = await db.select().from(projects)
     expect(project).toMatchObject({ industry: 'document metadata removal tool', market: 'gb', language: 'en' })
@@ -88,7 +91,9 @@ describe('analysis-sessions 入口的建 run 闸门（SP-A §3.5）', () => {
     expect(created.status).toBe('waiting_input')
     const res = await patch(created.id, { industry: 'document metadata removal tool', market: 'us' })
     expect(res.status).toBe(200)
-    expect(await db.select().from(runs)).toHaveLength(1)
+    const runRows = await db.select().from(runs)
+    expect(runRows).toHaveLength(1)
+    expect(runRows[0].startedAt).toEqual(expect.any(String))
     expect(sendMock).toHaveBeenCalledTimes(1)
   })
 

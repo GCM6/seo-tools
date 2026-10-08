@@ -85,6 +85,15 @@ describe('POST /api/runs', () => {
     expect(event.name).toBe(COLLECT_REQUESTED_EVENT)
   })
 
+  // 与回测路由同语义：创建即写 startedAt。项目列表的「最近诊断」和回测锚点按它排序，
+  // 基线不写会被唯一带时间的回测抢走「最近一次」。
+  it('writes startedAt on the new baseline run', async () => {
+    await post({ projectId: 'proj_1', runType: 'baseline' })
+    const startedAt = insertedRuns.at(-1)?.startedAt
+    expect(typeof startedAt).toBe('string')
+    expect(Number.isNaN(Date.parse(String(startedAt)))).toBe(false)
+  })
+
   // 核心回归：本地 Inngest dev server 未启动时 send 会抛错。
   // 此前该异常未处理 → 500 且 run 永远卡在 collecting（僵尸 run）。
   it('marks the run failed and returns 503 dispatch_failed when event dispatch fails', async () => {

@@ -45,6 +45,26 @@ describe('pickLatestRun', () => {
   })
 })
 
+// 真实形状（10-08 查本地库 metadocu 项目，按插入顺序）：基线 run 从不写 startedAt（只有回测路由写），
+// 时间只在 finishedAt。上面的夹具都是「startedAt 有值、finishedAt 为空」，真实采集产不出这种基线。
+describe('startedAt 为空时回落 finishedAt（真实基线的形状）', () => {
+  const real: RunLike[] = [
+    { id: 'b_0712', runType: 'baseline', status: 'reviewing', startedAt: null, finishedAt: '2026-07-12T14:39:06.171Z' },
+    { id: 'r_0713', runType: 'retest', status: 'reviewing', startedAt: '2026-07-13T07:05:02.556Z', finishedAt: '2026-07-13T07:15:05.804Z' },
+    { id: 'b_0718', runType: 'baseline', status: 'output', startedAt: null, finishedAt: '2026-07-18T14:36:24.377Z' },
+    { id: 'b_1003', runType: 'baseline', status: 'reviewing', startedAt: null, finishedAt: '2026-10-03T08:38:32.687Z' },
+    { id: 'b_1006', runType: 'baseline', status: 'reviewing', startedAt: null, finishedAt: '2026-10-06T02:50:23.487Z' },
+  ]
+
+  it('最近一次是 10-06 的基线，而不是唯一带 startedAt 的 07-13 回测', () => {
+    expect(pickLatestRun(real)?.id).toBe('b_1006')
+  })
+
+  it('回测锚点是最新完成的基线（10-06），而不是最早的那条（07-12）', () => {
+    expect(pickRetestAnchor(real)?.id).toBe('b_1006')
+  })
+})
+
 describe('pickActiveRun', () => {
   it('空数组返回 null', () => {
     expect(pickActiveRun([])).toBeNull()

@@ -36,7 +36,15 @@ export async function POST(req: Request) {
 
   const [created] = await db
     .insert(runs)
-    .values({ id: `run_${crypto.randomUUID()}`, projectId, runType, status: 'collecting', rulesVersion: RULES_VERSION })
+    .values({
+      id: `run_${crypto.randomUUID()}`,
+      projectId,
+      runType,
+      status: 'collecting',
+      rulesVersion: RULES_VERSION,
+      // 与回测路由同语义：创建即开始。项目列表「最近诊断」与回测锚点按它排序。
+      startedAt: new Date().toISOString(),
+    })
     .returning()
 
   // 兼容旧入口：诊断行为不变，但尽力补建知识脑会话并冻结知识/工作流/规则配置版本。

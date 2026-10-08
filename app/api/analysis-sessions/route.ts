@@ -91,7 +91,7 @@ export async function POST(req: Request) {
       }
       const [run] = await db.insert(runs).values({
         id: `run_${crypto.randomUUID()}`, projectId: project.id, runType: 'baseline', status: 'collecting',
-        rulesVersion: RULES_VERSION, analysisSessionId: sessionId,
+        rulesVersion: RULES_VERSION, analysisSessionId: sessionId, startedAt: new Date().toISOString(),
       }).returning()
       await db.update(analysisSessions).set({ projectId: project.id, runId: run.id, status: 'running', updatedAt: new Date().toISOString() }).where(eq(analysisSessions.id, sessionId))
       try {

@@ -123,6 +123,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       status: 'collecting',
       rulesVersion: RULES_VERSION,
       analysisSessionId: id,
+      startedAt: new Date().toISOString(),
     }).returning()
     await db.update(analysisSessions).set({ projectId: project.id, runId: run.id, status: 'running', updatedAt: new Date().toISOString() }).where(eq(analysisSessions.id, id))
     try {
