@@ -240,7 +240,7 @@
 | **Spinner** | `ui-spin` | 14px 环形转圈，只在请求进行中显示；减少动效模式下改为静态省略号 |
 | **Skeleton**（`Skeleton.tsx`） | `ui-skel` | 只用于路由加载（`loading.tsx`）：`--surface-2` 底，不加扫光 |
 | **Logo**（`Logo.tsx`） | `ui-logo` | 单色三角标志（去掉竖线和填充）+ 「Veris」字标（600，16px，不做双色） |
-| **TopBar**（`SiteHeader.tsx` 重写） | `ui-top` | 高 56px，`--surface` 底，下边 1px `--line`。左侧 Logo + 主导航（项目 / 规则库 / 知识库 / 设置），右侧语言、主题切换和「新建分析」（primary）。手机上主导航收进菜单 |
+| **TopBar**（`SiteHeader.tsx` 重写） | `ui-top` | 高 56px，`--surface` 底，下边 1px `--line`。左侧 Logo + 主导航（项目 / 规则库 / 知识库 / 设置），右侧语言、主题切换和「新建分析」（secondary：2026-10-08 用户拍板降级，每屏只留页面自己的 1 个 primary；手机菜单抽屉里仍是 primary）。手机上主导航收进菜单 |
 | **Footer**（`SiteFooter.tsx` 重写） | `ui-foot` | 应用内只保留一行：`Veris · v0.1.0 · 规则 rules_v10 · 协议 v2`，12px `--ink-3`。去掉营销式多栏页脚 |
 
 ## 5. 交互状态矩阵
