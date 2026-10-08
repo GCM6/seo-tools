@@ -31,6 +31,7 @@ PAIRS = [  # (前景, 背景, 阈值, 用途)
     ('ink', 'sev-high-soft', 4.5, '错误提示条正文'),
     ('ink', 'sev-mid-soft', 4.5, '警告提示条正文'),
     ('ink', 'ok-soft', 4.5, '成功提示条正文'),
+    ('ok', 'ok-soft', 4.5, '「已接受」按下态文字 / 成功浅底'),
     ('sev-high', 'sev-high-soft', 3.0, '错误提示条图标'),
     ('sev-mid', 'sev-mid-soft', 3.0, '警告提示条图标'),
     ('sev-low', 'surface', 3.0, '提示级严重度方块（图形）'),

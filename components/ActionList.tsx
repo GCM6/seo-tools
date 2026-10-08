@@ -1,12 +1,22 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import Link from 'next/link'
 import { useTranslations } from 'next-intl'
+import { Button } from './Button'
+import { CodeBlock } from './CodeBlock'
+import { EmptyState } from './EmptyState'
+import { EvidenceBadge } from './EvidenceBadge'
+import { Notice } from './Notice'
+import { RecRow } from './RecRow'
+import { StatusText } from './StatusText'
 import { extractAffectedPagesSection } from '@/lib/diagnosis/recommend'
+import { labelKeyForGrade, type EvidenceGrade } from '@/lib/evidence'
+import { groupByPriority, rankRecs, shortLevel } from '@/lib/runs/recommendations'
 
-// 行动清单 —— 输出页主体（重构自「输出页=报告」，spec: docs/plans/output-action-list 2026-07-19）。
-// 每条已纳入执行（accepted|edited）的建议一张卡：属性 chips + 折叠详情 + 执行资产
-// （生成/展示提示词）+ 标记已执行，全部 client leaf 状态按卡片独立管理。
+// 执行清单（ux-blueprint §3.4；重构自「输出页=报告」，spec: docs/plans/output-action-list 2026-07-19）。
+// 只列已接受 / 已编辑的建议，行与建议页同一种（RecRow）；展开区 = 说明与证据 + 执行提示词 + 标记已执行。
+// 「已执行 k / N」进度和全部完成提示由本组件按各行的实时状态计算。
 
 export type ActionListPromptType = 'content' | 'technical' | 'brief' | 'cms'
 
@@ -36,6 +46,10 @@ export interface ActionListItem {
   appliedNote: string
   // 预载：page.tsx 用 getGeneratedPromptsForRec 按 promptType 取 createdAt 最新一条。
   prompts: ActionListPrompt[]
+  /** 所针对问题的严重度、证据等级与链接（同建议页）；缺 finding 时不画。 */
+  severity?: string
+  grade?: EvidenceGrade
+  target?: { title: string; href: string }
 }
 
 export interface ActionListRejectedItem {
@@ -47,59 +61,20 @@ export interface ActionListRejectedItem {
   note: string
 }
 
-type PriorityQuadrant = 'quick_win' | 'strategic' | 'fill_in' | 'low'
-const PRIORITIES = new Set<PriorityQuadrant>(['quick_win', 'strategic', 'fill_in', 'low'])
-function normalizePriority(priority: string): PriorityQuadrant {
-  return PRIORITIES.has(priority as PriorityQuadrant) ? (priority as PriorityQuadrant) : 'fill_in'
-}
-
 const PROMPT_TYPE_ORDER: Record<string, number> = { technical: 0, content: 1, brief: 2, cms: 3 }
 function sortedPrompts(prompts: ActionListPrompt[]): ActionListPrompt[] {
   return [...prompts].sort((a, b) => (PROMPT_TYPE_ORDER[a.promptType] ?? 9) - (PROMPT_TYPE_ORDER[b.promptType] ?? 9))
 }
-function promptLabel(t: ReturnType<typeof useTranslations>, promptType: string): string {
-  return promptType === 'brief' ? t('actionList.promptLabelBrief') : t('actionList.promptLabelContent')
-}
-
-function PromptBlock({ prompt, label }: { prompt: ActionListPrompt; label: string }) {
-  const tCommon = useTranslations('common.actions')
-  const [copied, setCopied] = useState(false)
-
-  // "短暂"变已复制态：复制成功后自动回落，而不是永久停留在「已复制」。
-  useEffect(() => {
-    if (!copied) return
-    const timer = setTimeout(() => setCopied(false), 1600)
-    return () => clearTimeout(timer)
-  }, [copied])
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard?.writeText(prompt.promptText)
-      setCopied(true)
-    } catch {
-      // 剪贴板权限被拒时文本仍可在 <pre> 里手动选中复制。
-    }
-  }
-
-  return (
-    <details className="action-prompt-block">
-      <summary>{label}</summary>
-      <pre className="prompt-body">{prompt.promptText}</pre>
-      <button type="button" className={copied ? 'copy done' : 'copy'} onClick={() => void copy()} aria-live="polite">
-        {copied ? tCommon('copied') : tCommon('copy')}
-      </button>
-    </details>
-  )
-}
 
 function PromptAssets({ item }: { item: ActionListItem }) {
   const t = useTranslations('screen4')
+  const tCommon = useTranslations('common.actions')
   const [prompts, setPrompts] = useState(item.prompts)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // A4：regenerate=1 复用后端既有幂等覆盖端点（app/api/recommendations/[id]/prompt/route.ts
-  // 已支持，未改动）。首次生成与重新生成共用同一函数，仅 query string 与按钮态不同。
+  // A4：regenerate=1 复用后端既有幂等覆盖端点（app/api/recommendations/[id]/prompt/route.ts）。
+  // 首次生成与重新生成共用同一函数，仅 query string 与按钮文案不同。
   const generate = async (regenerate: boolean) => {
     setGenerating(true)
     setError(null)
@@ -121,44 +96,52 @@ function PromptAssets({ item }: { item: ActionListItem }) {
   }
 
   return (
-    <section className="action-prompt-section">
-      <h4>{t('actionList.assetsHeading')}</h4>
-      <p className="action-prompt-hint">{t('actionList.assetsHint')}</p>
-      {prompts.length ? (
-        <>
-          <div className="action-prompt-blocks">
-            {sortedPrompts(prompts).map((prompt) => (
-              <PromptBlock key={prompt.id} prompt={prompt} label={promptLabel(t, prompt.promptType)} />
-            ))}
-          </div>
-          <div className="action-prompt-regenerate">
-            <button type="button" className="act" disabled={generating} onClick={() => void generate(true)}>
-              {generating ? t('actionList.regenerating') : t('actionList.regenerate')}
-            </button>
-            {error ? <p className="action-inline-error">{error}</p> : null}
-          </div>
-        </>
-      ) : (
-        <>
-          <button type="button" className="act accept" disabled={generating} onClick={() => void generate(false)}>
+    <div className="ui-rec__block">
+      <p className="ui-label">{t('actionList.assetsHeading')}</p>
+      <p className="ui-hint">{t('actionList.assetsHint')}</p>
+      {sortedPrompts(prompts).map((prompt) => (
+        <CodeBlock
+          key={prompt.id}
+          wrap
+          label={prompt.promptType === 'brief' ? t('actionList.promptLabelBrief') : t('actionList.promptLabelContent')}
+          code={prompt.promptText}
+          copyLabel={tCommon('copy')}
+          copiedLabel={tCommon('copied')}
+        />
+      ))}
+      {error ? <Notice tone="error">{error}</Notice> : null}
+      <div className="ui-inline-actions">
+        {prompts.length ? (
+          <Button size="sm" loading={generating} onClick={() => void generate(true)}>
+            {generating ? t('actionList.regenerating') : t('actionList.regenerate')}
+          </Button>
+        ) : (
+          <Button size="sm" loading={generating} onClick={() => void generate(false)}>
             {generating ? t('actionList.generating') : t('actionList.generate')}
-          </button>
-          {error ? <p className="action-inline-error">{error}</p> : null}
-        </>
-      )}
-    </section>
+          </Button>
+        )}
+      </div>
+    </div>
   )
 }
 
-function ApplySection({ item }: { item: ActionListItem }) {
+function ApplySection({
+  item,
+  appliedAt,
+  onApplied,
+}: {
+  item: ActionListItem
+  appliedAt: string | null
+  onApplied: (appliedAt: string | null) => void
+}) {
   const t = useTranslations('screen4')
-  const [appliedAt, setAppliedAt] = useState<string | null>(item.appliedAt)
   const [note, setNote] = useState(item.appliedNote)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [revoking, setRevoking] = useState(false)
   const [revokeError, setRevokeError] = useState<string | null>(null)
+  const noteId = `apply-note-${item.id}`
 
   const submit = async () => {
     setSaving(true)
@@ -175,9 +158,9 @@ function ApplySection({ item }: { item: ActionListItem }) {
         setError(t('applied.error'))
         return
       }
-      setAppliedAt(body?.appliedAt ?? new Date().toISOString())
       setNote(body?.appliedNote ?? note)
       setEditing(false)
+      onApplied(body?.appliedAt ?? new Date().toISOString())
     } catch {
       setError(t('applied.error'))
     } finally {
@@ -186,8 +169,7 @@ function ApplySection({ item }: { item: ActionListItem }) {
   }
 
   // A3 补充：已执行可撤销——PATCH applied:false 清空 appliedAt/appliedNote。撤销不重算
-  // 项目的 nextRetestDueAt（回滚需要重算「全局最新一次 applied 时间」，超出此处范围；
-  // 复测计划卡的口径说明已向用户交代这一点，不是静默行为）。
+  // 项目的 nextRetestDueAt（回测计划卡的口径说明已向用户交代这一点，不是静默行为）。
   const revoke = async () => {
     setRevoking(true)
     setRevokeError(null)
@@ -201,8 +183,8 @@ function ApplySection({ item }: { item: ActionListItem }) {
         setRevokeError(t('applied.revokeError'))
         return
       }
-      setAppliedAt(null)
       setNote('')
+      onApplied(null)
     } catch {
       setRevokeError(t('applied.revokeError'))
     } finally {
@@ -212,136 +194,170 @@ function ApplySection({ item }: { item: ActionListItem }) {
 
   if (appliedAt) {
     return (
-      <section className="action-apply-section">
-        <span className="applied-done">{t('applied.done', { at: appliedAt.slice(0, 10) })}</span>
-        {note ? <p className="action-applied-note">{note}</p> : null}
-        <div className="action-apply-revoke">
-          <button type="button" className="act" disabled={revoking} onClick={() => void revoke()}>
+      <div className="ui-rec__block">
+        <p className="ui-rec__applied">{t('applied.done', { at: appliedAt.slice(0, 10) })}</p>
+        {note ? <p className="ui-rec__applied-note">{note}</p> : null}
+        {revokeError ? <Notice tone="error">{revokeError}</Notice> : null}
+        <div className="ui-inline-actions">
+          <Button variant="quiet" size="sm" loading={revoking} onClick={() => void revoke()}>
             {revoking ? t('applied.revoking') : t('applied.revoke')}
-          </button>
-          {revokeError ? <p className="action-inline-error">{revokeError}</p> : null}
+          </Button>
         </div>
-      </section>
+      </div>
     )
   }
 
   return (
-    <section className="action-apply-section">
+    <div className="ui-rec__block">
       {editing ? (
-        <div className="action-apply-form">
-          <label htmlFor={`apply-note-${item.id}`}>{t('applied.noteLabel')}</label>
-          <textarea
-            id={`apply-note-${item.id}`}
-            className="edit-area"
-            value={note}
-            placeholder={t('applied.notePlaceholder')}
-            onChange={(event) => setNote(event.target.value)}
-          />
-          {error ? <p className="action-inline-error">{error}</p> : null}
-          <div className="delivery-applied-actions">
-            <button type="button" className="act accept" disabled={saving} onClick={() => void submit()}>
-              {t('applied.submit')}
-            </button>
-            <button type="button" className="act" onClick={() => setEditing(false)}>
-              {t('applied.cancel')}
-            </button>
+        <>
+          <div className="ui-field">
+            <label className="ui-label" htmlFor={noteId}>
+              {t('applied.noteLabel')}
+            </label>
+            <textarea
+              id={noteId}
+              className="ui-textarea"
+              value={note}
+              placeholder={t('applied.notePlaceholder')}
+              onChange={(event) => setNote(event.target.value)}
+            />
           </div>
-        </div>
+          {error ? <Notice tone="error">{error}</Notice> : null}
+          <div className="ui-inline-actions">
+            <Button variant="primary" size="sm" loading={saving} onClick={() => void submit()}>
+              {t('applied.submit')}
+            </Button>
+            <Button variant="quiet" size="sm" onClick={() => setEditing(false)}>
+              {t('applied.cancel')}
+            </Button>
+          </div>
+        </>
       ) : (
-        <button type="button" className="act" onClick={() => setEditing(true)}>
-          {t('applied.mark')}
-        </button>
+        <div className="ui-inline-actions">
+          <Button size="sm" onClick={() => setEditing(true)}>
+            {t('applied.mark')}
+          </Button>
+        </div>
       )}
-    </section>
+    </div>
   )
 }
 
-function ActionCard({ item }: { item: ActionListItem }) {
+function ActionCard({
+  item,
+  appliedAt,
+  onApplied,
+}: {
+  item: ActionListItem
+  appliedAt: string | null
+  onApplied: (appliedAt: string | null) => void
+}) {
   const t = useTranslations('screen4')
   const tScreen3 = useTranslations('screen3')
-  const tCommon = useTranslations('common.actions')
-  const priorityKey = normalizePriority(item.priority)
+  const tWs = useTranslations('workspace')
+  const tRoot = useTranslations()
+  const [open, setOpen] = useState(false)
   // B1（P0-4）：why 里可能编码了受影响页面清单（见 lib/diagnosis/recommend.ts
-  // appendAffectedPagesSection）；拆成独立字段块展示，「为什么」本身只保留干净文本。
+  // appendAffectedPagesSection）；拆成独立一项展示，「为什么」本身只保留干净文本。
   const { why: cleanWhy, affected } = extractAffectedPagesSection(item.why)
-  const hasDetails = Boolean(cleanWhy || item.validationMethod || item.evidenceRefs.length || affected)
+  const impact = shortLevel(item.expectedImpact)
+  const effort = shortLevel(item.effort)
+  const meta = [impact ? `${tScreen3('label.impact')} ${impact}` : '', effort ? `${tScreen3('label.effort')} ${effort}` : '']
+    .filter(Boolean)
+    .join(' · ')
+  const sev = item.severity === 'high' || item.severity === 'hi' ? 'high' : item.severity === 'mid' ? 'mid' : 'ok'
 
   return (
-    <article className={`card action-card rec rec--${priorityKey}`}>
-      <div className="rec-top">
-        <div className="rec-title-block">
-          <div className="rec-eyebrow">
-            <span className="prio">{tScreen3(`priority.${priorityKey}`)}</span>
-            {item.status === 'edited' ? <span className="rec-status rec-status--edited">{tCommon('edited')}</span> : null}
-          </div>
-          <h3>{item.title}</h3>
-        </div>
-      </div>
-
-      <div className="rec-body">
-        <dl className="rec-metrics rec-metrics--4" aria-label={tScreen3('decisionSummary')}>
-          {item.expectedImpact ? (
-            <div><dt>{tScreen3('label.impact')}</dt><dd>{item.expectedImpact}</dd></div>
-          ) : null}
-          {item.effort ? (
-            <div><dt>{tScreen3('label.effort')}</dt><dd>{item.effort}</dd></div>
-          ) : null}
-          {item.risk ? (
-            <div><dt>{tScreen3('label.risk')}</dt><dd>{item.risk}</dd></div>
-          ) : null}
-          {item.confidence ? (
-            <div><dt>{tScreen3('label.confidence')}</dt><dd>{item.confidence}</dd></div>
-          ) : null}
-        </dl>
-
-        {hasDetails ? (
-          <details className="rec-details">
-            <summary>
-              <span>{t('actionList.detailsSummary')}</span>
-              <span aria-hidden="true">▾</span>
-            </summary>
-            <div className="rec-details-grid">
-              {cleanWhy ? (
-                <div className="field-block full">
-                  <div className="fb-l">{tScreen3('label.why')}</div>
-                  <p>{cleanWhy}</p>
-                </div>
-              ) : null}
-              {affected ? (
-                <div className="field-block full">
-                  <div className="fb-l">{tScreen3('label.affectedPages')}</div>
-                  <p>{t('actionList.affectedPagesSummary', { total: affected.total, shown: affected.shown })}</p>
-                  <ul className="action-evidence-list">
-                    {affected.urls.map((url) => (
-                      <li key={url} className="ev-ref">{url}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {item.validationMethod ? (
-                <div className="field-block full">
-                  <div className="fb-l">{tScreen3('label.validation')}</div>
-                  <p>{item.validationMethod}</p>
-                </div>
-              ) : null}
-              {item.evidenceRefs.length ? (
-                <div className="field-block full">
-                  <div className="fb-l">{tScreen3('label.evidence')}</div>
-                  <ul className="action-evidence-list">
-                    {item.evidenceRefs.map((ref) => (
-                      <li key={ref} className="ev-ref">{item.evidenceSummaries?.[ref] ?? ref}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-          </details>
+    <RecRow
+      id={item.id}
+      severity={item.severity}
+      severityLabel={item.severity ? tWs(`sev.${sev}`) : undefined}
+      title={item.title}
+      target={
+        item.target ? (
+          <>
+            {tScreen3('target')}
+            <Link href={item.target.href}>{item.target.title}</Link>
+          </>
+        ) : undefined
+      }
+      meta={meta}
+      badge={item.grade ? <EvidenceBadge grade={item.grade} label={tRoot(labelKeyForGrade(item.grade))} /> : null}
+      aside={
+        <span className="ui-rec__state">
+          {item.status === 'edited' ? <span className="ui-rec__edited">{tScreen3('status.edited')}</span> : null}
+          {appliedAt ? (
+            <StatusText status="applied" label={t('checklist.statusApplied')} />
+          ) : (
+            <span className="ui-rec__todo">{t('checklist.statusTodo')}</span>
+          )}
+        </span>
+      }
+      open={open}
+      onToggle={() => setOpen((v) => !v)}
+    >
+      <dl className="ui-kv">
+        {cleanWhy ? (
+          <>
+            <dt>{tScreen3('label.why')}</dt>
+            <dd>{cleanWhy}</dd>
+          </>
         ) : null}
+        {affected ? (
+          <>
+            <dt>{tScreen3('label.affectedPages')}</dt>
+            <dd>
+              <p>{t('actionList.affectedPagesSummary', { total: affected.total, shown: affected.shown })}</p>
+              <ul className="ui-kv__list ui-mono">
+                {affected.urls.map((url) => (
+                  <li key={url}>{url}</li>
+                ))}
+              </ul>
+            </dd>
+          </>
+        ) : null}
+        {item.expectedImpact ? (
+          <>
+            <dt>{tScreen3('label.impact')}</dt>
+            <dd>{item.expectedImpact}</dd>
+          </>
+        ) : null}
+        {item.risk ? (
+          <>
+            <dt>{tScreen3('label.risk')}</dt>
+            <dd>{item.risk}</dd>
+          </>
+        ) : null}
+        {item.validationMethod ? (
+          <>
+            <dt>{tScreen3('label.validation')}</dt>
+            <dd>{item.validationMethod}</dd>
+          </>
+        ) : null}
+        {item.confidence ? (
+          <>
+            <dt>{tScreen3('label.confidence')}</dt>
+            <dd>{item.confidence}</dd>
+          </>
+        ) : null}
+        {item.evidenceRefs.length ? (
+          <>
+            <dt>{tScreen3('label.evidence')}</dt>
+            <dd>
+              <ul className="ui-kv__list">
+                {item.evidenceRefs.map((ref) => (
+                  <li key={ref}>{item.evidenceSummaries?.[ref] ?? ref}</li>
+                ))}
+              </ul>
+            </dd>
+          </>
+        ) : null}
+      </dl>
 
-        <PromptAssets item={item} />
-        <ApplySection item={item} />
-      </div>
-    </article>
+      <PromptAssets item={item} />
+      <ApplySection item={item} appliedAt={appliedAt} onApplied={onApplied} />
+    </RecRow>
   )
 }
 
@@ -353,31 +369,74 @@ export function ActionList({
   rejectedItems: ActionListRejectedItem[]
 }) {
   const t = useTranslations('screen4')
+  const tScreen3 = useTranslations('screen3')
+  const [appliedById, setAppliedById] = useState<Record<string, string | null>>(() =>
+    Object.fromEntries(items.map((it) => [it.id, it.appliedAt])),
+  )
+  const total = items.length
+  const done = items.filter((it) => appliedById[it.id]).length
+  const pct = total ? Math.round((done / total) * 100) : 0
+  const groups = groupByPriority(rankRecs(items))
 
   return (
-    <section className="action-list" aria-label={t('actionList.heading')}>
-      {items.length ? (
-        <div className="action-list-cards">
-          {items.map((item) => <ActionCard key={item.id} item={item} />)}
+    <section className="grid grid-cols-1 gap-4" aria-label={t('actionList.heading')}>
+      {total ? (
+        <div className="ui-progress-line">
+          <p className="ui-progress-line__label">{t('checklist.progress', { done, total })}</p>
+          <div
+            className="ui-bar ui-bar--own"
+            role="progressbar"
+            aria-label={t('output.progressAria')}
+            aria-valuenow={pct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <i style={{ width: `${pct}%` }} />
+          </div>
         </div>
+      ) : null}
+
+      {total > 0 && done === total ? (
+        <Notice tone="success" title={t('checklist.allDoneTitle')}>
+          {t('checklist.allDone')}
+        </Notice>
+      ) : null}
+
+      {total ? (
+        groups.map((g) => (
+          <section key={g.priority} className="ui-recgroup" aria-labelledby={`actgroup-${g.priority}`}>
+            <h3 className="ui-recgroup__title" id={`actgroup-${g.priority}`}>
+              {tScreen3(`priority.${g.priority}`)}
+              <span className="ui-recgroup__count">{g.items.length}</span>
+            </h3>
+            <ul className="ui-panel ui-recs">
+              {g.items.map((item) => (
+                <li key={item.id} id={item.id}>
+                  <ActionCard
+                    item={item}
+                    appliedAt={appliedById[item.id] ?? null}
+                    onApplied={(at) => setAppliedById((prev) => ({ ...prev, [item.id]: at }))}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
       ) : (
-        <div className="card action-empty">
-          <p>{t('actionList.emptyGated')}</p>
-          <p className="action-empty-hint">{t('actionList.emptyGatedHint')}</p>
-        </div>
+        <EmptyState title={t('actionList.emptyGated')} description={t('actionList.emptyGatedHint')} />
       )}
 
       {rejectedItems.length ? (
-        <details className="action-rejected-accordion">
+        <details className="ui-disclosure">
           <summary>{t('actionList.rejectedAccordionTitle', { count: rejectedItems.length })}</summary>
-          <div className="action-rejected-list">
+          <ul className="ui-rejected">
             {rejectedItems.map((row) => (
-              <div key={row.id} className="action-rejected-row">
+              <li key={row.id}>
                 <strong>{row.title}</strong>
                 <p>{row.note || t('actionList.rejectedNoNote')}</p>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </details>
       ) : null}
     </section>

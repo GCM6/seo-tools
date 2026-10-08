@@ -89,6 +89,7 @@
       "saveEdit": "Save edit",
       "cancel": "Cancel",
       "reject": "Reject",
+      "copyCode": "Copy code",
       "collapse": "Collapse"
     },
     "confidence": {
@@ -560,6 +561,30 @@
     "backToDiagnosis": "Back to diagnostic workspace",
     "meta": "Ranked by \"impact × confidence ÷ effort\" · each must be confirmed before output",
     "decisionSummary": "Recommendation decision summary",
+    "sectionNote": "Open a row to see the rationale, risk and fix example. Accepted recommendations go to the checklist.",
+    "summary": "{total} total · {pending} to review · {accepted} accepted · {rejected} rejected",
+    "openChecklist": "Open checklist",
+    "allDecided": "All recommendations are decided. The {accepted} accepted ones are in the checklist.",
+    "filterLabel": "Filter by status",
+    "filter": {
+      "all": "All",
+      "pending": "To review",
+      "accepted": "Accepted",
+      "rejected": "Rejected"
+    },
+    "emptyFiltered": "No recommendations match this filter.",
+    "emptyTitle": "No recommendations this run",
+    "emptyPendingTitle": "Recommendations aren't ready yet",
+    "emptyPending": "They will be listed here once the diagnosis finishes.",
+    "target": "For: ",
+    "edit": {
+      "title": "Title",
+      "titleRequired": "Title can't be empty.",
+      "note": "Revision note",
+      "noteHint": "Included in the execution prompt and the report.",
+      "save": "Save and accept",
+      "lead": "After you change the title or add a note, this recommendation enters the checklist as edited."
+    },
     "progress": {
       "total": "{count} total",
       "pending": "{count} pending",
@@ -579,13 +604,15 @@
     },
     "action": {
       "undoAccept": "Undo acceptance",
+      "undoEdited": "Undo acceptance (clears your revisions)",
+      "error": "Not saved — the status didn't change. Please try again.",
       "restore": "Restore to pending"
     },
     "details": "View evidence, risk & validation",
     "outputAction": "View delivery preview",
     "staticFix": "Reference fix (static template)",
     "noRationale": "No additional rationale was recorded. Use the evidence and validation plan to decide.",
-    "empty": "No recommendations yet this run; automatic finding-to-recommendation generation is not connected yet",
+    "empty": "The diagnosis found nothing that needs a recommendation. Record-only findings don't produce recommendations.",
     "label": {
       "why": "Why",
       "evidence": "Evidence",
@@ -603,13 +630,28 @@
     "title": "Output",
     "note": "A delivery draft is not a publication: preview or edit its Markdown here, then hand it to an executor. Mark it executed only after the CMS or code change is live so the same-protocol retest can be scheduled.",
     "viewReport": "View full report →",
+    "checklist": {
+      "title": "Checklist",
+      "sectionNote": "Work through accepted recommendations in order: open a row to generate its execution prompt, then mark it done.",
+      "progress": "{done} / {total} done",
+      "allDoneTitle": "All recommendations done",
+      "allDone": "In 4–6 weeks you can retest with the same protocol to compare before and after.",
+      "statusApplied": "Done",
+      "statusTodo": "To do",
+      "draftNotice": "{count} recommendations still need review before they enter the checklist.",
+      "draftAction": "Review now",
+      "factsManage": "Manage brand facts",
+      "factsVerified": "verified brand facts, injected into execution prompts"
+    },
     "output": {
       "progressAria": "Execution progress",
       "progressCount": "{done}/{total} marked executed",
       "scopeCount": "{count} in scope · {rejected} rejected",
       "draftWarning": "{count} still awaiting decision",
       "draftWarningLink": "Go to recommendations →",
-      "retestTitle": "Retest preview",
+      "retestTitle": "Retest plan",
+      "retestProgressLabel": "Progress",
+      "retestDueLabel": "Retest due",
       "retestProgress": "{done}/{total} executed",
       "retestPending": "Mark every action executed to start the same-protocol retest (4–6 weeks).",
       "retestReady": "Every action is executed — you can schedule the same-protocol retest.",

@@ -89,6 +89,7 @@
       "saveEdit": "保存编辑",
       "cancel": "取消",
       "reject": "否决",
+      "copyCode": "复制代码",
       "collapse": "收起"
     },
     "confidence": {
@@ -556,10 +557,34 @@
     }
   },
   "screen3": {
-    "title": "优化建议",
+    "title": "建议",
     "backToDiagnosis": "返回诊断工作台",
     "meta": "按「影响 × 置信 ÷ 工作量」排序 · 逐条确认后才进入输出",
     "decisionSummary": "建议决策摘要",
+    "sectionNote": "点开一条看理由、风险和修复示例；接受的建议进入执行清单。",
+    "summary": "共 {total} 条 · 待确认 {pending} · 已接受 {accepted} · 已否决 {rejected}",
+    "openChecklist": "打开执行清单",
+    "allDecided": "建议都已处理，已接受的 {accepted} 条在执行清单里。",
+    "filterLabel": "按状态筛选",
+    "filter": {
+      "all": "全部",
+      "pending": "待确认",
+      "accepted": "已接受",
+      "rejected": "已否决"
+    },
+    "emptyFiltered": "这个筛选下没有建议。",
+    "emptyTitle": "本轮没有生成建议",
+    "emptyPendingTitle": "建议还没有生成",
+    "emptyPending": "诊断完成后，这里会列出建议。",
+    "target": "针对：",
+    "edit": {
+      "title": "标题",
+      "titleRequired": "标题不能为空。",
+      "note": "修订说明",
+      "noteHint": "会写进执行提示词和报告。",
+      "save": "保存并接受",
+      "lead": "改标题或补充说明后，这条建议按「已编辑」进入执行清单。"
+    },
     "progress": {
       "total": "共 {count} 条",
       "pending": "待确认 {count}",
@@ -579,13 +604,15 @@
     },
     "action": {
       "undoAccept": "撤销接受",
+      "undoEdited": "撤销接受（人工修订会被清除）",
+      "error": "没有保存成功，状态没有改变。请稍后重试。",
       "restore": "恢复为待确认"
     },
     "details": "查看证据、风险与验证",
     "outputAction": "查看交付预览",
     "staticFix": "参考修复示例（静态模板）",
     "noRationale": "暂无补充说明，请结合证据和验证方式判断。",
-    "empty": "本轮尚无优化建议；诊断发现的自动生成与转建议尚未接入",
+    "empty": "诊断没有发现需要给出建议的问题；只记录、不建议投入的发现不会生成建议。",
     "label": {
       "why": "为什么",
       "evidence": "证据",
@@ -603,13 +630,28 @@
     "title": "输出",
     "note": "交付稿不等于已发布：在这里预览、编辑 Markdown 并交给执行者；完成 CMS 或代码变更后再标记「已执行」，系统才会安排同协议回测。",
     "viewReport": "查看完整报告 →",
+    "checklist": {
+      "title": "执行清单",
+      "sectionNote": "按顺序执行已接受的建议：点开一条生成执行提示词，做完后标记已执行。",
+      "progress": "已执行 {done} / {total}",
+      "allDoneTitle": "全部建议已执行",
+      "allDone": "4–6 周后可以用同一协议回测，对比改动前后的变化。",
+      "statusApplied": "已执行",
+      "statusTodo": "未执行",
+      "draftNotice": "还有 {count} 条建议待确认，确认后才会进入执行清单。",
+      "draftAction": "去确认",
+      "factsManage": "管理品牌事实",
+      "factsVerified": "条已验证的品牌事实，会注入执行提示词"
+    },
     "output": {
       "progressAria": "执行进度",
       "progressCount": "{done}/{total} 已标记执行",
       "scopeCount": "纳入执行 {count} · 已否决 {rejected}",
       "draftWarning": "仍有 {count} 条待确认",
       "draftWarningLink": "回建议页处理 →",
-      "retestTitle": "回测预告",
+      "retestTitle": "回测计划",
+      "retestProgressLabel": "执行进度",
+      "retestDueLabel": "回测到期日",
       "retestProgress": "已执行 {done}/{total}",
       "retestPending": "全部标记已执行后可发起同协议回测（4–6 周）。",
       "retestReady": "全部动作已执行，可安排同协议回测。",

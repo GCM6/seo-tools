@@ -1,7 +1,8 @@
 import { getTranslations } from 'next-intl/server'
+import { Panel } from './Panel'
 import { RetestButton } from './RetestButton'
 
-// 复测计划卡（A3，替换 output 页原纯文字「回测预告」）。到期日期口径固定为
+// 回测计划卡（A3，替换 output 页原纯文字「回测预告」；改版后用 Panel + 键值表，ux-blueprint §3.4 底部两块之一）。到期日期口径固定为
 // 「最新一次标记已执行 +28 天」（app/api/recommendations/[id]/route.ts 的
 // RETEST_WINDOW_DAYS，计算逻辑本次未改动）；每次新的「标记已执行」都会把日期顺延，
 // 撤销执行不回退该日期——这两点都通过 policyNote 向用户交代，不是静默行为。
@@ -31,35 +32,30 @@ export async function RetestPlanCard({
   const tRetest = await getTranslations('retest')
 
   return (
-    <div className="card output-retest-card retest-plan-card">
-      <h3>{t('retestTitle')}</h3>
-      <p className="output-retest-progress">{t('retestProgress', { done: appliedDone, total: appliedTotal })}</p>
-      <p>{retestReady ? t('retestReady') : t('retestPending')}</p>
-
-      <div className="retest-plan-due">
-        <span className="retest-plan-due-label">{t('retestPlanDueLabel')}</span>
-        {dueAt ? (
-          <strong className="retest-plan-due-value">{dueAt.slice(0, 10)}</strong>
-        ) : (
-          <span className="retest-plan-due-empty">{t('retestPlanNoDue')}</span>
-        )}
+    <Panel title={t('retestTitle')}>
+      <div className="grid grid-cols-1 gap-3">
+        <dl className="ui-kv">
+          <dt>{t('retestProgressLabel')}</dt>
+          <dd>{t('retestProgress', { done: appliedDone, total: appliedTotal })}</dd>
+          <dt>{t('retestDueLabel')}</dt>
+          <dd>{dueAt ? <strong>{dueAt.slice(0, 10)}</strong> : t('retestPlanNoDue')}</dd>
+        </dl>
+        <p>{retestReady ? t('retestReady') : t('retestPending')}</p>
+        <RetestButton
+          locale={locale}
+          baselineRunId={runId}
+          className="ui-btn ui-btn--sm"
+          labels={{
+            cta: tRetest('dueCta'),
+            starting: tRetest('starting'),
+            error: tRetest('error'),
+            inProgress: tRetest('inProgress'),
+            needsSetup: tRetest('needsSetup'),
+          }}
+        />
+        <p className="ui-footnote">{t('retestPlanPolicyNote')}</p>
+        <p className="ui-footnote">{t('retestPlanManualNote')}</p>
       </div>
-      <p className="retest-plan-policy-note">{t('retestPlanPolicyNote')}</p>
-
-      <RetestButton
-        locale={locale}
-        baselineRunId={runId}
-        className="act accept"
-        labels={{
-          cta: tRetest('dueCta'),
-          starting: tRetest('starting'),
-          error: tRetest('error'),
-          inProgress: tRetest('inProgress'),
-          needsSetup: tRetest('needsSetup'),
-        }}
-      />
-
-      <p className="retest-plan-manual-note">{t('retestPlanManualNote')}</p>
-    </div>
+    </Panel>
   )
 }

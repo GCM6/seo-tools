@@ -1,29 +1,29 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server'
-import Link from 'next/link'
-import { RunWorkspace } from '@/components/RunWorkspace'
-import { RecCard, type RecStatus } from '@/components/RecCard'
 import { notFound } from 'next/navigation'
-import { getRun, getRecommendations, getFindings } from '@/lib/repositories'
+import { RunWorkspace } from '@/components/RunWorkspace'
+import { SectionHeader } from '@/components/SectionHeader'
+import { EmptyState } from '@/components/EmptyState'
+import { RecommendationList, type RecListItem } from '@/components/RecommendationList'
+import type { RecStatus } from '@/components/RecCard'
+import { getRun, getRecommendations, getFindings, getRunEvidence } from '@/lib/repositories'
 import { gradeForClaim } from '@/lib/evidence'
-import type { ClaimType } from '@/lib/types'
+import { isRunFinished } from '@/lib/runs/workspace'
+import { extractAffectedPagesSection } from '@/lib/diagnosis/recommend'
+import { summarizeEvidenceRefs } from '@/lib/diagnosis/action-report-markdown'
+import type { ClaimType, RunStatus } from '@/lib/types'
 
-const PRIORITY_ORDER: Record<string, number> = {
-  quick_win: 0,
-  strategic: 1,
-  fill_in: 2,
-  low: 3,
-}
-
-function editedNote(payload: unknown): string {
-  if (!payload || typeof payload !== 'object') return ''
+// editedPayload 里人工改过的标题与修订说明；兼容旧格式 { angle, injectedFacts }（合并成说明展示）。
+function editedFields(payload: unknown): { what?: string; note: string } {
+  if (!payload || typeof payload !== 'object') return { note: '' }
   const p = payload as Record<string, unknown>
-  if (typeof p.note === 'string') return p.note
-  const parts = [p.angle, p.injectedFacts].filter((v): v is string => typeof v === 'string' && v.length > 0)
-  return parts.join('\n')
+  const what = typeof p.what === 'string' && p.what.trim() ? p.what : undefined
+  if (typeof p.note === 'string') return { what, note: p.note }
+  const legacy = [p.angle, p.injectedFacts].filter((v): v is string => typeof v === 'string' && v.length > 0)
+  return { what, note: legacy.join('\n') }
 }
 
-// 屏3 优化建议 — Server Component. Fetches the run's recommendations and
-// renders a human-gate state-machine card per row inside the workflow Shell.
+// 建议（ux-blueprint §3.3）：逐条确认建议，决定哪些进入执行清单。
+// 本页只取数并组装行数据；筛选、分组、接受 / 否决 / 编辑都在 RecommendationList（client）里。
 export default async function RecommendationsPage({
   params,
 }: {
@@ -33,76 +33,57 @@ export default async function RecommendationsPage({
   setRequestLocale(locale)
 
   const t = await getTranslations('screen3')
-  if (!(await getRun(id))) notFound()
-  const [recRows, findingRows] = await Promise.all([getRecommendations(id), getFindings(id)])
-  const recs = [...recRows].sort(
-    (a, b) => (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99),
-  )
-  // 建议的证据等级 = 它所针对 finding 的 claim_type（design-system §3.1）。找不到 finding 时不猜，只显示文字。
-  const claimByFinding = new Map(findingRows.map((f) => [f.id, f.claimType as ClaimType]))
-  const readyCount = recs.filter((r) => r.status === 'accepted' || r.status === 'edited').length
-  const pendingCount = recs.filter((r) => r.status === 'draft').length
+  const run = await getRun(id)
+  if (!run) notFound()
+  const [recRows, findingRows, evidenceRows] = await Promise.all([getRecommendations(id), getFindings(id), getRunEvidence(id)])
+
+  const findingById = new Map(findingRows.map((f) => [f.id, f]))
+  const evidenceById = new Map(evidenceRows.map((row) => [row.id, row]))
+
+  const items: RecListItem[] = recRows.map((r) => {
+    const finding = r.findingId ? findingById.get(r.findingId) : undefined
+    const edited = editedFields(r.editedPayload)
+    const { why, affected } = extractAffectedPagesSection(r.why)
+    return {
+      id: r.id,
+      priority: r.priority,
+      title: edited.what ?? r.what,
+      initialStatus: r.status as RecStatus,
+      severity: finding?.severity,
+      // 建议的证据等级 = 它所针对 finding 的 claim_type（design-system §3.1）；找不到 finding 时不猜。
+      confidenceGrade: finding ? gradeForClaim(finding.claimType as ClaimType) : undefined,
+      target: finding ? { title: finding.title, href: `/${locale}/runs/${id}/issues#${finding.id}` } : undefined,
+      editNote: edited.note,
+      fields: {
+        why: why || undefined,
+        affected,
+        evidence: r.evidenceRefs.length ? summarizeEvidenceRefs(r.evidenceRefs, evidenceById) : undefined,
+        impact: r.expectedImpact || undefined,
+        effort: r.effort || undefined,
+        risk: r.risk || undefined,
+        validationMethod: r.validationMethod || undefined,
+        confidence: r.confidence || undefined,
+        editedNote: edited.note || undefined,
+      },
+    }
+  })
 
   return (
     <RunWorkspace runId={id} locale={locale} current="recs">
-      <div className="sec-h rec-page-head">
-        <div>
-          <Link href={`/${locale}/runs/${id}`} className="rec-back-link">
-            <span aria-hidden="true">←</span>
-            {t('backToDiagnosis')}
-          </Link>
-          <h2>{t('title')}</h2>
-          <span className="meta">{t('meta')}</span>
-        </div>
-        {recs.length ? (
-          <div className="rec-page-actions">
-            <div className="rec-progress" aria-label={t('decisionSummary')}>
-              <span>{t('progress.total', { count: recs.length })}</span>
-              <span>{t('progress.pending', { count: pendingCount })}</span>
-              <strong>{t('progress.ready', { count: readyCount })}</strong>
-            </div>
-            {pendingCount === 0 ? (
-              <Link href={`/${locale}/runs/${id}/output`} className="rec-output-link">
-                {t('outputAction')}
-                <span aria-hidden="true">→</span>
-              </Link>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
-      {recs.length ? (
-        <div className="rec-list">
-          {recs.map((r) => {
-          const note = editedNote(r.editedPayload)
-          return (
-            <RecCard
-              key={r.id}
-              id={r.id}
-              priority={r.priority}
-              title={r.what}
-              initialStatus={r.status as RecStatus}
-              fields={{
-                why: r.why || undefined,
-                evidence: r.evidenceRefs.length ? r.evidenceRefs.join(' · ') : undefined,
-                impact: r.expectedImpact || undefined,
-                effort: r.effort || undefined,
-                risk: r.risk || undefined,
-                validationMethod: r.validationMethod || undefined,
-                confidence: r.confidence || undefined,
-                editedNote: note || undefined,
-              }}
-              editDraft={note || r.why}
-              confidenceGrade={r.findingId && claimByFinding.has(r.findingId) ? gradeForClaim(claimByFinding.get(r.findingId)!) : undefined}
-            />
+      <section className="ui-section">
+        <SectionHeader title={t('title')} note={t('sectionNote')} />
+        {items.length ? (
+          <RecommendationList items={items} checklistHref={`/${locale}/runs/${id}/output`} />
+        ) : (
+          // 诊断还没跑完时没有建议是正常的，不能说成「没发现问题」。
+          isRunFinished(run.status as RunStatus) ? (
+            <EmptyState title={t('emptyTitle')} description={t('empty')} />
+          ) : (
+            <EmptyState title={t('emptyPendingTitle')} description={t('emptyPending')} />
           )
-          })}
-        </div>
-      ) : (
-        <div className="card pending-block">{t('empty')}</div>
-      )}
-
-      <div className="note">{t('note')}</div>
+        )}
+      </section>
+      <p className="ui-footnote">{t('note')}</p>
     </RunWorkspace>
   )
 }

@@ -1,87 +1,88 @@
 'use client'
 
-import { useOptimistic, useState, startTransition } from 'react'
+import { useOptimistic, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { Button } from './Button'
+import { CodeBlock } from './CodeBlock'
 import { EvidenceBadge } from './EvidenceBadge'
-import type { EvidenceGrade } from '@/lib/evidence'
+import { Notice } from './Notice'
+import { RecRow } from './RecRow'
+import { labelKeyForGrade, type EvidenceGrade } from '@/lib/evidence'
+import { composeRecommendation, shortLevel, splitRecommendation } from '@/lib/runs/recommendations'
 
-// Human-in-the-loop status machine for a single recommendation.
-// Only `accepted` / `edited` advance to prompt generation (project 铁律 #4),
-// so accept and reject are a single mutually-exclusive status field.
+// 人在环内的单条建议（ux-blueprint §3.3）：行内直接「接受 / 否决」，展开区看理由、风险、验证、证据、
+// 修复示例，并在展开区内联编辑（标题 + 修订说明 → 保存并接受）。
+// 只有 accepted / edited 才能进入提示词生成（项目铁律 #4），所以接受与否决是同一个互斥状态字段。
 export type RecStatus = 'draft' | 'accepted' | 'edited' | 'rejected'
 
 export interface RecCardFields {
   why?: string
-  evidence?: string
+  /** 证据引用的人类可读摘要（调用方用 summarizeEvidenceRefs 预算），缺摘要时是原始 ID。 */
+  evidence?: string[]
   impact?: string
   effort?: string
   risk?: string
   validationMethod?: string
   confidence?: string
   editedNote?: string
+  /** why 里拆出来的受影响页面清单（extractAffectedPagesSection），单独成一项展示。 */
+  affected?: { total: number; shown: number; urls: string[] } | null
 }
 
 export interface RecCardProps {
   id: string
-  priority: string
+  /** recommendations.what；人工改过标题时由调用方传 editedPayload.what。可能带静态修复示例。 */
   title: string
   fields: RecCardFields
   initialStatus: RecStatus
-  // 置信度徽章的证据等级，来自该建议所针对 finding 的 claim_type（design-system §3.1）。
-  // 不传时只显示置信度文字，不猜等级——以前默认画成「推断」，会把「高（实测）」错标成推断。
+  // 证据徽章的等级 = 该建议所针对 finding 的 claim_type（design-system §3.1）。
+  // 不传时不画徽章、不猜等级——以前默认画成「推断」，会把「高（实测）」错标成推断。
   confidenceGrade?: EvidenceGrade
-  // Seed text for the editable draft (content angle / brand facts).
-  editDraft?: string
-}
-
-type RecommendationPriority = 'quick_win' | 'strategic' | 'fill_in' | 'low'
-
-const PRIORITIES = new Set<RecommendationPriority>(['quick_win', 'strategic', 'fill_in', 'low'])
-const STATIC_FIX_MARKER = '\n\n参考修复示例（静态模板，非生成内容）：\n'
-
-function normalizePriority(priority: string): RecommendationPriority {
-  return PRIORITIES.has(priority as RecommendationPriority) ? priority as RecommendationPriority : 'fill_in'
-}
-
-function splitRecommendation(title: string) {
-  const markerIndex = title.indexOf(STATIC_FIX_MARKER)
-  if (markerIndex === -1) return { action: title, fixSnippet: '' }
-  return {
-    action: title.slice(0, markerIndex),
-    fixSnippet: title.slice(markerIndex + STATIC_FIX_MARKER.length),
-  }
+  /** 所针对问题的严重度（findings.severity）。 */
+  severity?: string
+  /** 「针对：〈问题标题〉」，链接到问题页对应条目；标题相同的建议靠它区分。 */
+  target?: { title: string; href: string }
+  /** 已有的人工修订说明，作为编辑表单的初始值。 */
+  editNote?: string
+  /** 服务端确认后回调，供列表更新筛选计数。 */
+  onStatusChange?: (id: string, status: RecStatus) => void
 }
 
 export function RecCard({
   id,
-  priority,
   title,
   fields,
   initialStatus,
   confidenceGrade,
-  editDraft = '',
+  severity,
+  target,
+  editNote = '',
+  onStatusChange,
 }: RecCardProps) {
   const t = useTranslations()
   const router = useRouter()
-  const priorityKey = normalizePriority(priority)
-  const { action, fixSnippet } = splitRecommendation(title)
 
-  // Confirmed status (commits after the PATCH settles) + optimistic overlay.
+  // 已确认的状态（PATCH 成功后才提交）+ 乐观覆盖层：失败时覆盖层在 transition 结束后自动回到已确认状态。
   const [status, setStatus] = useState<RecStatus>(initialStatus)
-  const [optimisticStatus, setOptimisticStatus] = useOptimistic<RecStatus, RecStatus>(
-    status,
-    (_current, next) => next,
-  )
+  const [optimisticStatus, setOptimisticStatus] = useOptimistic<RecStatus, RecStatus>(status, (_current, next) => next)
+  const [currentTitle, setCurrentTitle] = useState(title)
+  const [currentNote, setCurrentNote] = useState(fields.editedNote ?? '')
+  const [isPending, startTransition] = useTransition()
+  const [pendingAction, setPendingAction] = useState<'accept' | 'reject' | 'edit' | null>(null)
+  const [error, setError] = useState(false)
 
-  const [draft, setDraft] = useState(editDraft)
-  const [editingDraft, setEditingDraft] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const { action, fixSnippet } = splitRecommendation(currentTitle)
+  const [draftTitle, setDraftTitle] = useState(action)
+  const [draftNote, setDraftNote] = useState(editNote)
+  const [titleInvalid, setTitleInvalid] = useState(false)
 
-  // Optimistically reflect the new status, fire the PATCH, then commit ONLY when
-  // the server accepted it. On a non-ok response or a thrown error we leave the
-  // confirmed `status` untouched, so `useOptimistic` reverts the overlay back to
-  // it once the transition settles — i.e. the card rolls back to the prior state.
-  const patch = (next: RecStatus, editedPayload?: unknown) => {
+  const patch = (next: RecStatus, kind: 'accept' | 'reject' | 'edit', editedPayload?: Record<string, string>) => {
+    setError(false)
+    setPendingAction(kind)
     startTransition(async () => {
       setOptimisticStatus(next)
       try {
@@ -90,174 +91,214 @@ export function RecCard({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: next, editedPayload }),
         })
-        if (res.ok) {
-          setStatus(next)
-          setEditingDraft(false)
-          // 最后一条建议完成确认时，服务端会推进 run 到输出阶段；刷新只读步骤进度。
-          router.refresh()
+        if (!res.ok) {
+          setError(true)
+          return
         }
+        setStatus(next)
+        onStatusChange?.(id, next)
+        if (next === 'edited' && editedPayload) {
+          if (editedPayload.what) setCurrentTitle(editedPayload.what)
+          setCurrentNote(editedPayload.note ?? '')
+          setEditing(false)
+        }
+        // 接口在 status 不是 edited 时会清空 editedPayload，本地展示同步清掉。
+        if (next !== 'edited') setCurrentNote('')
+        // 最后一条建议确认后服务端会把 run 推进到执行阶段；刷新抬头的进度与计数。
+        router.refresh()
       } catch {
-        // Network error — keep the persisted status; optimistic state rolls back.
+        setError(true)
+      } finally {
+        setPendingAction(null)
       }
     })
   }
 
-  const accepted = optimisticStatus === 'accepted'
+  const accepted = optimisticStatus === 'accepted' || optimisticStatus === 'edited'
   const rejected = optimisticStatus === 'rejected'
   const isEdited = optimisticStatus === 'edited'
-  const statusKey = optimisticStatus === 'draft' ? 'draft' : optimisticStatus
-  const hasDetails = Boolean(fixSnippet || fields.evidence || fields.risk || fields.validationMethod)
 
-  const onAccept = () => patch(accepted ? 'draft' : 'accepted')
-  const onReject = () => patch(rejected ? 'draft' : 'rejected')
-  const onEdit = () => setEditingDraft(true)
-  const onSaveEdit = () => patch('edited', { note: draft })
+  const onAccept = () => patch(accepted ? 'draft' : 'accepted', 'accept')
+  const onReject = () => patch(rejected ? 'draft' : 'rejected', 'reject')
+  const onSaveEdit = () => {
+    const nextAction = draftTitle.trim()
+    if (!nextAction) {
+      setTitleInvalid(true)
+      return
+    }
+    // 接口会用这次的 editedPayload 整体替换上一次的，所以 what 每次都带上（没改就是原标题），
+    // 否则只改说明会把之前改过的标题冲掉。修复示例原样接回，下游提示词不丢示例。
+    patch('edited', 'edit', { what: composeRecommendation(nextAction, fixSnippet), note: draftNote.trim() })
+  }
   const onCancelEdit = () => {
-    setDraft(editDraft)
-    setEditingDraft(false)
+    setDraftTitle(action)
+    setDraftNote(currentNote || editNote)
+    setTitleInvalid(false)
+    setEditing(false)
   }
 
+  const impact = shortLevel(fields.impact)
+  const effort = shortLevel(fields.effort)
+  const meta = [impact ? `${t('screen3.label.impact')} ${impact}` : '', effort ? `${t('screen3.label.effort')} ${effort}` : '']
+    .filter(Boolean)
+    .join(' · ')
+  const titleId = `rec-edit-title-${id}`
+  const noteId = `rec-edit-note-${id}`
+
   return (
-    <article className={`card rec rec--${priorityKey}${editingDraft ? ' editing' : ''}`} data-status={optimisticStatus}>
-      <div className="rec-top">
-        <div className="rec-title-block">
-          <div className="rec-eyebrow">
-            <span className="prio">{t(`screen3.priority.${priorityKey}`)}</span>
-            <span className={`rec-status rec-status--${statusKey}`}>{t(`screen3.status.${statusKey}`)}</span>
-          </div>
-          <h3>{action}</h3>
-        </div>
-        <div className="rec-actions">
-          {editingDraft ? (
-            <>
-              <button type="button" className="act acc on" onClick={onSaveEdit}>
-                {t('common.actions.saveEdit')}
-              </button>
-              <button type="button" className="act" onClick={onCancelEdit}>
-                {t('common.actions.cancel')}
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                className={`act accept${accepted ? ' on' : ''}`}
-                aria-pressed={accepted}
-                title={accepted ? t('screen3.action.undoAccept') : undefined}
-                onClick={onAccept}
-              >
-                {accepted ? t('common.actions.accepted') : t('common.actions.accept')}
-              </button>
-              <button
-                type="button"
-                className={`act edit${isEdited ? ' on' : ''}`}
-                aria-pressed={isEdited}
-                onClick={onEdit}
-              >
-                {optimisticStatus === 'edited' ? t('common.actions.edited') : t('common.actions.edit')}
-              </button>
-              <button
-                type="button"
-                className={`act rej${rejected ? ' on' : ''}`}
-                aria-pressed={rejected}
-                title={rejected ? t('screen3.action.restore') : undefined}
-                onClick={onReject}
-              >
-                {rejected ? t('screen3.status.rejected') : t('common.actions.reject')}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="rec-body">
-        {editingDraft ? (
-          <div className="field-block full">
-            <div className="fb-l">{t('screen3.label.editedNote')}</div>
-            <textarea
-              className="edit-area"
-              value={draft}
-              aria-label={t('screen3.label.editedNote')}
-              onChange={(e) => setDraft(e.target.value)}
-            />
-          </div>
-        ) : (
+    <RecRow
+      id={id}
+      severity={severity}
+      severityLabel={severity ? t(`workspace.sev.${severity === 'high' || severity === 'hi' ? 'high' : severity === 'mid' ? 'mid' : 'ok'}`) : undefined}
+      title={action}
+      target={
+        target ? (
           <>
-            <div className="rec-decision-grid">
-              <div className="rec-rationale">
-                <div className="fb-l">{t('screen3.label.why')}</div>
-                {fields.why ? <p>{fields.why}</p> : <p className="rec-empty">{t('screen3.noRationale')}</p>}
-              </div>
-              <dl className="rec-metrics" aria-label={t('screen3.decisionSummary')}>
-                {fields.impact ? (
-                  <div>
-                    <dt>{t('screen3.label.impact')}</dt>
-                    <dd>{fields.impact}</dd>
-                  </div>
-                ) : null}
-                {fields.effort ? (
-                  <div>
-                    <dt>{t('screen3.label.effort')}</dt>
-                    <dd>{fields.effort}</dd>
-                  </div>
-                ) : null}
-                {fields.confidence ? (
-                  <div>
-                    <dt>{t('screen3.label.confidence')}</dt>
-                    <dd>{confidenceGrade ? <EvidenceBadge grade={confidenceGrade} label={fields.confidence} /> : fields.confidence}</dd>
-                  </div>
-                ) : null}
-              </dl>
-            </div>
-
-            {isEdited && fields.editedNote ? (
-              <div className="field-block full edited-block">
-                <div className="fb-l">{t('screen3.label.editedNote')}</div>
-                <p>{fields.editedNote}</p>
-              </div>
-            ) : null}
-
-            {hasDetails ? (
-              <details className="rec-details">
-                <summary>
-                  <span>{t('screen3.details')}</span>
-                  <span aria-hidden="true" className="flex items-center justify-center">
-                    <svg className="w-3 h-3 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                    </svg>
-                  </span>
-                </summary>
-                <div className="rec-details-grid">
-                  {fields.evidence ? (
-                    <div className="field-block">
-                      <div className="fb-l">{t('screen3.label.evidence')}</div>
-                      <code className="ev-ref">{fields.evidence}</code>
-                    </div>
-                  ) : null}
-                  {fields.risk ? (
-                    <div className="field-block">
-                      <div className="fb-l">{t('screen3.label.risk')}</div>
-                      <p>{fields.risk}</p>
-                    </div>
-                  ) : null}
-                  {fields.validationMethod ? (
-                    <div className="field-block">
-                      <div className="fb-l">{t('screen3.label.validation')}</div>
-                      <p>{fields.validationMethod}</p>
-                    </div>
-                  ) : null}
-                  {fixSnippet ? (
-                    <div className="field-block rec-fix-snippet">
-                      <div className="fb-l">{t('screen3.staticFix')}</div>
-                      <pre><code>{fixSnippet}</code></pre>
-                    </div>
-                  ) : null}
-                </div>
-              </details>
-            ) : null}
+            {t('screen3.target')}
+            <Link href={target.href}>{target.title}</Link>
           </>
-        )}
-      </div>
-    </article>
+        ) : undefined
+      }
+      meta={meta}
+      badge={
+        confidenceGrade ? (
+          <EvidenceBadge grade={confidenceGrade} label={t(labelKeyForGrade(confidenceGrade))} hint={t(`findings.provenanceHint.${confidenceGrade}`)} />
+        ) : null
+      }
+      aside={
+        <div className="ui-decide" role="group" aria-label={t('screen3.decisionSummary')} aria-busy={isPending || undefined}>
+          <button
+            type="button"
+            className="ui-decide__btn ui-decide__btn--accept"
+            aria-pressed={accepted}
+            title={accepted ? t(isEdited ? 'screen3.action.undoEdited' : 'screen3.action.undoAccept') : undefined}
+            onClick={onAccept}
+          >
+            {pendingAction === 'accept' ? <span className="ui-spin" aria-hidden="true" /> : null}
+            {accepted ? t('common.actions.accepted') : t('common.actions.accept')}
+          </button>
+          <button
+            type="button"
+            className="ui-decide__btn ui-decide__btn--reject"
+            aria-pressed={rejected}
+            title={rejected ? t('screen3.action.restore') : undefined}
+            onClick={onReject}
+          >
+            {pendingAction === 'reject' ? <span className="ui-spin" aria-hidden="true" /> : null}
+            {rejected ? t('screen3.status.rejected') : t('common.actions.reject')}
+          </button>
+        </div>
+      }
+      open={open}
+      onToggle={() => setOpen((v) => !v)}
+      notice={error ? <Notice tone="error">{t('screen3.action.error')}</Notice> : null}
+    >
+      <dl className="ui-kv">
+        <dt>{t('screen3.label.why')}</dt>
+        <dd>{fields.why || t('screen3.noRationale')}</dd>
+        {fields.affected ? (
+          <>
+            <dt>{t('screen3.label.affectedPages')}</dt>
+            <dd>
+              <p>{t('screen4.actionList.affectedPagesSummary', { total: fields.affected.total, shown: fields.affected.shown })}</p>
+              <ul className="ui-kv__list ui-mono">
+                {fields.affected.urls.map((url) => (
+                  <li key={url}>{url}</li>
+                ))}
+              </ul>
+            </dd>
+          </>
+        ) : null}
+        {fields.impact ? (
+          <>
+            <dt>{t('screen3.label.impact')}</dt>
+            <dd>{fields.impact}</dd>
+          </>
+        ) : null}
+        {fields.risk ? (
+          <>
+            <dt>{t('screen3.label.risk')}</dt>
+            <dd>{fields.risk}</dd>
+          </>
+        ) : null}
+        {fields.validationMethod ? (
+          <>
+            <dt>{t('screen3.label.validation')}</dt>
+            <dd>{fields.validationMethod}</dd>
+          </>
+        ) : null}
+        {fields.confidence ? (
+          <>
+            <dt>{t('screen3.label.confidence')}</dt>
+            <dd>{fields.confidence}</dd>
+          </>
+        ) : null}
+        {fields.evidence?.length ? (
+          <>
+            <dt>{t('screen3.label.evidence')}</dt>
+            <dd>
+              <ul className="ui-kv__list">
+                {fields.evidence.map((ref) => (
+                  <li key={ref}>{ref}</li>
+                ))}
+              </ul>
+            </dd>
+          </>
+        ) : null}
+        {isEdited && currentNote ? (
+          <>
+            <dt>{t('screen3.label.editedNote')}</dt>
+            <dd>{currentNote}</dd>
+          </>
+        ) : null}
+      </dl>
+
+      {fixSnippet ? (
+        <CodeBlock label={t('screen3.staticFix')} code={fixSnippet} copyLabel={t('common.actions.copyCode')} copiedLabel={t('common.actions.copied')} />
+      ) : null}
+
+      {editing ? (
+        <div className="ui-rec__edit">
+          <div className="ui-field">
+            <label className="ui-label" htmlFor={titleId}>
+              {t('screen3.edit.title')}
+            </label>
+            <input
+              id={titleId}
+              className="ui-input"
+              value={draftTitle}
+              aria-invalid={titleInvalid || undefined}
+              onChange={(e) => {
+                setDraftTitle(e.target.value)
+                if (e.target.value.trim()) setTitleInvalid(false)
+              }}
+            />
+            {titleInvalid ? <div className="ui-error">{t('screen3.edit.titleRequired')}</div> : null}
+          </div>
+          <div className="ui-field">
+            <label className="ui-label" htmlFor={noteId}>
+              {t('screen3.edit.note')}
+            </label>
+            <textarea id={noteId} className="ui-textarea" value={draftNote} onChange={(e) => setDraftNote(e.target.value)} />
+            <div className="ui-hint">{t('screen3.edit.noteHint')}</div>
+          </div>
+          <div className="ui-inline-actions">
+            <Button variant="primary" size="sm" loading={pendingAction === 'edit'} onClick={onSaveEdit}>
+              {t('screen3.edit.save')}
+            </Button>
+            <Button variant="quiet" size="sm" onClick={onCancelEdit}>
+              {t('common.actions.cancel')}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="ui-inline-actions">
+          <Button size="sm" onClick={() => setEditing(true)}>
+            {t('common.actions.edit')}
+          </Button>
+          <span className="ui-footnote">{t('screen3.edit.lead')}</span>
+        </div>
+      )}
+    </RecRow>
   )
 }

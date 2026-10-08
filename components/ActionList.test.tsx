@@ -45,6 +45,11 @@ function rejected(overrides: Partial<ActionListRejectedItem> = {}): ActionListRe
   return { id: 'rec_9', title: '否决的建议', note: '', ...overrides }
 }
 
+// 行的展开区默认收起（hidden），里面的按钮要先点标题展开才能按角色找到。
+function expand(title = '修正 canonical 指向自身') {
+  fireEvent.click(screen.getByRole('button', { name: title }))
+}
+
 describe('ActionList', () => {
   const originalFetch = global.fetch
 
@@ -58,7 +63,7 @@ describe('ActionList', () => {
     expect(screen.getByText('当前没有已纳入执行的建议')).toBeInTheDocument()
   })
 
-  it('按优先级四象限排序渲染（quick_win 在 strategic 之前，调用方已排好序，组件按传入顺序渲染）', () => {
+  it('按优先级分组渲染（ux-blueprint §3.4）：组按「优先处理 → 重点投入 → 顺手补齐 → 暂缓处理」，与传入顺序无关', () => {
     render(
       <ActionList
         items={[
@@ -68,9 +73,22 @@ describe('ActionList', () => {
         rejectedItems={[]}
       />,
     )
-    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
-    // 组件按 props 传入顺序渲染卡片；排序职责在 page.tsx（server 侧），此处验证渲染顺序忠实反映传入顺序。
-    expect(headings).toEqual(['策略建议', '优先建议'])
+    expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['优先处理1', '重点投入1'])
+    expect(screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)).toEqual(['优先建议', '策略建议'])
+  })
+
+  it('顶部显示「已执行 k / N」，全部执行后出现完成提示', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ appliedAt: '2026-07-19T00:00:00.000Z', appliedNote: '' }), { status: 200 }))
+    render(<ActionList items={[item(), item({ id: 'rec_2', title: '第二条', appliedAt: '2026-07-01T00:00:00.000Z' })]} rejectedItems={[]} />)
+    expect(screen.getByText('已执行 1 / 2')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
+    expect(screen.queryByText('全部建议已执行')).not.toBeInTheDocument()
+
+    expand()
+    fireEvent.click(screen.getByRole('button', { name: '标记已执行' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认已执行' }))
+    expect(await screen.findByText('已执行 2 / 2')).toBeInTheDocument()
+    expect(screen.getByText('全部建议已执行')).toBeInTheDocument()
   })
 
   it('展示已否决折叠区（默认收起，展开后看到每条标题与说明）', () => {
@@ -98,7 +116,7 @@ describe('ActionList', () => {
         '\n\n受影响页面（共 12 个，已列前 2 个）：\n- https://example.com/a\n- https://example.com/b'
       render(<ActionList items={[item({ why })]} rejectedItems={[]} />)
 
-      fireEvent.click(screen.getByText('查看详情'))
+      expand()
       expect(screen.getByText('robots.txt 屏蔽了关键页。')).toBeInTheDocument()
       expect(screen.getByText('受影响页面')).toBeInTheDocument()
       expect(screen.getByText('共 12 个，已列前 2 个：')).toBeInTheDocument()
@@ -110,7 +128,7 @@ describe('ActionList', () => {
 
     it('why 没有受影响页面清单时，不展示该字段块', () => {
       render(<ActionList items={[item({ why: '普通理由，不含清单' })]} rejectedItems={[]} />)
-      fireEvent.click(screen.getByText('查看详情'))
+      expand()
       expect(screen.getByText('普通理由，不含清单')).toBeInTheDocument()
       expect(screen.queryByText('受影响页面')).not.toBeInTheDocument()
     })
@@ -132,7 +150,7 @@ describe('ActionList', () => {
           rejectedItems={[]}
         />,
       )
-      fireEvent.click(screen.getByText('查看详情'))
+      expand()
       expect(screen.getByText('全站轻检（2026-07-18 · L4）：共检测 128 页（ev_1）')).toBeInTheDocument()
       // ev_2 没有对应摘要时，如实回退展示裸 ID，不静默丢弃这条引用。
       expect(screen.getByText('ev_2')).toBeInTheDocument()
@@ -141,7 +159,7 @@ describe('ActionList', () => {
 
     it('未提供 evidenceSummaries 时，回退展示裸 ID（向后兼容既有调用）', () => {
       render(<ActionList items={[item({ evidenceRefs: ['ev_1'] })]} rejectedItems={[]} />)
-      fireEvent.click(screen.getByText('查看详情'))
+      expand()
       expect(screen.getByText('ev_1')).toBeInTheDocument()
     })
   })
@@ -150,6 +168,7 @@ describe('ActionList', () => {
     it('成功路径：提交后展示已执行 ✓ 与备注', async () => {
       global.fetch = vi.fn(async () => new Response(JSON.stringify({ appliedAt: '2026-07-19T00:00:00.000Z', appliedNote: '已发布到 CMS' }), { status: 200 }))
       render(<ActionList items={[item()]} rejectedItems={[]} />)
+      expand()
 
       fireEvent.click(screen.getByRole('button', { name: '标记已执行' }))
       fireEvent.change(screen.getByPlaceholderText('可填执行了什么、改动链接等，便于回测复核'), { target: { value: '已发布到 CMS' } })
@@ -163,6 +182,7 @@ describe('ActionList', () => {
     it('失败路径：展示行内错误，且保留用户已填写的备注（不静默丢弃）', async () => {
       global.fetch = vi.fn(async () => new Response(JSON.stringify({ error: 'not_gated' }), { status: 422 }))
       render(<ActionList items={[item()]} rejectedItems={[]} />)
+      expand()
 
       fireEvent.click(screen.getByRole('button', { name: '标记已执行' }))
       const textarea = screen.getByPlaceholderText('可填执行了什么、改动链接等，便于回测复核')
@@ -181,6 +201,7 @@ describe('ActionList', () => {
     it('成功路径：点击撤销后 PATCH applied:false，卡片回到未执行态', async () => {
       global.fetch = vi.fn(async () => new Response(JSON.stringify({ appliedAt: null, appliedNote: null }), { status: 200 }))
       render(<ActionList items={[item({ appliedAt: '2026-07-01T00:00:00.000Z', appliedNote: '已发布到 CMS' })]} rejectedItems={[]} />)
+      expand()
 
       expect(screen.getByText(/已执行 ✓/)).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: '撤销执行' }))
@@ -198,6 +219,7 @@ describe('ActionList', () => {
     it('失败路径：展示行内错误，卡片仍保持已执行态（不静默丢弃已执行记录）', async () => {
       global.fetch = vi.fn(async () => new Response(JSON.stringify({ error: 'not_found' }), { status: 404 }))
       render(<ActionList items={[item({ appliedAt: '2026-07-01T00:00:00.000Z', appliedNote: '已发布到 CMS' })]} rejectedItems={[]} />)
+      expand()
 
       fireEvent.click(screen.getByRole('button', { name: '撤销执行' }))
 
@@ -212,6 +234,7 @@ describe('ActionList', () => {
         prompts: [{ id: 'gp_1', promptType: 'technical', promptText: '你是资深 SEO 专家，请执行……' }],
       }), { status: 200 }))
       render(<ActionList items={[item()]} rejectedItems={[]} />)
+      expand()
 
       fireEvent.click(screen.getByRole('button', { name: '生成执行提示词' }))
 
@@ -227,6 +250,7 @@ describe('ActionList', () => {
     it('失败路径：展示行内错误，生成按钮仍在（可重试）', async () => {
       global.fetch = vi.fn(async () => new Response(JSON.stringify({ error: 'recommendation status "draft" cannot generate prompt' }), { status: 422 }))
       render(<ActionList items={[item()]} rejectedItems={[]} />)
+      expand()
 
       fireEvent.click(screen.getByRole('button', { name: '生成执行提示词' }))
 
@@ -242,6 +266,7 @@ describe('ActionList', () => {
         ],
       }), { status: 200 }))
       render(<ActionList items={[item()]} rejectedItems={[]} />)
+      expand()
 
       fireEvent.click(screen.getByRole('button', { name: '生成执行提示词' }))
 
@@ -261,6 +286,7 @@ describe('ActionList', () => {
             rejectedItems={[]}
           />,
         )
+        expand()
 
         // 已有 prompt 时不展示初次生成按钮，只展示重新生成。
         expect(screen.queryByRole('button', { name: '生成执行提示词' })).not.toBeInTheDocument()
@@ -283,6 +309,7 @@ describe('ActionList', () => {
             rejectedItems={[]}
           />,
         )
+        expand()
 
         fireEvent.click(screen.getByRole('button', { name: '重新生成' }))
 

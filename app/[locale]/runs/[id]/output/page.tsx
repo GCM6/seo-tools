@@ -2,6 +2,9 @@ import { setRequestLocale, getTranslations } from 'next-intl/server'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { RunWorkspace } from '@/components/RunWorkspace'
+import { SectionHeader } from '@/components/SectionHeader'
+import { Notice } from '@/components/Notice'
+import { Panel } from '@/components/Panel'
 import { ActionReportWorkspace } from '@/components/ActionReportWorkspace'
 import { ActionList, type ActionListItem, type ActionListPrompt, type ActionListRejectedItem } from '@/components/ActionList'
 import { RetestPlanCard } from '@/components/RetestPlanCard'
@@ -10,11 +13,14 @@ import {
   getRun,
   getProject,
   getBrandFacts,
+  getFindings,
   getGeneratedPromptsForRec,
   getRunEvidence,
 } from '@/lib/repositories'
 import { resolveCredential } from '@/lib/credentials/store'
 import { renderActionReportMarkdown, summarizeEvidenceRefs, type EvidenceSummaryInput } from '@/lib/diagnosis/action-report-markdown'
+import { gradeForClaim } from '@/lib/evidence'
+import type { ClaimType } from '@/lib/types'
 
 // Human-gate: only accepted/edited recommendations may enter the execution
 // register. The full report still records drafts and rejections as scope truth.
@@ -70,12 +76,14 @@ export default async function OutputPage({
   const project = await getProject(run.projectId)
   const domain = project?.domain ?? ''
 
-  const [recommendations, allFacts, openAiKey, evidenceRows] = await Promise.all([
+  const [recommendations, allFacts, openAiKey, evidenceRows, findingRows] = await Promise.all([
     getRecommendations(id),
     getBrandFacts(run.projectId),
     resolveCredential('OPENAI_API_KEY'),
     getRunEvidence(id),
+    getFindings(id),
   ])
+  const findingById = new Map(findingRows.map((f) => [f.id, f]))
 
   // B2（P0-4）：evidenceRefs 原样是内部 ev_xxx ID，这里按 run 证据表解析成人类可读摘要，
   // 首屏报告与行动清单才不会展示裸 ID（照抄 app/api/runs/[id]/action-report/route.ts 的组装逻辑）。
@@ -105,8 +113,13 @@ export default async function OutputPage({
   const actionItems: ActionListItem[] = gated.map((rec, index) => {
     // B2（P0-4）：evidenceRefs 逐条解析成摘要，供 ActionList 展示人类可读文本而不是裸 ev_xxx ID。
     const summaries = summarizeEvidenceRefs(rec.evidenceRefs, evidenceById)
+    const finding = rec.findingId ? findingById.get(rec.findingId) : undefined
     return {
       id: rec.id,
+      // 同建议页：所针对问题的严重度、证据等级与链接（ux-blueprint §3.4「与建议页同一种行」）。
+      severity: finding?.severity,
+      grade: finding ? gradeForClaim(finding.claimType as ClaimType) : undefined,
+      target: finding ? { title: finding.title, href: `/${locale}/runs/${id}/issues#${finding.id}` } : undefined,
       priority: rec.priority,
       title: resolvedTitle(rec.what, rec.editedPayload),
       status: rec.status as 'accepted' | 'edited',
@@ -130,9 +143,9 @@ export default async function OutputPage({
     note: rec.why,
   }))
 
+  // 回测计划卡按服务端数据显示（标记执行后刷新页面即更新）；行内「已执行 k / N」由 ActionList 实时计算。
   const appliedCount = gated.filter((rec) => rec.appliedAt).length
   const gatedCount = gated.length
-  const progressPct = gatedCount ? Math.round((appliedCount / gatedCount) * 100) : 0
   const retestReady = gatedCount > 0 && appliedCount === gatedCount
 
   const actionReportMarkdown = renderActionReportMarkdown(recommendations, {
@@ -146,42 +159,20 @@ export default async function OutputPage({
 
   return (
     <RunWorkspace runId={id} locale={locale} current="exec">
-      <div className="sec-h output-page-head">
-        <div>
-          <h2>{t('title')}</h2>
-        </div>
-        <div className="sec-h-actions">
-          <Link href={`/${locale}/runs/${id}/report`} className="sec-h-link">
-            {t('viewReport')}
-          </Link>
-        </div>
-      </div>
-
-      <div className="card output-progress">
-        <div
-          className="output-progress-track"
-          role="progressbar"
-          aria-label={t('output.progressAria')}
-          aria-valuenow={progressPct}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
-          <div className="output-progress-fill" style={{ width: `${progressPct}%` }} />
-        </div>
-        <div className="output-progress-meta">
-          <span className="output-progress-count">{t('output.progressCount', { done: appliedCount, total: gatedCount })}</span>
-          <span className="output-progress-scope">{t('output.scopeCount', { count: gatedCount, rejected: rejected.length })}</span>
+      <section className="ui-section">
+        {/* 报告入口就在上方视图标签里，这里不再重复放链接 */}
+        <SectionHeader title={t('checklist.title')} note={t('checklist.sectionNote')} />
+        <div className="grid grid-cols-1 gap-4">
           {draftCount > 0 ? (
-            <Link href={`/${locale}/runs/${id}/recommendations`} className="output-progress-warning">
-              {t('output.draftWarning', { count: draftCount })} · {t('output.draftWarningLink')}
-            </Link>
+            <Notice tone="warn" action={<Link href={`/${locale}/runs/${id}/recommendations`}>{t('checklist.draftAction')}</Link>}>
+              {t('checklist.draftNotice', { count: draftCount })}
+            </Notice>
           ) : null}
+          <ActionList items={actionItems} rejectedItems={rejectedItems} />
         </div>
-      </div>
+      </section>
 
-      <ActionList items={actionItems} rejectedItems={rejectedItems} />
-
-      <div className="output-summary-grid">
+      <div className="ui-split">
         <RetestPlanCard
           runId={id}
           locale={locale}
@@ -191,22 +182,23 @@ export default async function OutputPage({
           retestReady={retestReady}
         />
 
-        <div className="card output-facts-card">
-          <h3>{t('output.factsGateTitle')}</h3>
-          <p className="output-facts-count">{t('output.factsGateCount', { count: verifiedFacts.length })}</p>
-          {verifiedFacts.length ? (
-            <ul className="output-facts-preview">
-              {verifiedFacts.slice(0, 3).map((fact) => (
-                <li key={fact.id}>{fact.factText}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="output-facts-empty">{t('output.factsGateEmpty')}</p>
-          )}
-          <Link href={`/${locale}/runs/${id}/facts`} className="sec-h-link">
-            {t('output.factsGateManage')}
-          </Link>
-        </div>
+        <Panel title={t('output.factsGateTitle')} actions={<Link href={`/${locale}/runs/${id}/facts`}>{t('checklist.factsManage')}</Link>}>
+          <div className="grid grid-cols-1 gap-3">
+            <p className="ui-big">
+              <b>{verifiedFacts.length}</b>
+              <small> {t('checklist.factsVerified')}</small>
+            </p>
+            {verifiedFacts.length ? (
+              <ul className="ui-kv__list">
+                {verifiedFacts.slice(0, 3).map((fact) => (
+                  <li key={fact.id}>{fact.factText}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="ui-result__note">{t('output.factsGateEmpty')}</p>
+            )}
+          </div>
+        </Panel>
       </div>
 
       <ActionReportWorkspace
@@ -216,7 +208,7 @@ export default async function OutputPage({
         aiAvailable={Boolean(openAiKey)}
       />
 
-      <div className="note">{t('note')}</div>
+      <p className="ui-footnote">{t('note')}</p>
     </RunWorkspace>
   )
 }

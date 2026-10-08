@@ -2,7 +2,10 @@
 
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
+import { Button } from './Button'
 import { MarkdownPreview } from './MarkdownPreview'
+import { Notice } from './Notice'
+import { Panel } from './Panel'
 
 function filename(value: string): string {
   return value.replace(/[^a-z0-9\u4e00-\u9fff]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'veris-action-report'
@@ -10,6 +13,7 @@ function filename(value: string): string {
 
 // 报告已从「主体」降级为「导出卡」（spec 2026-07-19：行动清单是主体，本卡默认收起，
 // 只露标题 + 一句定位描述 + 导出操作；展开后才看到预览/Markdown 双 tab 全文）。
+// 改版后用 Panel + 统一按钮；没配置 OpenAI 时把原因直接写在按钮下方，不只藏在悬停提示里。
 // 「执行登记」区块已迁到 ActionList 的逐条建议卡上——本组件不再持有 executionRows。
 export function ActionReportWorkspace({
   runId,
@@ -93,80 +97,70 @@ export function ActionReportWorkspace({
   }
 
   return (
-    <section className={expanded ? 'card action-report-workspace expanded' : 'card action-report-workspace'} aria-label={t('actionReport.title')}>
-      <header className="action-report-head">
-        <div>
-          <span className="delivery-eyebrow">{t('actionReport.eyebrow')}</span>
-          <h3>{t('actionReport.title')}</h3>
-          <p>{t('actionReport.summary')}</p>
+    <Panel title={t('actionReport.title')}>
+      <div className="grid grid-cols-1 gap-3">
+        <p className="ui-result__note">{t('actionReport.summary')}</p>
+
+        <div className="ui-inline-actions" role="toolbar" aria-label={t('actionReport.viewLabel')}>
+          <Button
+            size="sm"
+            loading={summarizing}
+            onClick={() => void generateAiSummary()}
+            disabled={!aiAvailable}
+            title={!aiAvailable ? t('actionReport.aiUnavailable') : undefined}
+          >
+            {summarizing ? t('actionReport.generating') : t('actionReport.aiGenerate')}
+          </Button>
+          <Button size="sm" onClick={() => void copy()}>
+            {copied ? t('delivery.copied') : t('actionReport.copy')}
+          </Button>
+          <Button size="sm" onClick={download}>
+            {t('actionReport.download')}
+          </Button>
+          <Button size="sm" variant="quiet" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+            {expanded ? t('actionReport.collapse') : t('actionReport.expand')}
+          </Button>
         </div>
-      </header>
+        {!aiAvailable ? <p className="ui-hint">{t('actionReport.aiUnavailable')}</p> : null}
 
-      <div className="delivery-toolbar" role="tablist" aria-label={t('actionReport.viewLabel')}>
-        <button
-          type="button"
-          className="delivery-action primary"
-          onClick={() => void generateAiSummary()}
-          disabled={!aiAvailable || summarizing}
-          title={!aiAvailable ? t('actionReport.aiUnavailable') : undefined}
-        >
-          {summarizing ? t('actionReport.generating') : t('actionReport.aiGenerate')}
-        </button>
-        <button type="button" className="delivery-action" onClick={() => void copy()}>
-          {copied ? t('delivery.copied') : t('actionReport.copy')}
-        </button>
-        <button type="button" className="delivery-action" onClick={download}>{t('actionReport.download')}</button>
-        <span className="delivery-toolbar-spacer" />
-        <button type="button" className="delivery-action" onClick={() => setExpanded((value) => !value)}>
-          {expanded ? t('actionReport.collapse') : t('actionReport.expand')}
-        </button>
-      </div>
+        {summaryState === 'done' ? <Notice tone="success">{t('actionReport.aiDone')}</Notice> : null}
+        {summaryState === 'error' ? <Notice tone="error">{summaryErrorMessage}</Notice> : null}
 
-      {summaryState === 'done' ? <p className="action-report-feedback good">{t('actionReport.aiDone')}</p> : null}
-      {summaryState === 'error' ? <p className="action-report-feedback err">{summaryErrorMessage}</p> : null}
-
-      {expanded ? (
-        <>
-          <div className="delivery-toolbar" role="tablist" aria-label={t('actionReport.viewLabel')}>
-            <button
-              type="button"
-              role="tab"
-              className={mode === 'preview' ? 'delivery-tab active' : 'delivery-tab'}
-              aria-selected={mode === 'preview'}
-              onClick={() => setMode('preview')}
-            >
-              {t('delivery.preview')}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              className={mode === 'markdown' ? 'delivery-tab active' : 'delivery-tab'}
-              aria-selected={mode === 'markdown'}
-              onClick={() => setMode('markdown')}
-            >
-              {t('delivery.markdown')}
-            </button>
-          </div>
-
-          {mode === 'preview' ? (
-            <MarkdownPreview markdown={markdown} />
-          ) : (
-            <div className="delivery-editor-wrap">
-              <label className="sr-only" htmlFor={`action-report-${runId}`}>{t('actionReport.editorLabel')}</label>
-              <textarea
-                id={`action-report-${runId}`}
-                className="delivery-editor action-report-editor"
-                value={markdown}
-                onChange={(event) => {
-                  setMarkdown(event.target.value)
-                  setDirty(true)
-                }}
-              />
-              <p className="delivery-draft-hint">{t('actionReport.draftHint')}</p>
+        {expanded ? (
+          <>
+            <div className="ui-segmented" role="tablist" aria-label={t('actionReport.viewLabel')}>
+              <button type="button" role="tab" aria-selected={mode === 'preview'} onClick={() => setMode('preview')}>
+                {t('delivery.preview')}
+              </button>
+              <button type="button" role="tab" aria-selected={mode === 'markdown'} onClick={() => setMode('markdown')}>
+                {t('delivery.markdown')}
+              </button>
             </div>
-          )}
-        </>
-      ) : null}
-    </section>
+
+            {mode === 'preview' ? (
+              <div className="ui-report-preview">
+                <MarkdownPreview markdown={markdown} />
+              </div>
+            ) : (
+              <div className="ui-field">
+                <label className="sr-only" htmlFor={`action-report-${runId}`}>
+                  {t('actionReport.editorLabel')}
+                </label>
+                <textarea
+                  id={`action-report-${runId}`}
+                  className="ui-textarea ui-textarea--code"
+                  value={markdown}
+                  onChange={(event) => {
+                    setMarkdown(event.target.value)
+                    setDirty(true)
+                  }}
+                />
+                <p className="ui-hint">{t('actionReport.draftHint')}</p>
+              </div>
+            )}
+          </>
+        ) : null}
+      </div>
+    </Panel>
   )
 }
