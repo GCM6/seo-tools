@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
-import { ProvenanceTag } from './ProvenanceTag'
+import { EvidenceBadge } from './EvidenceBadge'
 import { EvidenceDrawer, type EvidenceView } from './EvidenceDrawer'
 import { provenanceForLevel } from '@/lib/evidence'
 import { Skeleton } from './Skeleton'
@@ -98,7 +98,7 @@ export async function StatStrip({
               <small>{unit}</small>
             </div>
             <div className="b">
-              <ProvenanceTag variant={prov.variant} label={tRoot(prov.labelKey)} />
+              <EvidenceBadge grade={prov.grade} label={tRoot(prov.labelKey)} />
             </div>
             {ev ? (
               <details className="ev-details">

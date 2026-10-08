@@ -1,134 +1,123 @@
 @import "tailwindcss";
+@import "./tokens.css";
+@import "./ui.css";
+
+/* Tailwind 的 dark: 变体跟随 <html class="dark">（主题切换），不再跟随系统设置。 */
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* =========================================================================
-   炼图术 Studio — 主题 CSS 变量 (Light / Dark)  ·  来源: docs/d.md 第三节
-   基座层 (--ds-* / --sp-* / --rd-* / --shadow-* / --transition-* / --layout-*)
+   旧变量 → 新 token 映射（改版过渡层，2026-10-07 方向 A）
+   新 token 真源是 app/tokens.css。这里把旧的 --ds-* / 证据色 / 间距 / 圆角 / 阴影变量
+   全部指向新 token，让尚未迁移的页面先换上方向 A 的配色与字体；
+   暗色由 tokens.css 的 :root.dark 统一切换，不再需要旧的 .dark 覆盖块。
+   第 5 波（清理）删除本块。设计规格：docs/design/2026-10-07-redesign/design-system.md
    ========================================================================= */
-
 :root {
-  /* ── 3.1 品牌与强调色 (Light) ── */
-  --ds-primary:        #0B6E74;
-  --ds-primary-hover:  #0A838A;
-  --ds-primary-active: #074F54;
-  --ds-primary-muted:  rgba(11, 110, 116, 0.08);
-  --ds-primary-ring:   rgba(11, 110, 116, 0.15);
-  --ds-on-primary:     #ffffff;
-  --ds-brand-gradient: linear-gradient(135deg, #0B6E74, #2AA8A1);
+  --ds-primary: var(--accent);
+  --ds-primary-hover: var(--accent-hover);
+  --ds-primary-active: var(--accent-hover);
+  --ds-primary-muted: var(--accent-soft);
+  --ds-primary-ring: var(--accent-soft);
+  --ds-on-primary: var(--accent-ink);
+  --ds-brand-gradient: var(--accent);      /* 去渐变：旧渐变全部落成纯色 */
 
-  --ds-mystic:         #6366f1;
-  --ds-mystic-hover:   #5558e0;
-  --ds-mystic-muted:   rgba(99, 102, 241, 0.08);
-  --ds-mystic-ring:    rgba(99, 102, 241, 0.15);
-  --ds-on-mystic:      #ffffff;
+  --ds-mystic: var(--accent);              /* 去掉「AI 紫」 */
+  --ds-mystic-hover: var(--accent-hover);
+  --ds-mystic-muted: var(--accent-soft);
+  --ds-mystic-ring: var(--accent-soft);
+  --ds-on-mystic: var(--accent-ink);
 
-  /* ── 3.2 画布与表面色 (Light) ── */
-  --ds-canvas:           #f5f5f7;
-  --ds-surface-1:        #ffffff;
-  --ds-surface-2:        #e8e8ed;
-  --ds-surface-3:        #d2d2d7;
-  --ds-surface-elevated: #ffffff;
+  --ds-canvas: var(--bg);
+  --ds-surface-1: var(--surface);
+  --ds-surface-2: var(--surface-2);
+  --ds-surface-3: var(--line);
+  --ds-surface-elevated: var(--surface);
 
-  /* ── 3.3 文字层级 (Light) ── */
-  --ds-ink:   #1d1d1f;
-  --ds-body:  #424245;
-  --ds-muted: #86868b;
-  --ds-ghost: #aeaeb2;
-  --ds-on-ink: #ffffff;   /* text on --ds-ink / --ds-body filled controls (theme-aware) */
+  --ds-ink: var(--ink);
+  --ds-body: var(--ink-2);
+  --ds-muted: var(--ink-3);
+  --ds-ghost: var(--ink-3);
+  --ds-on-ink: var(--on-ink);
 
-  --selection-bg:         #005bb5;
-  --selection-foreground: #ffffff;
+  --selection-bg: var(--accent-soft);
+  --selection-foreground: var(--ink);
 
-  /* ── 3.4 边框色 (Light) ── */
-  --ds-border:         #d2d2d7;
-  --ds-border-subtle:  #e8e8ed;
-  --ds-border-strong:  #aeaeb2;
-  --ds-border-primary: rgba(0, 113, 227, 0.25);
-  --ds-border-mystic:  rgba(99, 102, 241, 0.25);
+  --ds-border: var(--line);
+  --ds-border-subtle: var(--line);
+  --ds-border-strong: var(--line-strong);
+  --ds-border-primary: var(--accent);
+  --ds-border-mystic: var(--accent);
 
-  /* ── 3.5 语义色 ── */
-  --ds-success:       #30d158;
-  --ds-success-muted: rgba(48, 209, 88, 0.10);
-  --ds-error:         #ff3b30;
-  --ds-error-muted:   rgba(255, 59, 48, 0.10);
-  --ds-warning:       #ff9f0a;
-  --ds-warning-muted: rgba(255, 159, 10, 0.10);
-  --ds-info:          #64d2ff;
-  --ds-info-muted:    rgba(100, 210, 255, 0.10);
+  --ds-success: var(--ok);
+  --ds-success-muted: var(--ok-soft);
+  --ds-error: var(--sev-high);
+  --ds-error-muted: var(--sev-high-soft);
+  --ds-warning: var(--sev-mid);
+  --ds-warning-muted: var(--sev-mid-soft);
+  --ds-info: var(--ink-3);
+  --ds-info-muted: var(--surface-2);
 
-  /* ── 3.6 间距系统 (4px 步进) ── */
-  --sp-xxs:     4px;
-  --sp-xs:      8px;
-  --sp-sm:      12px;
-  --sp-base:    16px;
-  --sp-md:      20px;
-  --sp-lg:      24px;
-  --sp-xl:      32px;
-  --sp-2xl:     40px;
-  --sp-3xl:     48px;
+  --sp-xxs: 4px;
+  --sp-xs: 8px;
+  --sp-sm: 12px;
+  --sp-base: 16px;
+  --sp-md: 20px;
+  --sp-lg: 24px;
+  --sp-xl: 32px;
+  --sp-2xl: 40px;
+  --sp-3xl: 48px;
   --sp-section: 64px;
-  --sp-hero:    80px;
+  --sp-hero: 80px;
 
-  /* ── 3.7 圆角系统 ── */
   --rd-none: 0px;
-  --rd-xs:   4px;
-  --rd-sm:   6px;
-  --rd-md:   8px;
-  --rd-lg:   12px;
-  --rd-xl:   16px;
-  --rd-2xl:  20px;
+  --rd-xs: var(--radius);
+  --rd-sm: var(--radius);
+  --rd-md: var(--radius);
+  --rd-lg: var(--radius);
+  --rd-xl: var(--radius);
+  --rd-2xl: var(--radius);
   --rd-pill: 9999px;
 
-  /* ── 3.8 阴影系统 (Light) ── */
-  --shadow-card:       0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.06);
-  --shadow-dropdown:   0 4px 16px rgba(0, 0, 0, 0.08);
-  --shadow-dialog:     0 8px 32px rgba(0, 0, 0, 0.12);
-  --shadow-toast:      0 4px 24px rgba(0, 0, 0, 0.10);
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --shadow-dropdown: var(--shadow-overlay);
+  --shadow-dialog: var(--shadow-overlay);
+  --shadow-toast: var(--shadow-overlay);
 
-  /* ── 3.9 过渡效果 ── */
-  --transition-fast:    150ms ease;
-  --transition-default: 200ms ease;
-  --transition-smooth:  300ms ease-out;
-  --transition-page:    400ms cubic-bezier(0.25, 1, 0.5, 1);
+  --transition-fast: var(--dur-fast) var(--ease);
+  --transition-default: var(--dur) var(--ease);
+  --transition-smooth: var(--dur) var(--ease);
+  --transition-page: var(--dur) var(--ease);
 
-  /* ── 3.10 常用布局尺寸 ── */
   --layout-sidebar-width: 240px;
   --layout-topnav-height: 56px;
-  --layout-max-content:   1120px;
+  --layout-max-content: var(--w-app);
 
-  /* =======================================================================
-     证据等级语义层 (产品护城河) — 独立于炼图术语义色，名字保持不变。
-     L3/L4 实测=measured(青)，inferred(橙)，gap(红)，good(绿)。
-     AI/GEO 强调统一走 --ds-mystic，这四色不并入 --ds-success/error/warning。
-     ======================================================================= */
-  --measured:    #0B6E74;
-  --measured-bg: #E2F1F1;
-  --inferred:    #B26B16;
-  --inferred-bg: #F7EEDF;
-  --gap:         #B23A48;
-  --gap-bg:      #F8E7E9;
-  --good:        #2E7D56;
-  --good-bg:     #E3F1E9;
+  /* 旧证据四色：迁移完成前仍有少量旧组件使用，先指向新的语义色 */
+  --measured: var(--accent);
+  --measured-bg: var(--accent-soft);
+  --inferred: var(--sev-mid);
+  --inferred-bg: var(--sev-mid-soft);
+  --gap: var(--sev-high);
+  --gap-bg: var(--sev-high-soft);
+  --good: var(--ok);
+  --good-bg: var(--ok-soft);
 
-  /* ── 字体栈 (引用 next/font 注入的 hash 变量；Noto Sans SC 兜底 CJK) ──
-     Geist 无中文字形，故栈内接 next/font 注入的 Noto 变量 (实际加载的 webfont)，
-     literal 'Noto Sans SC' 仅作系统本地字体的额外兜底。 */
-  --font-geist-sans: 'Geist', 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-geist-mono: 'Geist Mono', 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
-  --font-noto-sans-sc: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* 旧字体变量（声明过的 Geist 从未加载）统一指向新字体栈 */
+  --font-geist-sans: var(--font-sans);
+  --font-geist-mono: var(--font-mono);
+  --font-noto-sans-sc: var(--font-sans);
 
-  /* ── 3.11 字号阶梯系统 ── */
-  --text-mono-eyebrow: 11px;
-  --text-caption: 12px;
-  --text-small: 13px;
-  --text-body-sm: 14px;
-  --text-body: 15px;
-  --text-h3: 16px;
-  --text-h2: 18px;
-  --text-h1: 22px;
-  --text-hero: 28px;
+  /* 旧字号阶梯 → 新阶梯（design-system §2.2） */
+  --text-mono-eyebrow: var(--fs-xs);
+  --text-caption: var(--fs-xs);
+  --text-small: var(--fs-sm);
+  --text-body-sm: var(--fs-base);
+  --text-body: var(--fs-base);
+  --text-h3: var(--fs-md);
+  --text-h2: var(--fs-lg);
+  --text-h1: var(--fs-xl);
+  --text-hero: var(--fs-num);
 }
 
 /* ── Knowledge Brain / evidence operations ─────────────────────────────── */
@@ -363,65 +352,6 @@
   .session-knowledge-grid { grid-template-columns: 1fr; }
 }
 
-/* ─── 暗色模式覆盖 ─── */
-.dark {
-  /* ── 品牌与强调色 (Dark) ── */
-  --ds-primary:        #2AA8A1;
-  --ds-primary-hover:  #34BCB5;
-  --ds-primary-active: #0B6E74;
-  --ds-primary-muted:  rgba(42, 168, 161, 0.12);
-  --ds-primary-ring:   rgba(42, 168, 161, 0.20);
-  --ds-on-primary:     #ffffff;
-  --ds-brand-gradient: linear-gradient(135deg, #0B6E74, #2AA8A1);
-
-  --ds-mystic:         #818cf8;
-  --ds-mystic-hover:   #6366f1;
-  --ds-mystic-muted:   rgba(129, 140, 248, 0.12);
-  --ds-mystic-ring:    rgba(129, 140, 248, 0.20);
-  --ds-on-mystic:      #ffffff;
-
-  /* ── 画布与表面色 (Dark) ── */
-  --ds-canvas:           #0f0e14;
-  --ds-surface-1:        #18171f;
-  --ds-surface-2:        #1e1d27;
-  --ds-surface-3:        #252430;
-  --ds-surface-elevated: rgba(24, 23, 31, 0.95);
-
-  /* ── 文字层级 (Dark) ── */
-  --ds-ink:   #f5f5f7;
-  --ds-body:  #a1a1a6;
-  --ds-muted: #6e6e73;
-  --ds-ghost: #48484a;
-  --ds-on-ink: #15131a;   /* dark: --ds-ink flips near-white, so on-ink text is dark */
-
-  --selection-bg:         #8bd9ff;
-  --selection-foreground: #08131d;
-
-  /* ── 边框色 (Dark) ── */
-  --ds-border:         rgba(255, 255, 255, 0.08);
-  --ds-border-subtle:  rgba(255, 255, 255, 0.05);
-  --ds-border-strong:  rgba(255, 255, 255, 0.15);
-  --ds-border-primary: rgba(41, 151, 255, 0.30);
-  --ds-border-mystic:  rgba(129, 140, 248, 0.30);
-
-  /* ── 阴影系统 (Dark) ── */
-  --shadow-card:       0 1px 2px rgba(0, 0, 0, 0.20);
-  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.30);
-  --shadow-dropdown:   0 4px 16px rgba(0, 0, 0, 0.35);
-  --shadow-dialog:     0 8px 32px rgba(0, 0, 0, 0.50);
-  --shadow-toast:      0 4px 24px rgba(0, 0, 0, 0.40);
-
-  /* ── 证据等级语义层 (Dark) ── */
-  --measured:    #3FB6BC;
-  --measured-bg: rgba(63, 182, 188, 0.12);
-  --inferred:    #E0A33A;
-  --inferred-bg: rgba(224, 163, 58, 0.12);
-  --gap:         #FF6B78;
-  --gap-bg:      rgba(255, 107, 120, 0.12);
-  --good:        #4ED27E;
-  --good-bg:     rgba(78, 210, 126, 0.12);
-}
-
 /* =========================================================================
    Tailwind v4 注册 (@theme inline) — 来源: docs/d.md §5.2
    ========================================================================= */
@@ -430,9 +360,18 @@
   --color-background: var(--ds-canvas);
   --color-foreground: var(--ds-ink);
 
-  /* 字体映射 */
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+  /* 字体：--font-sans / --font-mono 由 app/tokens.css 在 :root 定义（非 layer，优先于 Tailwind 默认值），这里不再自引用 */
+
+  /* 新 token（方向 A）映射：供页面布局层少量使用，如 text-ink-3、border-line */
+  --color-ink-2:       var(--ink-2);
+  --color-ink-3:       var(--ink-3);
+  --color-line:        var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent:      var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-sev-high:    var(--sev-high);
+  --color-sev-mid:     var(--sev-mid);
+  --color-ok:          var(--ok);
 
   /* 主题色系映射 */
   --color-primary:       var(--ds-primary);
@@ -507,29 +446,47 @@
 /* =========================================================================
    Base 元素样式
    ========================================================================= */
-body {
-  background: var(--ds-canvas);
-  color: var(--ds-ink);
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
+/* 元素级基础样式放进 @layer base：未分层的规则会压过 @layer components 里的 ui-* 组件类
+   （例如未分层的 a { color } 会把主按钮文字染成蓝色），所以元素选择器一律进 base 层。 */
+@layer base {
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: var(--fs-base);
+    line-height: var(--lh-body);
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
 
-::selection {
-  background: var(--selection-bg);
-  color: var(--selection-foreground);
-}
+  ::selection {
+    background: var(--selection-bg);
+    color: var(--selection-foreground);
+  }
 
-h1,
-h2,
-h3 {
-  color: var(--ds-ink);
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  h1,
+  h2,
+  h3 {
+    color: var(--ink);
+    font-weight: 600;
+    line-height: var(--lh-head);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  a {
+    color: var(--accent);
+  }
+
+  button {
+    font-family: var(--font-sans);
+    cursor: pointer;
+  }
 }
 
 .mono {
@@ -575,14 +532,6 @@ h3 {
    证据标签四色保持证据 token: --measured/-bg · --inferred/-bg · --gap/-bg · --good/-bg
    (基座 token / @theme / base 元素样式均未改动，仅在此之下追加)
    ========================================================================= */
-
-a {
-  color: var(--measured);
-}
-button {
-  font-family: var(--font-sans);
-  cursor: pointer;
-}
 
 /* ---- shell ---- */
 .shell {

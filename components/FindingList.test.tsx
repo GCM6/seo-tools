@@ -10,7 +10,7 @@ describe('FindingCard', () => {
       <FindingCard
         id="f1"
         title="t"
-        provVariant="m"
+        grade="hard"
         provLabel="实测"
         confidence=""
         severity="hi"
@@ -31,7 +31,7 @@ describe('FindingCard', () => {
       <FindingCard
         id="f1"
         title="t"
-        provVariant="m"
+        grade="hard"
         provLabel="实测"
         confidence="实测"
         severity="hi"
@@ -50,7 +50,7 @@ describe('FindingCard', () => {
       <FindingCard
         id="f1"
         title="t"
-        provVariant="m"
+        grade="hard"
         provLabel="实测"
         confidence="实测"
         provHint="实测：有 L3/L4 硬证据支撑"
@@ -69,7 +69,7 @@ describe('FindingList', () => {
     id: 'f1',
     side: 'geo',
     title: '示例发现',
-    provVariant: 'm',
+    grade: 'hard',
     provLabel: '实测',
     confidence: '实测',
     severity: 'hi',
@@ -86,11 +86,11 @@ describe('FindingList', () => {
 
   it('列表头部展示证据等级图例', () => {
     renderList([baseItem])
-    expect(screen.getByText(/证据等级说明/)).toBeInTheDocument()
+    expect(screen.getByText(/证据等级：实测=/)).toBeInTheDocument()
   })
 
   it('传给 FindingCard 的徽章带就近解释 title', () => {
     renderList([baseItem])
-    expect(screen.getByTitle('实测：有 L3/L4 硬证据支撑')).toBeInTheDocument()
+    expect(screen.getByTitle('实测：有可复查的原始数据（L4）')).toBeInTheDocument()
   })
 })

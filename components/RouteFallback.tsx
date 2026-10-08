@@ -3,7 +3,7 @@ import { Skeleton } from './Skeleton'
 // 路由级 loading 边界（Next 16 App Router loading.tsx）共用的骨架屏（P2-2）。
 // 纯展示、无 hook：不在这里调用 useTranslations，由各 loading.tsx（Server Component，
 // 可 await getTranslations）解析好文案后当 label 传入，保持本组件 i18n-free、
-// 可在任意 Server Component 边界直接渲染（参考 components/ProvenanceTag.tsx 的约定）。
+// 可在任意 Server Component 边界直接渲染（参考 components/EvidenceBadge.tsx 的约定）。
 // 视觉沿用 StatStrip 里 pending 卡已验证过的 Skeleton 用法：card + 分行 Skeleton 条。
 export function RouteFallback({ label }: { label?: string }) {
   return (

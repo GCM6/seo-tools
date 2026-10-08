@@ -1,35 +1,31 @@
-import Link from 'next/link'
-import type { ReactNode } from 'react'
+import { ButtonLink } from './Button'
+import { EmptyState } from './EmptyState'
 
-// 标准空态组件：把「一片空白的 pending 块」变成「一条出路」。
-// i18n-free 纯展示（照 ProvenanceTag 约定）——调用方 t() 后传入已翻译字符串，
-// 可直接用于 Server Component。图标 + 标题（缺少 X 数据源）+ 影响一句话 + 主按钮。
-// （spec §SP-G2b-3）
+// 「缺少某数据源」类空态：标题（缺什么）+ 一句影响 + 一个去配置的动作（spec §SP-G2b-3）。
+// 现由统一的 EmptyState 组件渲染（design-system §4 EmptyState），不再有圆圈图标和独立样式。
+// i18n-free 纯展示（照 EvidenceBadge 约定）——调用方 t() 后传入已翻译字符串，可直接用于 Server Component。
 export function EmptyStateCTA({
   title,
   impact,
   actionLabel,
   href,
-  icon,
 }: {
   title: string
   impact: string
   actionLabel: string
   href: string
-  icon?: ReactNode
 }) {
   return (
-    <div className="card empty-cta">
-      <div className="empty-cta-icon" aria-hidden>
-        {icon ?? '○'}
-      </div>
-      <div className="empty-cta-body">
-        <div className="empty-cta-title">{title}</div>
-        <p className="empty-cta-impact">{impact}</p>
-      </div>
-      <Link href={href} className="empty-cta-action">
-        {actionLabel}
-      </Link>
+    <div className="ui-panel">
+      <EmptyState
+        title={title}
+        description={impact}
+        action={
+          <ButtonLink href={href} size="sm">
+            {actionLabel}
+          </ButtonLink>
+        }
+      />
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation'
 import { routing } from '@/i18n/routing'
 import { SiteHeader } from '@/components/SiteHeader'
 import { SiteFooter } from '@/components/SiteFooter'
+import { fontVariables } from '../fonts'
 import '../globals.css'
 
 // 内部工具，全站不进搜索引擎；唯一公开面 /share 自带独立 noindex（见 app/share/[token]/page.tsx），此处不影响它。
@@ -33,7 +34,8 @@ export default async function LocaleLayout({
   setRequestLocale(locale)
 
   return (
-    <html lang={locale}>
+    // 主题脚本在 hydration 前给 <html> 加 dark 类，属性必然与服务端不同，故抑制该节点的 hydration 警告（design-system §7）。
+    <html lang={locale} className={fontVariables} suppressHydrationWarning>
       <head>
         {/* 原生 <script>（非 next/script）：beforeInteractive 内联脚本在动态段根布局会被
             客户端重复渲染并触发 React "script tag" 警告；服务端布局的原生标签只随 SSR 输出。 */}
@@ -62,7 +64,7 @@ export default async function LocaleLayout({
         <NextIntlClientProvider>
           <SiteHeader locale={locale} />
           <main className="shell">{children}</main>
-          <SiteFooter locale={locale} />
+          <SiteFooter />
         </NextIntlClientProvider>
       </body>
     </html>

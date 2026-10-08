@@ -3,7 +3,8 @@
 import { useState, useOptimistic, startTransition } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
-import { ProvenanceTag } from './ProvenanceTag'
+import { EvidenceBadge } from './EvidenceBadge'
+import type { EvidenceGrade } from '@/lib/evidence'
 
 // One issue row. Client leaf: `open` state toggles the evidence drawer.
 // Visibility is driven by an inline `display` style (not the .find.open CSS
@@ -14,7 +15,7 @@ import { ProvenanceTag } from './ProvenanceTag'
 export function FindingCard({
   id,
   title,
-  provVariant,
+  grade,
   provLabel,
   confidence,
   provHint,
@@ -24,7 +25,7 @@ export function FindingCard({
 }: {
   id: string
   title: string
-  provVariant: 'm' | 'i' | 'g' | 'ok'
+  grade: EvidenceGrade
   provLabel: string
   confidence: string
   // 徽章 title/aria-label 的就近解释文案（已由调用方 t() 翻译），可选以兼容旧测试。
@@ -109,9 +110,7 @@ export function FindingCard({
         <span className={`sev ${severity}`} />
         <span className="find-title">{title}</span>
         {/* P1-5：confidence 纯文本与徽章同源重复，已删除；就近解释改用 title/aria-label */}
-        <span title={provHint} aria-label={provHint}>
-          <ProvenanceTag variant={provVariant} label={provLabel} />
-        </span>
+        <EvidenceBadge grade={grade} label={provLabel} hint={provHint} />
         <span className="chev">▶</span>
       </button>
       <div className="evidence" style={{ display: open ? 'block' : 'none' }}>
@@ -161,7 +160,7 @@ export interface FindingItem {
   id: string
   side: 'seo' | 'geo' | 'technical'
   title: string
-  provVariant: 'm' | 'i' | 'g' | 'ok'
+  grade: EvidenceGrade
   provLabel: string
   confidence: string
   severity: string
@@ -207,10 +206,10 @@ export function FindingList({ items }: { items: FindingItem[] }) {
             key={it.id}
             id={it.id}
             title={it.title}
-            provVariant={it.provVariant}
+            grade={it.grade}
             provLabel={it.provLabel}
             confidence={it.confidence}
-            provHint={tf(`provenanceHint.${it.provVariant}`)}
+            provHint={tf(`provenanceHint.${it.grade}`)}
             severity={it.severity}
             labels={{
               dismiss: tf('dismiss'),

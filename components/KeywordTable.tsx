@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { ProvenanceTag } from './ProvenanceTag'
+import { EvidenceBadge } from './EvidenceBadge'
+import { Tag } from './Tag'
 
 export interface KeywordMetricRow {
   id: string
@@ -271,12 +272,9 @@ export function KeywordTable({
                 <td>{row.text}</td>
                 <td>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-                    {row.hasMetric ? <ProvenanceTag variant="m" label={t('keywords.type.measured')} /> : null}
+                    {row.hasMetric ? <EvidenceBadge grade="hard" label={t('keywords.type.measured')} /> : null}
                     {row.hasGap ? (
-                      <ProvenanceTag
-                        variant="g"
-                        label={`${t('keywords.type.gap')} · ${t(`keywords.gapType.${row.gapType}`)}`}
-                      />
+                      <Tag>{`${t('keywords.type.gap')} · ${t(`keywords.gapType.${row.gapType}`)}`}</Tag>
                     ) : null}
                   </div>
                 </td>

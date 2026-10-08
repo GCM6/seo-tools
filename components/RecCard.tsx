@@ -3,7 +3,8 @@
 import { useOptimistic, useState, startTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { ProvenanceTag } from './ProvenanceTag'
+import { EvidenceBadge } from './EvidenceBadge'
+import type { EvidenceGrade } from '@/lib/evidence'
 
 // Human-in-the-loop status machine for a single recommendation.
 // Only `accepted` / `edited` advance to prompt generation (project 铁律 #4),
@@ -27,8 +28,9 @@ export interface RecCardProps {
   title: string
   fields: RecCardFields
   initialStatus: RecStatus
-  // Provenance variant for the confidence tag (m=measured / i=inferred …).
-  confidenceVariant?: 'm' | 'i' | 'g' | 'ok'
+  // 置信度徽章的证据等级，来自该建议所针对 finding 的 claim_type（design-system §3.1）。
+  // 不传时只显示置信度文字，不猜等级——以前默认画成「推断」，会把「高（实测）」错标成推断。
+  confidenceGrade?: EvidenceGrade
   // Seed text for the editable draft (content angle / brand facts).
   editDraft?: string
 }
@@ -57,7 +59,7 @@ export function RecCard({
   title,
   fields,
   initialStatus,
-  confidenceVariant = 'i',
+  confidenceGrade,
   editDraft = '',
 }: RecCardProps) {
   const t = useTranslations()
@@ -202,7 +204,7 @@ export function RecCard({
                 {fields.confidence ? (
                   <div>
                     <dt>{t('screen3.label.confidence')}</dt>
-                    <dd><ProvenanceTag variant={confidenceVariant} label={fields.confidence} /></dd>
+                    <dd>{confidenceGrade ? <EvidenceBadge grade={confidenceGrade} label={fields.confidence} /> : fields.confidence}</dd>
                   </div>
                 ) : null}
               </dl>

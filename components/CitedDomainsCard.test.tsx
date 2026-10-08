@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { CitedDomainsCard } from './CitedDomainsCard'
 
-// i18n-free by design (same convention as ProvenanceTag): caller resolves labels via t().
+// i18n-free by design (same convention as EvidenceBadge): caller resolves labels via t().
 const platformLabels = {
   reddit: 'Reddit',
   youtube: 'YouTube',

@@ -9,6 +9,9 @@ import { PillarGroupCard } from '@/components/PillarGroupCard'
 import { ReportToc } from '@/components/ReportToc'
 import { CitedDomainsCard } from '@/components/CitedDomainsCard'
 import { Term } from '@/components/Term'
+import { EvidenceBadge } from '@/components/EvidenceBadge'
+import { Tag } from '@/components/Tag'
+import type { EvidenceGrade } from '@/lib/evidence'
 import {
   getRun,
   getFindings,
@@ -81,11 +84,12 @@ const RETEST_METRIC_KEYS: Record<string, string> = {
 }
 
 // claim_type → provenance tag（变体 + 中文标签）。铁律：实测仅 L3/L4；健康分/约束卡不走这里，恒「推断」。
-const CLAIM_TAG: Record<string, { variant: string; key: string }> = {
-  measured_hard: { variant: 'm', key: 'measured_hard' },
-  measured_sample: { variant: 'm', key: 'measured_sample' },
-  inferred: { variant: 'i', key: 'inferred' },
-  hypothesis: { variant: 'g', key: 'hypothesis' },
+// claim_type → 证据徽章等级（design-system §3.1）。以前 hypothesis 借用了「差距」红色，现与推断、实测按形状区分。
+const CLAIM_TAG: Record<string, { grade: EvidenceGrade; key: string }> = {
+  measured_hard: { grade: 'hard', key: 'measured_hard' },
+  measured_sample: { grade: 'sample', key: 'measured_sample' },
+  inferred: { grade: 'inferred', key: 'inferred' },
+  hypothesis: { grade: 'hypothesis', key: 'hypothesis' },
 }
 
 const SEV_CLASS: Record<FindingSeverity, string> = { high: 'hi', mid: 'mid', ok: 'ok' }
@@ -465,10 +469,7 @@ export async function ReportView({ runId }: { runId: string }) {
                   <li key={f.id}>
                     <span className={`sev ${SEV_CLASS[f.severity]}`} />
                     <span className="report-top-title">{f.title}</span>
-                    <span className={`tag ${CLAIM_TAG[f.claimType]?.variant ?? 'i'}`}>
-                      <span className="dot" />
-                      {claimLabel(f.claimType)}
-                    </span>
+                    <EvidenceBadge grade={CLAIM_TAG[f.claimType]?.grade ?? 'inferred'} label={claimLabel(f.claimType)} />
                   </li>
                 ))}
               </ul>
@@ -547,13 +548,10 @@ export async function ReportView({ runId }: { runId: string }) {
                                 <li key={f.id}>
                                   <div className="report-finding-title">
                                     {f.title}
-                                    <span className={`tag ${CLAIM_TAG[f.claimType]?.variant ?? 'i'}`}>
-                                      <span className="dot" />
-                                      {claimLabel(f.claimType)}
-                                    </span>
+                                    <EvidenceBadge grade={CLAIM_TAG[f.claimType]?.grade ?? 'inferred'} label={claimLabel(f.claimType)} />
                                     {isLab ? (
-                                      <span className="tag i report-lab">
-                                        <Term explain={tt('labData')}>{t('labTag')}</Term>
+                                      <span className="report-lab">
+                                        <Tag><Term explain={tt('labData')}>{t('labTag')}</Term></Tag>
                                       </span>
                                     ) : null}
                                   </div>

@@ -31,11 +31,12 @@
   "nav": {
     "projects": "项目",
     "rules": "规则库",
-    "knowledge": "知识脑",
+    "knowledge": "知识库",
     "settings": "设置",
     "newAnalysis": "新建分析",
     "menuTitle": "导航菜单",
     "themeMode": "外观模式",
+    "language": "语言",
     "themeToggleToDark": "切换至暗色模式",
     "themeToggleToLight": "切换至亮色模式"
   },
@@ -68,6 +69,7 @@
     },
     "tag": {
       "measured": "实测",
+      "sampled": "抽样实测",
       "inferred": "推断",
       "suspected": "疑似",
       "gap": "差距",
@@ -713,12 +715,12 @@
     "dismissConfirm": "确认忽略",
     "dismissCancel": "取消",
     "provenanceHint": {
-      "m": "实测：有 L3/L4 硬证据支撑",
-      "i": "推断：基于证据模式推断，未直接核验",
-      "g": "差距：诊断规则识别的待改进项",
-      "ok": "已具备：已核验达标项"
+      "hard": "实测：有可复查的原始数据（L4）",
+      "sample": "抽样实测：按固定协议抽样测得（L3），看方向不看小数点",
+      "inferred": "推断：基于证据推出，未直接测量（L2）",
+      "hypothesis": "疑似：待验证的猜测（L1），不作为结论"
     },
-    "legend": "证据等级说明：实测=有 L3/L4 硬证据支撑；推断=基于证据模式推断，未直接核验；差距=待改进项；已具备=已核验达标项"
+    "legend": "证据等级：实测=有可复查的原始数据（L4）；抽样实测=按固定协议抽样测得（L3）；推断=基于证据推出，未直接测量（L2）；疑似=待验证的猜测（L1）"
   },
   "facts": {
     "backToDiagnosis": "返回诊断看板",

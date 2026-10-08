@@ -1,189 +1,88 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
+import { useEffect, useRef, useState } from 'react'
+import { ButtonLink, buttonClass } from './Button'
+import { LocaleSwitch } from './LocaleSwitch'
 import { ThemeToggle } from './ThemeToggle'
+import { TopNav } from './TopNav'
+import { navItems, type SiteHeaderLabels } from './siteNav'
 
-export function MobileNav({
-  locale,
-  labels,
-}: {
-  locale: string
-  labels: {
-    projects: string
-    rules: string
-    knowledge?: string
-    settings: string
-    newAnalysis: string
-    menuTitle: string
-    themeMode: string
-  }
-}) {
+// 手机菜单抽屉（design-system §4 TopBar / §5 抽屉行）：与桌面顶栏同一组导航项、同一顺序。
+// Esc 或点遮罩关闭；打开时焦点移到关闭按钮，关闭后回到菜单按钮。不用模糊遮罩、不用滑入动画。
+export function MobileNav({ locale, labels }: { locale: string; labels: SiteHeaderLabels }) {
   const [isOpen, setIsOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    closeRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setIsOpen(false)
+      triggerRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isOpen])
+
+  function close() {
+    setIsOpen(false)
+    triggerRef.current?.focus()
+  }
 
   return (
-    <div className="mobile-nav-container" style={{ display: 'inline-flex', alignItems: 'center' }}>
-      {/* 汉堡包按钮 */}
+    <>
       <button
+        ref={triggerRef}
         type="button"
+        className={buttonClass({ variant: 'quiet', size: 'sm', iconOnly: true })}
+        aria-label={labels.menuTitle}
+        aria-expanded={isOpen}
         onClick={() => setIsOpen(true)}
-        className="mobile-nav-toggle-btn"
-        style={{
-          background: 'transparent',
-          border: 0,
-          cursor: 'pointer',
-          padding: '8px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-        aria-label="Open Menu"
       >
-        <svg style={{ width: '24px', height: '24px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
         </svg>
       </button>
 
-      {/* 遮罩与抽屉 */}
-      {isOpen && (
+      {isOpen ? (
         <>
-          {/* 背景遮罩 */}
-          <button
-            type="button"
-            aria-label="Close Menu"
-            onClick={() => setIsOpen(false)}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 90,
-              background: 'rgba(0, 0, 0, 0.4)',
-              border: 0,
-              padding: 0,
-              backdropFilter: 'blur(4px)',
-              animation: 'ds-fade-in var(--transition-fast) forwards'
-            }}
-          />
-          {/* 侧滑抽屉 */}
-          <div
-            className="mobile-drawer animate-slide-in-right"
-            style={{
-              position: 'fixed',
-              top: 0,
-              right: 0,
-              bottom: 0,
-              width: '280px',
-              maxWidth: '85vw',
-              background: 'var(--ds-surface-1)',
-              borderLeft: '1px solid var(--ds-border-subtle)',
-              boxShadow: 'var(--shadow-dialog)',
-              zIndex: 100,
-              display: 'flex',
-              flexDirection: 'column',
-              padding: '24px',
-              gap: '24px',
-              animation: 'ds-slide-in-right var(--transition-default) forwards'
-            }}
-          >
-            {/* 抽屉头部 */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="mobile-drawer-title" style={{ fontWeight: 700, color: 'var(--ds-ink)', fontSize: '18px' }}>
-                {labels.menuTitle}
-              </span>
+          <button type="button" className="ui-overlay" aria-label="Close Menu" tabIndex={-1} onClick={close} />
+          <div className="ui-menu" role="dialog" aria-modal="true" aria-label={labels.menuTitle}>
+            <div className="ui-menu__head">
+              <span className="ui-menu__title">{labels.menuTitle}</span>
               <button
+                ref={closeRef}
                 type="button"
-                onClick={() => setIsOpen(false)}
-                className="mobile-drawer-close-btn"
-                style={{ background: 'transparent', border: 0, cursor: 'pointer', display: 'flex', padding: '6px' }}
+                className={buttonClass({ variant: 'quiet', size: 'sm', iconOnly: true })}
                 aria-label="Close Menu"
+                onClick={close}
               >
-                <svg style={{ width: '20px', height: '20px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
-            {/* 菜单列表 */}
-            <nav style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
-              <Link
-                href={`/${locale}/projects`}
-                onClick={() => setIsOpen(false)}
-                style={{
-                  fontSize: '15px',
-                  fontWeight: 600,
-                  color: 'var(--ds-ink)',
-                  textDecoration: 'none',
-                  padding: '8px 0',
-                  borderBottom: '1px solid var(--ds-border-subtle)'
-                }}
-              >
-                {labels.projects}
-              </Link>
-              <Link
-                href={`/${locale}/rules`}
-                onClick={() => setIsOpen(false)}
-                style={{
-                  fontSize: '15px',
-                  fontWeight: 600,
-                  color: 'var(--ds-ink)',
-                  textDecoration: 'none',
-                  padding: '8px 0',
-                  borderBottom: '1px solid var(--ds-border-subtle)'
-                }}
-              >
-                {labels.rules}
-              </Link>
-              <Link
-                href={`/${locale}/settings`}
-                onClick={() => setIsOpen(false)}
-                style={{
-                  fontSize: '15px',
-                  fontWeight: 600,
-                  color: 'var(--ds-ink)',
-                  textDecoration: 'none',
-                  padding: '8px 0',
-                  borderBottom: '1px solid var(--ds-border-subtle)'
-                }}
-              >
-                {labels.settings}
-              </Link>
-              <Link
-                href={`/${locale}/knowledge`}
-                onClick={() => setIsOpen(false)}
-                style={{
-                  fontSize: '15px', fontWeight: 600, color: 'var(--ds-ink)', textDecoration: 'none',
-                  padding: '8px 0', borderBottom: '1px solid var(--ds-border-subtle)'
-                }}
-              >
-                {labels.knowledge ?? 'Knowledge'}
-              </Link>
-            </nav>
+            <TopNav variant="menu" items={navItems(locale, labels)} onNavigate={() => setIsOpen(false)} />
 
-            {/* CTA 按钮与主题切换 */}
-            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <Link
-                href={`/${locale}/new`}
-                onClick={() => setIsOpen(false)}
-                className="run-btn"
-                style={{
-                  marginTop: 0,
-                  display: 'block',
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  textAlign: 'center',
-                  textDecoration: 'none'
-                }}
-              >
+            <div className="ui-menu__foot">
+              <ButtonLink href={`/${locale}/new`} variant="primary" onClick={() => setIsOpen(false)}>
                 {labels.newAnalysis}
-              </Link>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid var(--ds-border-subtle)' }}>
-                <span style={{ fontSize: '13px', color: 'var(--ds-body)' }}>{labels.themeMode}</span>
+              </ButtonLink>
+              <div className="ui-menu__row">
+                <span>{labels.language ?? 'Language'}</span>
+                <LocaleSwitch />
+              </div>
+              <div className="ui-menu__row">
+                <span>{labels.themeMode}</span>
                 <ThemeToggle />
               </div>
             </div>
           </div>
         </>
-      )}
-    </div>
+      ) : null}
+    </>
   )
 }

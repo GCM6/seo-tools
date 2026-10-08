@@ -1,49 +1,13 @@
-export function Logo({
-  className = '',
-  showText = true,
-}: {
-  className?: string
-  showText?: boolean
-}) {
+// 单色品牌标志（design-system §4 Logo）：三角外形 + 内部折线，字标单色，不做双色。
+// 只输出内容；外层由调用方决定是否包成链接（链接上加 .ui-logo 类）。
+export function Logo({ showText = true }: { showText?: boolean }) {
   return (
-    <div className={`brand-logo ${className}`}>
-      {/* 品牌精美 SVG 图标：棱镜折射几何图案 */}
-      <svg
-        className="brand-logo-icon"
-        viewBox="0 0 32 32"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-hidden="true"
-      >
-        {/* 更加粗壮醒目的三角折射棱镜 */}
-        <path
-          d="M16 5L27 25H5L16 5Z"
-          fill="currentColor"
-          fillOpacity="0.12"
-          stroke="currentColor"
-          strokeWidth="3"
-          strokeLinejoin="round"
-        />
-        {/* 穿过折射出的几何折光体 */}
-        <path
-          d="M16 5V25"
-          stroke="currentColor"
-          strokeWidth="2"
-          className="opacity-60"
-        />
-        <path
-          d="M11.5 15L16 10.5L20.5 15"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          className="opacity-80"
-        />
+    <>
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M16 5L27 25H5L16 5Z" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinejoin="round" />
+        <path d="M11.5 16.5L16 12L20.5 16.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      {showText && (
-        <span className="brand-logo-text">
-          Ver<span className="brand-logo-text-highlight">is</span>
-        </span>
-      )}
-    </div>
+      {showText ? <span>Veris</span> : null}
+    </>
   )
 }

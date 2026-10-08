@@ -2,26 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { SiteFooterView } from './SiteFooter'
 
-const labels = {
-  productTagline: 'SEO + GEO 证据化诊断工作台',
-  productMethodology: '每个结论都有证据分级，『实测』标签仅授予 L3/L4 证据。',
-  navTitle: '导航',
-  methodologyTitle: '方法论',
-  evidenceLevels: '证据分级 L0–L4：从无证据支撑到硬证据实测。',
-  sameProtocol: '同协议回测：前后对比使用同一 prompt 集、市场语言、模型族与采样规则。',
-  rulesVersionLabel: '规则版本',
-  protocolVersionLabel: '协议版本',
-  projects: '项目',
-  newAnalysis: '新建分析',
-  rules: '规则库',
-  settings: '设置',
-}
-
 function renderFooter() {
   return render(
     <SiteFooterView
-      locale="zh"
-      labels={labels}
+      labels={{ rulesVersionLabel: '规则版本', protocolVersionLabel: '协议版本' }}
       rulesVersion="rules_v1"
       protocolVersion="v2"
       appVersion="0.1.0"
@@ -29,27 +13,16 @@ function renderFooter() {
   )
 }
 
+// 应用内页脚只保留一行版本信息（ux-blueprint §0）：版本号服务诊断可复现。
 describe('SiteFooterView', () => {
-  it('renders the three columns', () => {
+  it('一行显示应用版本、规则版本与协议版本', () => {
     renderFooter()
-    expect(screen.getByText(labels.productMethodology)).toBeInTheDocument()
-    expect(screen.getByText(labels.navTitle)).toBeInTheDocument()
-    expect(screen.getByText(labels.methodologyTitle)).toBeInTheDocument()
-    expect(screen.getByText(labels.evidenceLevels)).toBeInTheDocument()
-    expect(screen.getByText(labels.sameProtocol)).toBeInTheDocument()
+    const footer = screen.getByRole('contentinfo')
+    expect(footer).toHaveTextContent('Veris · v0.1.0 · 规则版本 rules_v1 · 协议版本 v2')
   })
 
-  it('renders the footer nav links pointing at existing routes', () => {
+  it('不再渲染营销式多栏页脚的导航链接', () => {
     renderFooter()
-    expect(screen.getByRole('link', { name: labels.projects })).toHaveAttribute('href', '/zh/projects')
-    expect(screen.getByRole('link', { name: labels.newAnalysis })).toHaveAttribute('href', '/zh/new')
-    expect(screen.getByRole('link', { name: labels.rules })).toHaveAttribute('href', '/zh/rules')
-    expect(screen.getByRole('link', { name: labels.settings })).toHaveAttribute('href', '/zh/settings')
-  })
-
-  it('shows the rules version and app version', () => {
-    renderFooter()
-    expect(screen.getByText(/rules_v1/)).toBeInTheDocument()
-    expect(screen.getByText(/v0\.1\.0/)).toBeInTheDocument()
+    expect(screen.queryAllByRole('link')).toHaveLength(0)
   })
 })

@@ -1,0 +1,103 @@
+/* =========================================================================
+   Veris 设计 token v1 · 方向 A「报告」—— 全站唯一真源
+   规格：docs/design/2026-10-07-redesign/design-system.md §2
+   改任何颜色后跑 lib/design/contrast.test.ts（vitest，全部配对须达 AA）。
+   暗色由主题脚本给 <html> 加 .dark 类切换；这里只换颜色 token，不做整块反色。
+   ========================================================================= */
+
+:root {
+  /* ── 颜色 · 浅色 ── */
+  --bg: #EDEFF2;            /* 工作台画布 */
+  --surface: #FFFFFF;       /* 面板、顶栏、文档纸面 */
+  --surface-2: #F4F6F8;     /* 表头、悬停行、代码块、浅底 */
+  --ink: #14171C;           /* 主文字、标题、「实测」实心徽章 */
+  --ink-2: #464C56;         /* 次要文字、「抽样实测」实心徽章 */
+  --ink-3: #656C78;         /* 辅助小字、说明、元信息 */
+  --line: #D8DCE2;          /* 分隔线、面板边框 */
+  --line-strong: #B3BAC5;   /* 次级按钮等有文字标识的控件边框 */
+  --ctl-border: #858C98;    /* 输入框、下拉、复选框边框（边框是唯一识别线索，须 ≥3:1） */
+  --accent: #234A9A;        /* 链接、主按钮、焦点环、当前视图 */
+  --accent-hover: #1B3B7D;
+  --accent-ink: #FFFFFF;    /* 强调色上的文字 */
+  --accent-soft: #E7EDF8;   /* 选中行、选区、当前导航底 */
+  --on-ink: #FFFFFF;        /* ink / ink-2 实心底上的文字 */
+  --sev-high: #B42318;      /* 严重度高、错误 */
+  --sev-high-soft: #FBEAE8;
+  --sev-mid: #A44C0A;       /* 严重度中、警告 */
+  --sev-mid-soft: #FBF0E4;
+  --sev-low: #8B929D;       /* 严重度提示（只做图形标记，文字用 ink-2） */
+  --ok: #2B7A4B;            /* 达标、已接受、已执行 */
+  --ok-soft: #E6F2EB;
+  --overlay: rgba(20, 23, 28, 0.45);
+  --shadow-overlay: 0 8px 24px rgba(20, 23, 28, 0.14);
+
+  /* ── 字体（拉丁用 IBM Plex，经 next/font 注入 --font-plex-*；中文用系统字体） ── */
+  --font-sans: var(--font-plex-sans, "IBM Plex Sans"), "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono, "IBM Plex Mono"), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* ── 字号阶梯（只有这 8 级） ── */
+  --fs-xs: 12px;     /* 徽章、表头、脚注 */
+  --fs-sm: 13px;     /* 说明、元信息、表格正文 */
+  --fs-base: 14px;   /* 正文、控件 */
+  --fs-md: 16px;     /* 区块标题、引导句 */
+  --fs-lg: 19px;     /* 区段标题 h2 */
+  --fs-xl: 24px;     /* 页面标题 h1 */
+  --fs-num: 28px;    /* 关键数字、报告标题 */
+  --fs-display: 38px;/* 仅营销站首屏 */
+  --lh-body: 1.6;
+  --lh-head: 1.3;
+  --lh-num: 1.1;
+
+  /* ── 形状 ── */
+  --radius: 2px;     /* 面板、控件、徽章一律 2px；只有状态圆点用 50% */
+  --ctl-h: 34px;     /* 控件高度（默认） */
+  --ctl-h-sm: 28px;  /* 控件高度（紧凑） */
+
+  /* ── 动效 ── */
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ── 布局 ── */
+  --w-app: 1320px;   /* 工作台内容最大宽度 */
+  --w-doc: 860px;    /* 报告文档宽度 */
+  --w-mk: 1180px;    /* 营销站内容宽度 */
+  --w-text: 65ch;    /* 段落最大行宽 */
+
+  /* ── 层级 ── */
+  --z-sticky: 10;
+  --z-dropdown: 20;
+  --z-drawer: 30;
+  --z-dialog: 40;
+  --z-toast: 50;
+
+  color-scheme: light;
+}
+
+/* 暗色：html.dark（主题脚本写入）。只换颜色 token，不做整块反色。 */
+:root.dark {
+  --bg: #0E1115;
+  --surface: #151920;
+  --surface-2: #1B2028;
+  --ink: #E7EAEF;
+  --ink-2: #B1B8C3;
+  --ink-3: #8D95A1;
+  --line: #2A303A;
+  --line-strong: #3B4350;
+  --ctl-border: #6B7482;
+  --accent: #93ADEF;
+  --accent-hover: #B0C4F4;
+  --accent-ink: #0E1115;
+  --accent-soft: #1E2840;
+  --on-ink: #0E1115;
+  --sev-high: #F08A7E;
+  --sev-high-soft: #3A1E1C;
+  --sev-mid: #E8A25A;
+  --sev-mid-soft: #382A19;
+  --sev-low: #8E96A3;
+  --ok: #6CC28F;
+  --ok-soft: #17301F;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}

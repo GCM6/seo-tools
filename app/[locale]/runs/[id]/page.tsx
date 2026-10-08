@@ -199,7 +199,7 @@ export default async function RunDiagnosisPage({
         id: f.id,
         side: f.side as FindingItem['side'],
         title: f.title,
-        provVariant: prov.variant,
+        grade: prov.grade,
         provLabel: t(prov.labelKey),
         confidence: f.confidence,
         severity: f.severity === 'high' ? 'hi' : f.severity,

@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { Term } from './Term'
 
 // Term 是 i18n-free 纯展示：调用方 t() 后传入已翻译的 explain 文案，无 hook，
-// 可直接用于 Server Component（同 components/ProvenanceTag.tsx 惯例）。
+// 可直接用于 Server Component（同 components/EvidenceBadge.tsx 惯例）。
 describe('Term', () => {
   it('渲染术语文本，并通过 title 暴露解释', () => {
     render(<Term explain="canonical 是网页里标注以哪个网址为准的记号">canonical</Term>)

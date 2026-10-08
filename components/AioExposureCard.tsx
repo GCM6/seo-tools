@@ -41,7 +41,6 @@ export function AioExposureCard({
           impact={t('aioExposureEmptyConfigImpact')}
           actionLabel={t('aioExposureEmptyConfigAction')}
           href={settingsHref}
-          icon="○"
         />
       ) : !summary ? (
         <p className="map-evidence-empty">{t('aioExposureEmptyUncollected')}</p>

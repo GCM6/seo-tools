@@ -31,11 +31,12 @@
   "nav": {
     "projects": "Projects",
     "rules": "Rule library",
-    "knowledge": "Knowledge brain",
+    "knowledge": "Knowledge base",
     "settings": "Settings",
     "newAnalysis": "New analysis",
     "menuTitle": "Navigation Menu",
     "themeMode": "Appearance Mode",
+    "language": "Language",
     "themeToggleToDark": "Switch to dark mode",
     "themeToggleToLight": "Switch to light mode"
   },
@@ -68,6 +69,7 @@
     },
     "tag": {
       "measured": "Measured",
+      "sampled": "Sampled",
       "inferred": "Inferred",
       "suspected": "Suspected",
       "gap": "Gap",
@@ -713,12 +715,12 @@
     "dismissConfirm": "Confirm dismiss",
     "dismissCancel": "Cancel",
     "provenanceHint": {
-      "m": "Measured: backed by L3/L4 hard evidence",
-      "i": "Inferred: derived from evidence patterns, not directly verified",
-      "g": "Gap: an area flagged for improvement",
-      "ok": "Good: already verified as meeting the bar"
+      "hard": "Measured: backed by raw data you can re-check (L4)",
+      "sample": "Sampled: measured on a fixed-protocol sample (L3); read the direction, not the decimals",
+      "inferred": "Inferred: derived from evidence, not measured directly (L2)",
+      "hypothesis": "Suspected: an unverified guess (L1), not used as a conclusion"
     },
-    "legend": "Evidence grade legend: Measured = backed by L3/L4 hard evidence; Inferred = derived from evidence patterns, not directly verified; Gap = flagged for improvement; Good = already verified as meeting the bar"
+    "legend": "Evidence grades: Measured = raw data you can re-check (L4); Sampled = measured on a fixed-protocol sample (L3); Inferred = derived from evidence, not measured directly (L2); Suspected = an unverified guess (L1)"
   },
   "facts": {
     "backToDiagnosis": "Back to diagnostic dashboard",

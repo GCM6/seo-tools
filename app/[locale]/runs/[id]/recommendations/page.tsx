@@ -3,7 +3,9 @@ import Link from 'next/link'
 import { Shell } from '@/components/Shell'
 import { RecCard, type RecStatus } from '@/components/RecCard'
 import { notFound } from 'next/navigation'
-import { getRun, getRecommendations } from '@/lib/repositories'
+import { getRun, getRecommendations, getFindings } from '@/lib/repositories'
+import { gradeForClaim } from '@/lib/evidence'
+import type { ClaimType } from '@/lib/types'
 
 const PRIORITY_ORDER: Record<string, number> = {
   quick_win: 0,
@@ -32,9 +34,12 @@ export default async function RecommendationsPage({
 
   const t = await getTranslations('screen3')
   if (!(await getRun(id))) notFound()
-  const recs = [...await getRecommendations(id)].sort(
+  const [recRows, findingRows] = await Promise.all([getRecommendations(id), getFindings(id)])
+  const recs = [...recRows].sort(
     (a, b) => (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99),
   )
+  // 建议的证据等级 = 它所针对 finding 的 claim_type（design-system §3.1）。找不到 finding 时不猜，只显示文字。
+  const claimByFinding = new Map(findingRows.map((f) => [f.id, f.claimType as ClaimType]))
   const readyCount = recs.filter((r) => r.status === 'accepted' || r.status === 'edited').length
   const pendingCount = recs.filter((r) => r.status === 'draft').length
 
@@ -88,6 +93,7 @@ export default async function RecommendationsPage({
                 editedNote: note || undefined,
               }}
               editDraft={note || r.why}
+              confidenceGrade={r.findingId && claimByFinding.has(r.findingId) ? gradeForClaim(claimByFinding.get(r.findingId)!) : undefined}
             />
           )
           })}

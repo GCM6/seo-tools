@@ -1,0 +1,1025 @@
+<title>Veris 改版方向</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* 布局概念：同一套信息架构（顶栏 → 诊断上下文 → 视图导航 → 内容），三个方向只换 token 与少量组件处理；A 为默认。
+   颜色只表达两件事：严重度（红/琥珀/灰）与回答质量；证据等级用形状表达（实心=实测、空心=推断、虚线=假设），不占颜色。 */
+:root{
+  /* A 报告 · 浅色 */
+  --bg:#EDEFF2; --surface:#FFFFFF; --surface-2:#F4F6F8;
+  --ink:#14171C; --ink-2:#464C56; --ink-3:#656C78;
+  --line:#D8DCE2; --line-strong:#B3BAC5;
+  --accent:#234A9A; --accent-hover:#1B3B7D; --accent-ink:#FFFFFF; --accent-soft:#E7EDF8;
+  --on-ink:#FFFFFF;
+  --sev-high:#B42318; --sev-mid:#B45309; --sev-low:#8B929D; --ok:#2B7A4B;
+  /* 原型控制条（与产品无关，固定深色） */
+  --pb-bg:#1F232A; --pb-fg:#EEF0F3; --pb-mute:#A7AEB8; --pb-line:#3A404A; --pb-on:#FFFFFF; --pb-on-bg:#454D5A;
+  --font-ui:"IBM Plex Sans","Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --font-num:"IBM Plex Sans","Noto Sans SC",system-ui,sans-serif;
+  --font-data:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --fs-xs:12px; --fs-sm:13px; --fs-base:14px; --fs-md:16px; --fs-lg:19px; --fs-xl:24px; --fs-num:28px;
+  --lh:1.6; --w-head:600; --w-num:500;
+  --radius:2px; --radius-ctl:2px; --radius-badge:2px;
+  --pad:20px; --gap:16px; --ctl-h:34px; --sec-gap:32px; --top-h:56px;
+  color-scheme:light;
+}
+:root[data-dir="b"]{
+  /* B 工具 · 浅色 */
+  --bg:#F3F5F5; --surface:#FFFFFF; --surface-2:#EEF1F1;
+  --ink:#1A1E1F; --ink-2:#4B5456; --ink-3:#5F696B;
+  --line:#E0E5E5; --line-strong:#C6CDCE;
+  --accent:#0B6E74; --accent-hover:#095A5F; --accent-ink:#FFFFFF; --accent-soft:#E2F0F0;
+  --on-ink:#FFFFFF;
+  --sev-high:#C2362B; --sev-mid:#B8680B; --sev-low:#8A9395; --ok:#3E7B2C;
+  --font-ui:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --font-num:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;
+  --font-data:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --fs-xs:11.5px; --fs-sm:12.5px; --fs-base:13.5px; --fs-md:15px; --fs-lg:17px; --fs-xl:20px; --fs-num:24px;
+  --lh:1.55; --w-head:600; --w-num:600;
+  --radius:6px; --radius-ctl:6px; --radius-badge:4px;
+  --pad:14px; --gap:12px; --ctl-h:30px; --sec-gap:22px; --top-h:48px;
+}
+:root[data-dir="c"]{
+  /* C 极简 · 浅色 */
+  --bg:#FFFFFF; --surface:#FFFFFF; --surface-2:#F4F4F6;
+  --ink:#1B1C1F; --ink-2:#55585F; --ink-3:#6A6D75;
+  --line:#E5E6E9; --line-strong:#C9CBD0;
+  --accent:#1B1C1F; --accent-hover:#000000; --accent-ink:#FFFFFF; --accent-soft:#F0F0F2;
+  --on-ink:#FFFFFF;
+  --sev-high:#C8322B; --sev-mid:#B86E00; --sev-low:#8D9098; --ok:#2E7D4F;
+  --font-ui:"Source Sans 3","Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --font-num:"Source Sans 3","Noto Sans SC",system-ui,sans-serif;
+  --font-data:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --fs-xs:12.5px; --fs-sm:14px; --fs-base:15.5px; --fs-md:17px; --fs-lg:21px; --fs-xl:30px; --fs-num:44px;
+  --lh:1.65; --w-head:600; --w-num:600;
+  --radius:12px; --radius-ctl:10px; --radius-badge:6px;
+  --pad:24px; --gap:28px; --ctl-h:40px; --sec-gap:52px; --top-h:64px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1115; --surface:#151920; --surface-2:#1B2028;
+    --ink:#E7EAEF; --ink-2:#B1B8C3; --ink-3:#8D95A1;
+    --line:#2A303A; --line-strong:#3B4350;
+    --accent:#93ADEF; --accent-hover:#B0C4F4; --accent-ink:#0E1115; --accent-soft:#1E2840;
+    --on-ink:#0E1115;
+    --sev-high:#F08A7E; --sev-mid:#E8A25A; --sev-low:#8E96A3; --ok:#6CC28F;
+    color-scheme:dark;
+  }
+  :root[data-dir="b"]:not([data-theme="light"]){
+    --bg:#101313; --surface:#161A1B; --surface-2:#1C2122;
+    --ink:#E5EAEA; --ink-2:#ADB6B7; --ink-3:#889293;
+    --line:#283031; --line-strong:#384243;
+    --accent:#5DB9BD; --accent-hover:#7FCBCE; --accent-ink:#0B1314; --accent-soft:#16302F;
+    --on-ink:#101313;
+    --sev-high:#EE8A80; --sev-mid:#E2A35C; --sev-low:#8C9697; --ok:#7DBF6A;
+  }
+  :root[data-dir="c"]:not([data-theme="light"]){
+    --bg:#121315; --surface:#121315; --surface-2:#1C1D20;
+    --ink:#EDEEF0; --ink-2:#AAADB4; --ink-3:#8A8D95;
+    --line:#2B2D31; --line-strong:#3D4046;
+    --accent:#EDEEF0; --accent-hover:#FFFFFF; --accent-ink:#121315; --accent-soft:#232428;
+    --on-ink:#121315;
+    --sev-high:#F28B82; --sev-mid:#E6A453; --sev-low:#8E9199; --ok:#74C493;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1115; --surface:#151920; --surface-2:#1B2028;
+  --ink:#E7EAEF; --ink-2:#B1B8C3; --ink-3:#8D95A1;
+  --line:#2A303A; --line-strong:#3B4350;
+  --accent:#93ADEF; --accent-hover:#B0C4F4; --accent-ink:#0E1115; --accent-soft:#1E2840;
+  --on-ink:#0E1115;
+  --sev-high:#F08A7E; --sev-mid:#E8A25A; --sev-low:#8E96A3; --ok:#6CC28F;
+  color-scheme:dark;
+}
+:root[data-dir="b"][data-theme="dark"]{
+  --bg:#101313; --surface:#161A1B; --surface-2:#1C2122;
+  --ink:#E5EAEA; --ink-2:#ADB6B7; --ink-3:#889293;
+  --line:#283031; --line-strong:#384243;
+  --accent:#5DB9BD; --accent-hover:#7FCBCE; --accent-ink:#0B1314; --accent-soft:#16302F;
+  --on-ink:#101313;
+  --sev-high:#EE8A80; --sev-mid:#E2A35C; --sev-low:#8C9697; --ok:#7DBF6A;
+}
+:root[data-dir="c"][data-theme="dark"]{
+  --bg:#121315; --surface:#121315; --surface-2:#1C1D20;
+  --ink:#EDEEF0; --ink-2:#AAADB4; --ink-3:#8A8D95;
+  --line:#2B2D31; --line-strong:#3D4046;
+  --accent:#EDEEF0; --accent-hover:#FFFFFF; --accent-ink:#121315; --accent-soft:#232428;
+  --on-ink:#121315;
+  --sev-high:#F28B82; --sev-mid:#E6A453; --sev-low:#8E9199; --ok:#74C493;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:var(--fs-base);line-height:var(--lh);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+h1,h2,h3,p{margin:0}
+h1,h2,h3{font-weight:var(--w-head);line-height:1.3;color:var(--ink);text-wrap:balance}
+ul,ol,dl,dd{margin:0;padding:0}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.mono{font-family:var(--font-data);font-size:.93em}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---------- 原型控制条 ---------- */
+.pbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--pb-bg);color:var(--pb-fg);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif;font-size:12.5px;line-height:1.4}
+.pbar-in{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;max-width:1320px;margin:0 auto;padding:8px 16px}
+.pbar-group{display:flex;align-items:center;gap:8px}
+.pbar-label{color:var(--pb-mute)}
+.seg{display:inline-flex;border:1px solid var(--pb-line);border-radius:6px;overflow:hidden}
+.seg button{background:transparent;border:0;color:var(--pb-fg);padding:5px 10px;cursor:pointer;white-space:nowrap}
+.seg button+button{border-left:1px solid var(--pb-line)}
+.seg button[aria-pressed="true"]{background:var(--pb-on-bg);color:var(--pb-on)}
+.seg button:focus-visible{outline:2px solid #9DB4F2;outline-offset:-2px}
+.pnote{background:var(--pb-bg);color:var(--pb-fg);border-top:1px solid var(--pb-line);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif;font-size:13px;line-height:1.6}
+.pnote-in{max-width:1320px;margin:0 auto;padding:0 16px}
+.pnote summary{cursor:pointer;padding:8px 0;color:var(--pb-fg);list-style:none}
+.pnote summary::-webkit-details-marker{display:none}
+.pnote summary::before{content:"▸ ";color:var(--pb-mute)}
+.pnote details[open] summary::before{content:"▾ "}
+.pnote-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 32px;padding:0 0 14px}
+.pnote-body h4{margin:0 0 4px;font-size:12px;font-weight:600;color:var(--pb-mute)}
+.pnote-body p,.pnote-body li{color:var(--pb-fg)}
+.pnote-body ul{padding-left:18px}
+
+/* ---------- 应用外壳 ---------- */
+.screen[hidden]{display:none!important}
+.topbar{background:var(--surface);border-bottom:1px solid var(--line)}
+.topbar-in{max-width:1320px;margin:0 auto;padding-inline:16px;height:var(--top-h);display:flex;align-items:center;gap:24px}
+.brand{display:inline-flex;align-items:center;gap:8px;color:var(--ink);font-weight:600;font-size:16px;letter-spacing:.01em;flex:none}
+.brand:hover{text-decoration:none}
+.brand svg{width:20px;height:20px;flex:none}
+.mainnav{display:flex;gap:2px;flex:1;min-width:0;overflow-x:auto}
+.mainnav a{color:var(--ink-2);padding:6px 10px;border-radius:var(--radius-ctl);font-size:var(--fs-sm);white-space:nowrap}
+.mainnav a:hover{background:var(--surface-2);text-decoration:none;color:var(--ink)}
+.mainnav a[aria-current="page"]{color:var(--ink);font-weight:600}
+.top-actions{display:flex;gap:8px;align-items:center;flex:none}
+
+.ws{max-width:1320px;margin:0 auto;padding-inline:16px;display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "nav" "body"}
+.ws-head{grid-area:head;padding-block:22px 18px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0}
+.ws-nav{grid-area:nav;min-width:0;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:4px 24px;border-bottom:1px solid var(--line)}
+.ws-body{grid-area:body;min-width:0;padding-block:var(--sec-gap) 80px;display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sec-gap);align-content:start}
+
+.crumbs{display:flex;flex-wrap:wrap;gap:6px;font-size:var(--fs-sm);color:var(--ink-3)}
+.crumbs a{color:var(--ink-2)}
+.head-row{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px 24px}
+.head-main{min-width:0;display:grid;gap:10px;flex:1 1 520px}
+.run-title{font-size:var(--fs-xl);letter-spacing:-.005em}
+.head-actions{display:flex;flex-wrap:wrap;gap:8px}
+
+/* 报告抬头式的“事实栏”（A 默认），B/C 改为一行文字 */
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);max-width:860px}
+.facts>div{background:var(--surface);padding:7px 12px;min-width:0}
+.facts dt{font-size:var(--fs-xs);color:var(--ink-3)}
+.facts dd{font-size:var(--fs-sm);color:var(--ink);overflow-wrap:anywhere}
+
+.life{list-style:none;display:flex;flex-wrap:wrap;align-items:center;gap:6px 0;font-size:var(--fs-sm);color:var(--ink-3)}
+.life li{display:inline-flex;align-items:center;gap:6px}
+.life li+li::before{content:"";width:22px;height:1px;background:var(--line-strong);margin-inline:8px}
+.life .done{color:var(--ink-2)}
+.life .done .tick{color:var(--ok)}
+.life .cur{color:var(--ink);font-weight:600}
+.life .cur .tick{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block}
+
+.tabs{list-style:none;display:flex;gap:2px;overflow-x:auto;min-width:0}
+.tabs a{display:inline-flex;align-items:center;gap:6px;padding:10px 12px;color:var(--ink-2);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;font-size:var(--fs-base)}
+.tabs a:hover{color:var(--ink);text-decoration:none}
+.tabs a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.tabs .count{font-size:var(--fs-xs);color:var(--ink-3);font-weight:400}
+.datalinks{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;padding-bottom:10px;font-size:var(--fs-sm)}
+.datalinks span{color:var(--ink-3)}
+.datalinks a{color:var(--ink-2)}
+
+/* ---------- 通用组件 ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--ctl-h);padding:0 14px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:var(--radius-ctl);font-size:var(--fs-sm);font-weight:500;cursor:pointer;white-space:nowrap;transition:background-color .12s,border-color .12s}
+.btn:hover{border-color:var(--ink-3)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-quiet{background:transparent;border-color:transparent;color:var(--ink-2)}
+.btn-quiet:hover{background:var(--surface-2);border-color:transparent;color:var(--ink)}
+.btn-sm{height:calc(var(--ctl-h) - 6px);padding:0 10px;font-size:var(--fs-xs)}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+.sec{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;min-width:0}
+.sec-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 20px}
+.sec-title{font-size:var(--fs-lg)}
+.sec-note{font-size:var(--fs-sm);color:var(--ink-3)}
+.more{font-size:var(--fs-sm)}
+
+.notice{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:10px 14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);font-size:var(--fs-sm);color:var(--ink-2)}
+.notice strong{color:var(--ink);font-weight:600}
+
+.lead{font-size:var(--fs-md);color:var(--ink);max-width:62em}
+.lead b{font-weight:600}
+
+/* 严重度：方块 + 文字 */
+.sev{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);font-weight:500;color:var(--ink-2);white-space:nowrap}
+.sev::before{content:"";width:8px;height:8px;border-radius:1px;background:var(--sev-c,var(--sev-low));flex:none}
+.sev-high{--sev-c:var(--sev-high)}
+.sev-mid{--sev-c:var(--sev-mid)}
+.sev-low{--sev-c:var(--sev-low)}
+
+/* 证据等级：形状编码，不用颜色 */
+.ev{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:var(--radius-badge);font-size:var(--fs-xs);font-weight:500;line-height:1;white-space:nowrap;border:1px solid transparent}
+.ev-hard{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
+.ev-sample{background:var(--ink-2);border-color:var(--ink-2);color:var(--on-ink)}
+.ev-inferred{background:transparent;border-color:var(--ink-2);color:var(--ink-2)}
+.ev-hypo{background:transparent;border:1px dashed var(--ink-3);color:var(--ink-3)}
+
+/* 结论指标（A：检测结果表；B：小方块；C：大数字） */
+.metrics{display:grid;grid-template-columns:minmax(8em,1fr) minmax(5.5em,.7fr) minmax(0,2.6fr) auto}
+.m-row{display:grid;grid-template-columns:subgrid;grid-column:1/-1;align-items:center;column-gap:18px;row-gap:4px;padding:11px var(--pad);border-top:1px solid var(--line)}
+.m-head{border-top:0;background:var(--surface-2);font-size:var(--fs-xs);color:var(--ink-3);padding-block:7px}
+.m-label{font-weight:500;color:var(--ink)}
+.m-value{font-size:var(--fs-lg);font-weight:var(--w-num);color:var(--ink);white-space:nowrap}
+.m-value small{font-size:var(--fs-sm);font-weight:400;color:var(--ink-3)}
+.m-note{font-size:var(--fs-sm);color:var(--ink-2)}
+.m-ev{justify-self:start}
+
+/* 问题列表 */
+.issues{list-style:none}
+.issue{display:grid;grid-template-columns:4.2em minmax(0,1fr) auto auto;align-items:baseline;gap:4px 16px;padding:12px var(--pad);border-top:1px solid var(--line)}
+.issue:first-child{border-top:0}
+.issue-title{font-weight:500;color:var(--ink)}
+.issue-desc{font-size:var(--fs-sm);color:var(--ink-2);margin-top:2px}
+.issue-pillar{font-size:var(--fs-xs);color:var(--ink-3);white-space:nowrap}
+
+/* AI 可见度 */
+.split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap)}
+.block{padding:var(--pad);display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-content:start;min-width:0}
+.block-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 12px}
+.block-head h3{font-size:var(--fs-md)}
+.big{font-size:var(--fs-num);font-weight:var(--w-num);line-height:1.1;color:var(--ink)}
+.big small{font-size:var(--fs-sm);font-weight:400;color:var(--ink-2)}
+.qgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:4px;width:100%;max-width:440px}
+.q{height:32px;border:1px solid var(--line-strong);background:var(--surface);border-radius:var(--radius-ctl);font-size:var(--fs-xs);color:var(--ink-3);cursor:pointer;font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.q:hover{border-color:var(--ink-3);color:var(--ink)}
+.q[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.qdetail{font-size:var(--fs-sm);color:var(--ink-2);min-height:3.2em;padding:8px 10px;background:var(--surface-2);border-radius:var(--radius-ctl)}
+.qdetail b{color:var(--ink);font-weight:500}
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:var(--fs-xs);color:var(--ink-2);list-style:none}
+.legend li{display:inline-flex;align-items:center;gap:6px}
+.sw{width:10px;height:10px;border-radius:2px;display:inline-block;flex:none;border:1px solid transparent}
+.sw-empty{border-color:var(--line-strong)}
+.sw-ok{background:var(--ok)}
+.sw-mid{background:var(--sev-mid)}
+.sw-neutral{background:var(--ink-3)}
+.sw-high{background:var(--sev-high)}
+.sw-und{background:repeating-linear-gradient(45deg,var(--line-strong) 0 2px,transparent 2px 4px);border-color:var(--line-strong)}
+.stack{display:flex;height:14px;border-radius:2px;overflow:hidden;background:var(--surface-2);gap:2px}
+.stack span{display:block;height:100%}
+.block-note{font-size:var(--fs-xs);color:var(--ink-3)}
+
+.trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap)}
+.trio>div{display:grid;gap:2px}
+.trio .cap{font-size:var(--fs-sm);color:var(--ink-2)}
+.tbl-wrap{overflow-x:auto;min-width:0}
+.tbl{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.tbl th{text-align:left;font-weight:500;font-size:var(--fs-xs);color:var(--ink-3);padding:7px 10px;border-bottom:1px solid var(--line);background:var(--surface-2);white-space:nowrap}
+.tbl td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:0}
+.tbl .r{text-align:right;font-family:var(--font-num);font-variant-numeric:tabular-nums;width:6em}
+.tbl .barcol{width:38%}
+.bar{height:6px;background:var(--surface-2);border-radius:1px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ink-3)}
+.tbl tr.own td{font-weight:600;color:var(--ink)}
+.tbl tr.own .bar i{background:var(--accent)}
+.you{display:inline-block;margin-left:8px;font-size:var(--fs-xs);font-weight:500;color:var(--accent);font-family:var(--font-ui)}
+.tbl-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 16px}
+
+/* 建议列表 */
+.filters{display:inline-flex;flex-wrap:wrap;gap:6px}
+.filters button{height:calc(var(--ctl-h) - 4px);padding:0 12px;border:1px solid var(--line-strong);background:var(--surface);border-radius:999px;font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}
+.filters button span{font-family:var(--font-num);font-variant-numeric:tabular-nums;color:var(--ink-3);margin-left:4px}
+.filters button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
+.filters button[aria-pressed="true"] span{color:var(--on-ink)}
+.proto-flag{font-size:var(--fs-xs);color:var(--ink-3);border-left:2px solid var(--line-strong);padding-left:10px}
+.group-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:10px var(--pad);background:var(--surface-2);border-top:1px solid var(--line);font-size:var(--fs-sm)}
+.group-head:first-child{border-top:0}
+.group-head b{font-weight:600;color:var(--ink)}
+.group-head span{color:var(--ink-3);font-size:var(--fs-xs)}
+.rec{border-top:1px solid var(--line)}
+.rec-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto 7.2em;align-items:center;gap:6px 18px;padding:10px var(--pad)}
+.rec-toggle{display:grid;grid-template-columns:4.2em minmax(0,1fr);align-items:baseline;gap:2px 10px;text-align:left;background:none;border:0;padding:2px 0;cursor:pointer;min-width:0;border-radius:var(--radius-ctl)}
+.rec-title{color:var(--ink);font-weight:500;display:block}
+.rec-toggle:hover .rec-title{text-decoration:underline;text-underline-offset:3px}
+.rec-for{display:block;font-size:var(--fs-xs);color:var(--ink-3);margin-top:2px}
+.rec-meta{display:flex;gap:14px;font-size:var(--fs-xs);color:var(--ink-3);white-space:nowrap}
+.rec-meta b{color:var(--ink);font-weight:500}
+.rec-status{display:flex;justify-content:flex-end;gap:6px;font-size:var(--fs-sm);white-space:nowrap}
+.st-ok{color:var(--ok);font-weight:500}
+.st-no{color:var(--ink-3)}
+.rec[data-status="rejected"] .rec-title{color:var(--ink-3);text-decoration:line-through}
+.rec-detail{padding:2px var(--pad) 16px calc(var(--pad) + 4.2em + 10px)}
+.kv{display:grid;grid-template-columns:6em minmax(0,1fr);gap:8px 16px;font-size:var(--fs-sm);max-width:60em}
+.kv dt{color:var(--ink-3)}
+.kv dd{color:var(--ink)}
+.rec-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+
+/* 其它视图占位 */
+.placeholder{padding:28px var(--pad);color:var(--ink-2);display:grid;gap:8px;max-width:46em}
+
+/* ---------- 分享报告 ---------- */
+.report-wrap{max-width:1320px;margin:0 auto;padding-inline:16px;padding-block:24px 80px;display:grid;gap:16px;justify-items:center}
+.report-tools{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;width:100%;max-width:860px}
+.report-tools p{font-size:var(--fs-sm);color:var(--ink-3)}
+.wsel{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--radius-ctl);overflow:hidden}
+.wsel button{border:0;background:var(--surface);padding:5px 12px;font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}
+.wsel button+button{border-left:1px solid var(--line-strong)}
+.wsel button[aria-pressed="true"]{background:var(--ink);color:var(--on-ink)}
+.doc{width:100%;max-width:860px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:44px 52px 36px;display:grid;gap:34px;transition:max-width .2s}
+.doc[data-w="phone"]{max-width:390px;padding:24px 20px 24px;gap:28px}
+.doc-head{display:grid;gap:14px}
+.doc-brand{display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);color:var(--ink-2)}
+.doc-brand svg{width:16px;height:16px}
+.doc-kind{font-size:var(--fs-sm);color:var(--ink-3)}
+.doc-title{font-size:calc(var(--fs-xl) + 4px);letter-spacing:-.01em;overflow-wrap:anywhere}
+.doc-sec{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;min-width:0}
+.doc-sec h2{font-size:var(--fs-lg);display:flex;align-items:baseline;gap:10px}
+.sn{font-family:var(--font-num);font-variant-numeric:tabular-nums;color:var(--ink-3);font-weight:500;font-size:var(--fs-md);min-width:1em}
+.plain{list-style:none;display:grid;border-top:1px solid var(--line)}
+.plain li{display:grid;grid-template-columns:4.2em minmax(0,1fr) auto;align-items:baseline;gap:4px 14px;padding:12px 0;border-bottom:1px solid var(--line)}
+.plain p{color:var(--ink-2)}
+.plain b{color:var(--ink);font-weight:600}
+.todo{list-style:none;counter-reset:todo;display:grid;gap:18px}
+.todo li{counter-increment:todo;display:grid;grid-template-columns:2em minmax(0,1fr);gap:4px 12px}
+.todo li::before{content:counter(todo);font-family:var(--font-num);font-weight:600;font-size:var(--fs-md);color:var(--ink);line-height:1.4}
+.todo-title{font-weight:600;color:var(--ink);font-size:var(--fs-md);line-height:1.4}
+.todo-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:var(--fs-xs);color:var(--ink-3);margin-top:4px}
+.todo-meta b{color:var(--ink);font-weight:500}
+.todo p{grid-column:2;font-size:var(--fs-sm);color:var(--ink-2)}
+.dtbl{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.dtbl th{text-align:left;font-weight:500;font-size:var(--fs-xs);color:var(--ink-3);padding:6px 10px 6px 0;border-bottom:1px solid var(--line-strong)}
+.dtbl td{padding:9px 10px 9px 0;border-bottom:1px solid var(--line);vertical-align:baseline}
+.dtbl td.v{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink);white-space:nowrap}
+.pillars{display:grid;gap:8px;font-size:var(--fs-sm)}
+.pillar{display:grid;grid-template-columns:minmax(9em,15em) minmax(0,1fr) 3.4em;align-items:center;gap:12px}
+.pillar .bar{height:8px}
+.pillar .bar i{background:var(--ink-2)}
+.pillar .val{text-align:right;font-family:var(--font-num);font-variant-numeric:tabular-nums;color:var(--ink)}
+.pillar.na .val{color:var(--ink-3);font-size:var(--fs-xs)}
+.pillar.na .bar{background:repeating-linear-gradient(45deg,var(--line) 0 2px,transparent 2px 5px)}
+.ladder{display:grid;gap:10px;font-size:var(--fs-sm)}
+.ladder div{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:12px;align-items:baseline}
+.ladder p{color:var(--ink-2)}
+.doc-foot{border-top:1px solid var(--line);padding-top:14px;font-size:var(--fs-xs);color:var(--ink-3);display:flex;flex-wrap:wrap;gap:4px 16px}
+.doc[data-w="phone"] .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+.doc[data-w="phone"] .plain li{grid-template-columns:3.6em minmax(0,1fr)}
+.doc[data-w="phone"] .plain li .ev{grid-column:2;justify-self:start}
+.doc[data-w="phone"] .pillar{grid-template-columns:minmax(0,1fr) 3.4em}
+.doc[data-w="phone"] .pillar .bar{grid-column:1/-1;grid-row:2}
+.doc[data-w="phone"] .ladder div{grid-template-columns:minmax(0,1fr)}
+.doc[data-w="phone"] .dtbl .hide-phone{display:none}
+
+/* ---------- 营销首页 ---------- */
+.mk{background:var(--surface)}
+.mk-top{max-width:1180px;margin:0 auto;padding-inline:16px;min-height:var(--top-h);display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
+.mk-nav{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;font-size:var(--fs-sm)}
+.mk-nav a{color:var(--ink-2)}
+.mk-hero{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:64px 72px;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:48px;align-items:center}
+.mk-hero h1{font-size:calc(var(--fs-xl) + 14px);line-height:1.12;letter-spacing:-.015em}
+.mk-hero p{margin-top:18px;font-size:var(--fs-md);color:var(--ink-2);max-width:34em}
+.mk-cta{margin-top:26px;display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px}
+.proof{padding:18px var(--pad);display:grid;gap:12px;min-width:0}
+.proof-head{display:flex;justify-content:space-between;gap:12px;font-size:var(--fs-xs);color:var(--ink-3)}
+.proof ul{list-style:none;display:grid}
+.proof li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;align-items:baseline;padding:10px 0;border-top:1px solid var(--line);font-size:var(--fs-sm);color:var(--ink-2)}
+.proof li b{color:var(--ink);font-weight:600}
+.proof figcaption{font-size:var(--fs-xs);color:var(--ink-3)}
+.mk-band{border-top:1px solid var(--line)}
+.mk-sec{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:56px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:24px 48px}
+.mk-sec h2{font-size:var(--fs-lg)}
+.mk-sec .intro{font-size:var(--fs-sm);color:var(--ink-3);margin-top:8px}
+.feat{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 32px}
+.feat h3{font-size:var(--fs-md)}
+.feat p{font-size:var(--fs-sm);color:var(--ink-2);margin-top:4px}
+.ltbl{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.ltbl td{padding:10px 12px 10px 0;border-top:1px solid var(--line);vertical-align:baseline}
+.ltbl td:first-child{font-family:var(--font-num);font-weight:600;color:var(--ink);width:3em}
+.ltbl td:nth-child(2){color:var(--ink);white-space:nowrap;width:11em}
+.ltbl td:last-child{color:var(--ink-2)}
+.mk-foot{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:28px;font-size:var(--fs-xs);color:var(--ink-3);border-top:1px solid var(--line)}
+
+/* ================= 方向 B：工具 ================= */
+:root[data-dir="b"] .ws{grid-template-columns:196px minmax(0,1fr);grid-template-areas:"nav head" "nav body";column-gap:28px}
+:root[data-dir="b"] .ws-nav{flex-direction:column;align-items:stretch;justify-content:flex-start;border-bottom:0;border-right:1px solid var(--line);padding:20px 12px 20px 0;gap:18px}
+:root[data-dir="b"] .tabs{flex-direction:column;gap:1px;overflow:visible}
+:root[data-dir="b"] .tabs a{justify-content:space-between;padding:6px 10px;border:0;margin:0;border-radius:var(--radius-ctl);font-size:var(--fs-sm)}
+:root[data-dir="b"] .tabs a[aria-current="page"]{background:var(--accent-soft);color:var(--accent)}
+:root[data-dir="b"] .tabs a:hover{background:var(--surface-2)}
+:root[data-dir="b"] .datalinks{flex-direction:column;align-items:stretch;gap:1px;padding:0}
+:root[data-dir="b"] .datalinks span{font-size:var(--fs-xs);padding:0 10px 4px}
+:root[data-dir="b"] .datalinks a{padding:5px 10px;border-radius:var(--radius-ctl)}
+:root[data-dir="b"] .datalinks a:hover{background:var(--surface-2);text-decoration:none}
+:root[data-dir="b"] .ws-head{padding-block:18px 0}
+:root[data-dir="b"] .ws-body{padding-block:var(--sec-gap) 64px}
+:root[data-dir="b"] .facts{display:flex;flex-wrap:wrap;gap:2px 14px;background:none;border:0;max-width:none}
+:root[data-dir="b"] .facts>div{background:none;padding:0;display:flex;gap:5px}
+:root[data-dir="b"] .metrics{grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--gap);background:none;border:0}
+:root[data-dir="b"] .m-row.m-head{display:none}
+:root[data-dir="b"] .m-row{display:flex;flex-direction:column;align-items:flex-start;gap:4px;grid-column:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+:root[data-dir="b"] .m-label{font-weight:400;color:var(--ink-2);font-size:var(--fs-sm)}
+:root[data-dir="b"] .m-value{font-size:var(--fs-num)}
+:root[data-dir="b"] .m-note{font-size:var(--fs-xs);color:var(--ink-3);flex:1}
+:root[data-dir="b"] .sec-title{font-size:var(--fs-md)}
+:root[data-dir="b"] .doc{padding:36px 40px 30px}
+
+/* ================= 方向 C：极简 ================= */
+:root[data-dir="c"] .topbar{background:var(--bg)}
+:root[data-dir="c"] .brand{font-size:18px}
+:root[data-dir="c"] .ws-head{padding-block:40px 24px;gap:16px}
+:root[data-dir="c"] .run-title{font-size:calc(var(--fs-xl) + 4px);letter-spacing:-.015em}
+:root[data-dir="c"] .facts{display:flex;flex-wrap:wrap;gap:4px 18px;background:none;border:0;max-width:none}
+:root[data-dir="c"] .facts>div{background:none;padding:0;display:flex;gap:6px}
+:root[data-dir="c"] .facts dt,:root[data-dir="c"] .facts dd{font-size:var(--fs-sm)}
+:root[data-dir="c"] .tabs{gap:22px}
+:root[data-dir="c"] .tabs a{padding:12px 0;font-size:var(--fs-md)}
+:root[data-dir="c"] .tabs a[aria-current="page"]{border-bottom-color:var(--ink)}
+:root[data-dir="c"] .panel{background:transparent;border:0;border-radius:0}
+:root[data-dir="c"] .notice{background:var(--surface-2);border:0;padding:14px 18px}
+:root[data-dir="c"] .lead{font-size:var(--fs-lg);line-height:1.5}
+:root[data-dir="c"] .metrics{grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--gap);background:none;border:0}
+:root[data-dir="c"] .m-row.m-head{display:none}
+:root[data-dir="c"] .m-row{display:flex;flex-direction:column;align-items:flex-start;gap:6px;grid-column:auto;border:0;padding:0}
+:root[data-dir="c"] .m-label{font-weight:400;color:var(--ink-2)}
+:root[data-dir="c"] .m-value{font-size:var(--fs-num);line-height:1.05;letter-spacing:-.02em}
+:root[data-dir="c"] .m-value small{font-size:var(--fs-md)}
+:root[data-dir="c"] .m-note{font-size:var(--fs-sm);color:var(--ink-3)}
+:root[data-dir="c"] .issue{padding:16px 0}
+:root[data-dir="c"] .issues{border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+:root[data-dir="c"] .block{padding:0}
+:root[data-dir="c"] .split{gap:48px}
+:root[data-dir="c"] .group-head{background:transparent;padding:22px 0 8px;border-top:0;font-size:var(--fs-md)}
+:root[data-dir="c"] .rec{border-top:1px solid var(--line)}
+:root[data-dir="c"] .rec-row{padding:14px 0}
+:root[data-dir="c"] .rec-detail{padding:2px 0 20px calc(4.2em + 10px)}
+:root[data-dir="c"] .tbl th{background:transparent;padding-inline:0 10px}
+:root[data-dir="c"] .tbl td{padding-inline:0 10px}
+:root[data-dir="c"] .doc{border:0;padding:24px 8px 36px;gap:44px}
+:root[data-dir="c"] .doc[data-w="phone"]{border:1px solid var(--line);border-radius:22px;padding:28px 20px}
+:root[data-dir="c"] .proof{background:var(--surface-2);border-radius:var(--radius);padding:24px}
+:root[data-dir="c"] .mk-hero{padding-block:88px 96px}
+
+/* ---------- 窄屏 ---------- */
+@media (max-width:900px){
+  :root[data-dir="b"] .ws{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "nav" "body"}
+  :root[data-dir="b"] .ws-nav{flex-direction:row;align-items:flex-end;border-right:0;border-bottom:1px solid var(--line);padding:0;gap:4px 16px}
+  :root[data-dir="b"] .tabs{flex-direction:row;overflow-x:auto}
+  :root[data-dir="b"] .tabs a{padding:8px 10px}
+  :root[data-dir="b"] .datalinks{flex-direction:row;flex-wrap:wrap;padding-bottom:8px}
+  .mk-hero,.mk-sec{grid-template-columns:minmax(0,1fr)}
+  .split{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:720px){
+  .mainnav{display:none}
+  .metrics,:root[data-dir="b"] .metrics,:root[data-dir="c"] .metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap)}
+  :root .metrics .m-row.m-head{display:none}
+  .m-row{display:flex;flex-direction:column;align-items:flex-start;gap:4px;grid-column:auto;border:1px solid var(--line);padding:12px}
+  :root[data-dir="c"] .m-row{border:0;padding:0}
+  .issue{grid-template-columns:4.2em minmax(0,1fr)}
+  .issue-pillar,.issue .ev{grid-column:2;justify-self:start}
+  .trio{grid-template-columns:minmax(0,1fr)}
+  .rec-row{grid-template-columns:minmax(0,1fr)}
+  .rec-meta,.rec-row>.ev,.rec-status{justify-self:start;padding-left:calc(4.2em + 10px)}
+  .rec-detail,:root[data-dir="c"] .rec-detail{padding-left:var(--pad)}
+  .kv{grid-template-columns:minmax(0,1fr)}
+  .kv dt{margin-top:6px}
+  .doc{padding:28px 20px}
+  .feat{grid-template-columns:minmax(0,1fr)}
+  .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+</style>
+
+<div class="pbar" role="region" aria-label="原型控制">
+  <div class="pbar-in">
+    <div class="pbar-group"><span class="pbar-label">页面</span>
+      <div class="seg" role="group" aria-label="切换页面">
+        <button type="button" data-view-btn="overview" aria-pressed="true">诊断概览</button>
+        <button type="button" data-view-btn="recs" aria-pressed="false">优化建议</button>
+        <button type="button" data-view-btn="report" aria-pressed="false">分享报告</button>
+        <button type="button" data-view-btn="mkt" aria-pressed="false">营销首页</button>
+      </div>
+    </div>
+    <div class="pbar-group"><span class="pbar-label">方向</span>
+      <div class="seg" role="group" aria-label="切换视觉方向">
+        <button type="button" data-dir-btn="a" aria-pressed="true">A 报告</button>
+        <button type="button" data-dir-btn="b" aria-pressed="false">B 工具</button>
+        <button type="button" data-dir-btn="c" aria-pressed="false">C 极简</button>
+      </div>
+    </div>
+    <div class="pbar-group"><span class="pbar-label">主题</span>
+      <div class="seg" role="group" aria-label="切换主题">
+        <button type="button" data-theme-btn="light" aria-pressed="false">浅色</button>
+        <button type="button" data-theme-btn="dark" aria-pressed="false">深色</button>
+        <button type="button" data-theme-btn="system" aria-pressed="true">跟随系统</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="pnote">
+  <div class="pnote-in">
+    <details id="pnote">
+      <summary id="pnote-sum">方向说明</summary>
+      <div class="pnote-body" id="pnote-body"></div>
+    </details>
+  </div>
+</div>
+
+<!-- ================= 工作台 ================= -->
+<div class="screen" id="screen-app">
+  <header class="topbar">
+    <div class="topbar-in">
+      <a class="brand" href="#" data-noop>
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 5L27 25H5L16 5Z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M11.5 16.5L16 12L20.5 16.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Veris</span>
+      </a>
+      <nav class="mainnav" aria-label="主导航">
+        <a href="#" data-noop aria-current="page">项目</a>
+        <a href="#" data-noop>规则库</a>
+        <a href="#" data-noop>知识库</a>
+        <a href="#" data-noop>设置</a>
+      </nav>
+      <div class="top-actions">
+        <button class="btn btn-quiet btn-sm" type="button">EN</button>
+        <button class="btn btn-primary" type="button">新建分析</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="ws">
+    <div class="ws-head">
+      <nav class="crumbs" aria-label="位置"><a href="#" data-noop>项目</a><span aria-hidden="true">/</span><a href="#" data-noop>metadocu.com</a><span aria-hidden="true">/</span><span>基线诊断</span></nav>
+      <div class="head-row">
+        <div class="head-main">
+          <h1 class="run-title">metadocu.com</h1>
+          <dl class="facts">
+            <div><dt>市场</dt><dd>全球英文（美国结果代理）</dd></div>
+            <div><dt>完成于</dt><dd class="num">2026-07-18 22:36</dd></div>
+            <div><dt>检测协议</dt><dd class="mono">v2</dd></div>
+            <div><dt>规则版本</dt><dd class="mono">rules_v4</dd></div>
+            <div><dt>证据</dt><dd class="num">78 条</dd></div>
+            <div><dt>数据源</dt><dd class="num">3 / 5</dd></div>
+          </dl>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-primary" type="button" data-go="exec">打开执行清单</button>
+          <button class="btn" type="button" data-go="report">分享报告</button>
+          <button class="btn btn-quiet" type="button">发起回测</button>
+        </div>
+      </div>
+      <ol class="life" aria-label="诊断进度">
+        <li class="done"><span class="tick" aria-hidden="true">✓</span>采集证据</li>
+        <li class="done"><span class="tick" aria-hidden="true">✓</span>生成诊断</li>
+        <li class="done"><span class="tick" aria-hidden="true">✓</span>确认建议 <span class="num">15/15</span></li>
+        <li class="cur"><span class="tick" aria-hidden="true"></span>执行 <span class="num">0/15</span></li>
+        <li>4–6 周后复查</li>
+      </ol>
+    </div>
+
+    <nav class="ws-nav" aria-label="诊断视图">
+      <ul class="tabs">
+        <li><a href="#" data-pane="overview" aria-current="page">概览</a></li>
+        <li><a href="#" data-pane="issues">问题 <span class="count num">15</span></a></li>
+        <li><a href="#" data-pane="recs">建议 <span class="count num">15</span></a></li>
+        <li><a href="#" data-pane="exec">执行清单 <span class="count num">0/15</span></a></li>
+        <li><a href="#" data-pane="reportpane">报告</a></li>
+      </ul>
+      <div class="datalinks"><span>原始数据</span><a href="#" data-pane="site">站点结构</a><a href="#" data-pane="kw">关键词</a><a href="#" data-pane="comp">竞品</a><a href="#" data-pane="facts">品牌事实</a></div>
+    </nav>
+
+    <main class="ws-body">
+      <!-- 概览 -->
+      <div class="pane" id="pane-overview" style="display:contents">
+        <p class="notice"><strong>数据覆盖 3 / 5</strong><span>未接入：Google 可见性检索（CSE）、渲染抓取。补齐后重新诊断，覆盖会更完整。</span><a href="#" data-noop>去设置</a></p>
+
+        <section class="sec" aria-labelledby="h-concl">
+          <div class="sec-head"><h2 class="sec-title" id="h-concl">结论</h2><span class="sec-note">每个数字后面都标了证据等级，点开可看原始数据</span></div>
+          <p class="lead">AI 目前不会主动推荐 metadocu：<b>23 个不提品牌名的提问里，提到你 0 次</b>。另有 <b>2 个页面被 noindex 挡在 Google 索引之外</b>，这是最先要修的。</p>
+          <div class="metrics panel" role="table" aria-label="关键指标">
+            <div class="m-row m-head" role="row"><span role="columnheader">检测项目</span><span role="columnheader">结果</span><span role="columnheader">说明</span><span role="columnheader">证据</span></div>
+            <div class="m-row" role="row"><span class="m-label" role="cell">AI 主动推荐</span><span class="m-value num" role="cell">0<small> / 23</small></span><span class="m-note" role="cell">不提品牌名的提问中，AI 提到你的次数（本轮只测了 DeepSeek）</span><span class="m-ev" role="cell"><span class="ev ev-sample">抽样实测</span></span></div>
+            <div class="m-row" role="row"><span class="m-label" role="cell">Google AI 概览引用</span><span class="m-value num" role="cell">2<small> / 19</small></span><span class="m-note" role="cell">出现 AI 概览的查询中，引用了你的域名的次数</span><span class="m-ev" role="cell"><span class="ev ev-hard">实测</span></span></div>
+            <div class="m-row" role="row"><span class="m-label" role="cell">平均自然排名</span><span class="m-value num" role="cell">61.2</span><span class="m-note" role="cell">Google 自然搜索位置，数字越小越靠前</span><span class="m-ev" role="cell"><span class="ev ev-hard">实测</span></span></div>
+            <div class="m-row" role="row"><span class="m-label" role="cell">健康分</span><span class="m-value num" role="cell">74.6<small> / 100</small></span><span class="m-note" role="cell">5 个维度按规则加权，其中 1 个维度未评分</span><span class="m-ev" role="cell"><span class="ev ev-inferred">推断</span></span></div>
+          </div>
+        </section>
+
+        <section class="sec" aria-labelledby="h-top">
+          <div class="sec-head"><h2 class="sec-title" id="h-top">优先处理的问题</h2><a class="more" href="#" data-pane="issues">全部 15 个问题</a></div>
+          <ul class="issues panel">
+            <li class="issue"><span class="sev sev-high">高</span><div><p class="issue-title">页面存在 noindex 误用</p><p class="issue-desc">2 个已检页面带 noindex，会被搜索引擎排除收录。</p></div><span class="issue-pillar">P1 技术健康</span><span class="ev ev-hard">实测</span></li>
+            <li class="issue"><span class="sev sev-mid">中</span><div><p class="issue-title">AI 答案可见度偏低</p><p class="issue-desc">不提品牌名的 23 个提问中，没有一次提到你。</p></div><span class="issue-pillar">P5 品牌与 GEO</span><span class="ev ev-sample">抽样实测</span></li>
+            <li class="issue"><span class="sev sev-mid">中</span><div><p class="issue-title">未发现有效 sitemap</p><p class="issue-desc">全站发现 21 个页面，没有一个来自 sitemap。</p></div><span class="issue-pillar">P1 技术健康</span><span class="ev ev-hard">实测</span></li>
+          </ul>
+        </section>
+
+        <section class="sec" aria-labelledby="h-ai">
+          <div class="sec-head"><h2 class="sec-title" id="h-ai">AI 可见度</h2><span class="sec-note">开发者 API 采样，方向性指标，不等于用户在 App 里看到的结果</span></div>
+          <div class="split">
+            <div class="panel block">
+              <div class="block-head"><h3>不提品牌名时，AI 会推荐你吗</h3><span class="ev ev-sample">抽样实测 · n=23</span></div>
+              <p class="big num">0<small> / 23 次提到你</small></p>
+              <div class="qgrid" id="qgrid" role="group" aria-label="23 个提问"></div>
+              <p class="qdetail" id="qdetail" aria-live="polite">点一个编号，查看那条提问和引擎的回答结果。</p>
+              <ul class="legend"><li><i class="sw sw-ok"></i>提到你 <b class="num">0</b></li><li><i class="sw sw-empty"></i>没提到 <b class="num">23</b></li></ul>
+            </div>
+            <div class="panel block">
+              <div class="block-head"><h3>提到品牌名时，AI 说得有依据吗</h3><span class="ev ev-sample">抽样实测 · n=7</span></div>
+              <p class="big num">0<small> / 7 条回答有依据</small></p>
+              <div class="stack" role="img" aria-label="7 条回答：疑似臆测 3，承认不知道 3，未判定 1">
+                <span style="flex:3;background:var(--sev-mid)"></span><span style="flex:3;background:var(--ink-3)"></span><span style="flex:1;background:repeating-linear-gradient(45deg,var(--line-strong) 0 2px,transparent 2px 4px)"></span>
+              </div>
+              <ul class="legend"><li><i class="sw sw-ok"></i>有依据 <b class="num">0</b></li><li><i class="sw sw-mid"></i>疑似臆测 <b class="num">3</b></li><li><i class="sw sw-neutral"></i>承认不知道 <b class="num">3</b></li><li><i class="sw sw-high"></i>断言无依据 <b class="num">0</b></li><li><i class="sw sw-und"></i>未判定 <b class="num">1</b></li></ul>
+              <p class="block-note">本轮只接入了 1 个引擎（DeepSeek）。它不联网、给不出引用，所以只判断是否臆测。</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="sec" aria-labelledby="h-aio">
+          <div class="sec-head"><h2 class="sec-title" id="h-aio">Google AI 概览</h2><span class="ev ev-hard">实测</span></div>
+          <div class="panel block">
+            <div class="trio">
+              <div><span class="big num">19<small> / 21</small></span><span class="cap">个查询出现 AI 概览</span></div>
+              <div><span class="big num">2<small> / 19</small></span><span class="cap">个 AI 概览引用了你的域名</span></div>
+              <div><span class="big num">21<small> / 30</small></span><span class="cap">个查询完成测量</span></div>
+            </div>
+            <div class="tbl-wrap">
+              <table class="tbl">
+                <thead><tr><th scope="col">被引用最多的域名</th><th scope="col" class="r">引用次数</th><th scope="col" class="barcol"><span class="sr">相对次数</span></th></tr></thead>
+                <tbody id="dom-body"></tbody>
+              </table>
+            </div>
+            <div class="tbl-foot"><button class="btn btn-sm" type="button" id="dom-toggle">显示全部 138 个域名</button><span class="sec-note">单次采样（n=1）。AI 概览每天会变，回测要连续观察多轮。</span></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- 建议 -->
+      <div class="pane" id="pane-recs" hidden>
+        <section class="sec" aria-labelledby="h-recs">
+          <div class="sec-head">
+            <div style="display:grid;gap:4px"><h2 class="sec-title" id="h-recs">优化建议</h2><p class="sec-note">按「影响 × 置信 ÷ 工作量」排序。只有接受或编辑过的建议会进入执行清单。</p></div>
+            <div class="filters" role="group" aria-label="按状态筛选">
+              <button type="button" data-f="all" aria-pressed="true">全部<span id="c-all">15</span></button>
+              <button type="button" data-f="draft" aria-pressed="false">待确认<span id="c-draft">0</span></button>
+              <button type="button" data-f="accepted" aria-pressed="false">已接受<span id="c-accepted">0</span></button>
+              <button type="button" data-f="rejected" aria-pressed="false">已否决<span id="c-rejected">0</span></button>
+            </div>
+          </div>
+          <p class="proto-flag">原型演示：把排序第 2、5 条改成了「待确认」，用来展示确认操作。真实数据里 15 条都已接受。</p>
+          <div class="panel" id="recs"></div>
+        </section>
+      </div>
+
+      <!-- 其它视图占位 -->
+      <div class="pane" id="pane-other" hidden>
+        <div class="panel placeholder"><p><b id="other-name">这个视图</b>在原型里没有展开。</p><p>它沿用同一套组件：表格、严重度方块、证据等级标签、单一面板样式。比较方向时看「概览」和「建议」就够了。</p></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ================= 分享报告 ================= -->
+<div class="screen" id="screen-report" hidden>
+  <div class="report-wrap">
+    <div class="report-tools">
+      <p>客户打开分享链接时看到的页面（不需要登录）。</p>
+      <div class="wsel" role="group" aria-label="预览宽度"><button type="button" data-w="desk" aria-pressed="true">桌面</button><button type="button" data-w="phone" aria-pressed="false">手机</button></div>
+    </div>
+    <article class="doc" id="doc" data-w="desk">
+      <header class="doc-head">
+        <div class="doc-brand"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 5L27 25H5L16 5Z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M11.5 16.5L16 12L20.5 16.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Veris</span><span class="doc-kind">· 网站诊断报告</span></div>
+        <h1 class="doc-title">metadocu.com</h1>
+        <dl class="facts">
+          <div><dt>诊断日期</dt><dd class="num">2026-07-18</dd></div>
+          <div><dt>市场</dt><dd>全球英文</dd></div>
+          <div><dt>检测协议</dt><dd class="mono">v2</dd></div>
+          <div><dt>规则版本</dt><dd class="mono">rules_v4</dd></div>
+          <div><dt>证据</dt><dd class="num">78 条</dd></div>
+          <div><dt>报告编号</dt><dd class="mono">R-05face85</dd></div>
+        </dl>
+      </header>
+      <p class="notice"><span>这份报告用 rules_v4 生成。规则库已升级到 rules_v10，用新规则重新诊断后，才能和下一次结果直接对比。</span></p>
+
+      <section class="doc-sec">
+        <h2><span class="sn">1</span>结论</h2>
+        <ul class="plain">
+          <li><span class="sev sev-high">高</span><p><b>2 个页面被禁止收录。</b>页面带了 noindex，Google 不会把它们放进搜索结果。</p><span class="ev ev-hard">实测</span></li>
+          <li><span class="sev sev-mid">中</span><p><b>AI 不会主动推荐你。</b>23 个不提品牌名的提问里，AI 提到你 0 次（本轮只测了 DeepSeek）。</p><span class="ev ev-sample">抽样实测</span></li>
+          <li><span class="sev sev-mid">中</span><p><b>Google AI 概览很少引用你。</b>19 个出现 AI 概览的查询里，只有 2 个引用了你的网站。</p><span class="ev ev-hard">实测</span></li>
+        </ul>
+      </section>
+
+      <section class="doc-sec">
+        <h2><span class="sn">2</span>先做这 3 件事</h2>
+        <ol class="todo">
+          <li><div><div class="todo-title">移除重点页误用的 noindex</div><div class="todo-meta"><span>影响 <b>高</b></span><span>工作量 <b>低</b></span><span class="ev ev-hard">实测</span></div></div><p>只对标签页、参数页、分类页这类没有搜索价值的页面保留 noindex。改完重新抓取确认，再在 Search Console 里观察收录数是否恢复。</p></li>
+          <li><div><div class="todo-title">围绕搜索意图补齐内容页深度</div><div class="todo-meta"><span>针对：AI 答案可见度偏低</span><span>影响 <b>高</b></span><span>工作量 <b>中</b></span><span class="ev ev-sample">抽样实测</span></div></div><p>按证据里被问到的问题补齐内容，并保证页面在不执行 JavaScript 时也能读到正文。</p></li>
+          <li><div><div class="todo-title">建立权威的第三方资料和品牌事实页</div><div class="todo-meta"><span>影响 <b>高</b></span><span>工作量 <b>高</b></span><span class="ev ev-inferred">推断</span></div></div><p>补一个可核验的官方 About/Facts 页（创立时间、产品线、数据来源），并争取维基百科、行业媒体、评测站准确收录品牌信息，减少 AI 编造。</p></li>
+        </ol>
+      </section>
+
+      <section class="doc-sec">
+        <h2><span class="sn">3</span>关键数据</h2>
+        <div class="tbl-wrap">
+          <table class="dtbl">
+            <thead><tr><th scope="col">指标</th><th scope="col">结果</th><th scope="col" class="hide-phone">说明</th><th scope="col">证据</th></tr></thead>
+            <tbody>
+              <tr><td>AI 主动推荐</td><td class="v">0 / 23</td><td class="hide-phone">不提品牌名的提问中被提到的次数</td><td><span class="ev ev-sample">抽样实测</span></td></tr>
+              <tr><td>Google AI 概览引用</td><td class="v">2 / 19</td><td class="hide-phone">出现 AI 概览时引用你的次数</td><td><span class="ev ev-hard">实测</span></td></tr>
+              <tr><td>平均自然排名</td><td class="v">61.2</td><td class="hide-phone">越小越靠前</td><td><span class="ev ev-hard">实测</span></td></tr>
+              <tr><td>健康分</td><td class="v">74.6</td><td class="hide-phone">满分 100，按规则加权</td><td><span class="ev ev-inferred">推断</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pillars" aria-label="健康分各维度">
+          <div class="pillar"><span>P1 技术健康</span><span class="bar"><i style="width:66.7%"></i></span><span class="val">66.7</span></div>
+          <div class="pillar"><span>P2 结构化数据与可解析性</span><span class="bar"><i style="width:68.8%"></i></span><span class="val">68.8</span></div>
+          <div class="pillar"><span>P3 关键词与内容覆盖</span><span class="bar"><i style="width:100%"></i></span><span class="val">100</span></div>
+          <div class="pillar na"><span>P4 SERP 竞争格局</span><span class="bar"></span><span class="val">未评分</span></div>
+          <div class="pillar"><span>P5 品牌权威与 GEO</span><span class="bar"><i style="width:66.7%"></i></span><span class="val">66.7</span></div>
+        </div>
+      </section>
+
+      <section class="doc-sec">
+        <h2><span class="sn">4</span>证据等级怎么读</h2>
+        <div class="ladder">
+          <div><span><span class="ev ev-hard">实测</span></span><p>有可复查的原始数据，例如 Search Console 数据、实际抓取到的页面。</p></div>
+          <div><span><span class="ev ev-sample">抽样实测</span></span><p>按固定协议抽样测得，例如 23 个 AI 提问。样本有限，看方向，不看小数点。</p></div>
+          <div><span><span class="ev ev-inferred">推断</span></span><p>根据证据合理推出，没有直接测量。</p></div>
+          <div><span><span class="ev ev-hypo">假设</span></span><p>待验证的猜测，不作为结论使用。</p></div>
+        </div>
+      </section>
+
+      <section class="doc-sec">
+        <h2><span class="sn">5</span>下一次复查</h2>
+        <p style="color:var(--ink-2);font-size:var(--fs-sm)">改完以后 4–6 周，用同一套提问、市场和引擎再测一次，前后结果才能直接对比。</p>
+      </section>
+
+      <footer class="doc-foot"><span>报告编号 R-05face85</span><span>由 Veris 生成</span><span>每条结论都标了证据等级，原始数据可以随时调阅</span></footer>
+    </article>
+  </div>
+</div>
+
+<!-- ================= 营销首页 ================= -->
+<div class="screen mk" id="screen-mkt" hidden>
+  <header class="mk-top">
+    <a class="brand" href="#" data-noop><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 5L27 25H5L16 5Z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M11.5 16.5L16 12L20.5 16.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Veris</span></a>
+    <nav class="mk-nav" aria-label="Site"><a href="#" data-noop>Methodology</a><a href="#" data-noop>Blog</a><button class="btn btn-primary btn-sm" type="button">Request early access</button></nav>
+  </header>
+  <section class="mk-hero">
+    <div>
+      <h1>An evidence-based SEO &amp; GEO diagnostic workbench</h1>
+      <p>Veris shows you how visible your site really is in Google Search and in AI answer engines, and labels what's proven versus what's inferred, so you never confuse a hypothesis for a fact.</p>
+      <div class="mk-cta"><button class="btn btn-primary" type="button">Request early access</button><a href="#" data-noop>How we grade evidence</a></div>
+    </div>
+    <figure class="panel proof" style="margin:0">
+      <div class="proof-head"><span>metadocu.com · diagnostic run</span><span class="num">Jul 18, 2026</span></div>
+      <ul>
+        <li><span><b>2 pages are blocked from Google.</b> They carry a noindex tag.</span><span class="ev ev-hard">Measured</span></li>
+        <li><span><b>AI doesn't recommend this site yet.</b> Mentioned in 0 of 23 questions that don't name the brand.</span><span class="ev ev-sample">Sampled</span></li>
+        <li><span><b>AI Overviews rarely cite it.</b> 19 of 21 queries showed an AI Overview; 2 cited the site.</span><span class="ev ev-hard">Measured</span></li>
+        <li><span><b>Health score 74.6 / 100.</b> Weighted across five areas; one area not scored.</span><span class="ev ev-inferred">Inferred</span></li>
+      </ul>
+      <figcaption>Excerpt from a real run. Every line links back to stored evidence.</figcaption>
+    </figure>
+  </section>
+  <div class="mk-band">
+    <section class="mk-sec">
+      <div><h2>What you get</h2><p class="intro">Four things that keep the diagnosis honest.</p></div>
+      <div class="feat">
+        <div><h3>Evidence-graded findings</h3><p>Every finding carries evidence references and a claim type. "Measured" is reserved for hard, verifiable evidence.</p></div>
+        <div><h3>Cross-engine AI visibility</h3><p>Brand and topic visibility across AI engines and Google AI Overviews, with one repeatable protocol.</p></div>
+        <div><h3>Grounded in your search data</h3><p>Search Console integration ties the diagnosis to your own performance, not third-party estimates.</p></div>
+        <div><h3>Human-approved recommendations</h3><p>Nothing reaches the execution list until a person accepts or edits it.</p></div>
+      </div>
+    </section>
+  </div>
+  <div class="mk-band">
+    <section class="mk-sec">
+      <div><h2>The evidence ladder</h2><p class="intro">"Measured" appears only at L3 and L4.</p></div>
+      <div class="tbl-wrap"><table class="ltbl"><tbody>
+        <tr><td>L0</td><td>Unsupported</td><td>An opinion with no evidence. Never stored as a conclusion.</td></tr>
+        <tr><td>L1</td><td><span class="ev ev-hypo">Hypothesis</span></td><td>An unverified assumption, labeled as suspected.</td></tr>
+        <tr><td>L2</td><td><span class="ev ev-inferred">Inferred</span></td><td>Derived from evidence, never written up as settled causation.</td></tr>
+        <tr><td>L3</td><td><span class="ev ev-sample">Sampled</span></td><td>A directional measurement from a defined sample, such as 23 questions.</td></tr>
+        <tr><td>L4</td><td><span class="ev ev-hard">Measured</span></td><td>A hard, direct measurement, such as Search Console data or the initial HTML.</td></tr>
+      </tbody></table></div>
+    </section>
+  </div>
+  <footer class="mk-foot">© 2026 Veris. Evidence-based SEO &amp; GEO diagnostics.</footer>
+</div>
+
+<script>
+(function () {
+  var RECS = [{"p": "quick_win", "title": "移除重点页/模板级误用的 noindex，仅对 tag/参数/分类等无价值页保留 noindex。", "why": "检测到 2 个已检页面带 noindex，将被搜索引擎排除收录，请确认是否为有意为之。 noindex 会让页面被主动排除索引，重点页误标等于自我封杀。", "impact": "高（error 级，影响约 2 页/模板），修复对该支柱得分与可见性影响显著", "effort": "低", "risk": "技术改动按 fixSnippet 精确修改、改后重新抓取回归，风险低；302/删除/合并类需先备份并核对内链。", "verify": "重新抓取确认 meta robots 不含 noindex；GSC 观察该模板收录数恢复。", "conf": "高（实测）", "status": "accepted", "finding": "页面存在 noindex 误用", "sev": "high", "claim": "measured_hard", "pillar": "P1", "side": "technical", "nref": 1, "ev": "29ccea9b"}, {"p": "strategic", "title": "根据证据优化该内容页，围绕搜索意图补齐深度并保证与前端一致。", "why": "无品牌提问中，AI 主动召回品牌仅 0/23 次（占比 0%，低于 30%；Wilson 95% 下限 0%）。当前 n=5 为方向性样本，非硬指标。 该内容问题影响相关性、可提取性或可信度。", "impact": "高（warning 级，影响约 23 页/模板），修复对该支柱得分与可见性影响显著", "effort": "中", "risk": "内容改动需人工终审并遵守否定约束（禁堆词/禁编造）。", "verify": "GSC/探针观察该页展示、排名或被引用情况改善。", "conf": "中（抽样实测）", "status": "accepted", "finding": "AI 答案可见度偏低", "sev": "mid", "claim": "measured_sample", "pillar": "P5", "side": "geo", "nref": 1, "ev": "2a51f682"}, {"p": "strategic", "title": "建立权威第三方语料与结构化品牌事实页：补充可核验的官方 About/Facts 页（创立时间、产品线、关键数据来源），并争取第三方权威源（Wikipedia/行业媒体/评测站）准确收录品牌信息，压缩 AI 在缺乏语料时对品牌名做字面联想式编造的空间（参考 G07 的第三方语料建设方向）。", "why": "品牌类探针回答中，疑似臆测（无引用依据且带猜测措辞，如 likely/probably/推测/顾名思义）占比 43%（3/7），高于 30%。此判定为确定性词表启发式，存在漏检：若模型自信编造却未使用任何猜测措辞，本规则无法识别，仅供方向性参考。 AI 疑似在无权威语料可查时基于品牌名臆测编造事实；补充可检索的权威信息源是主要缓解手段，而非要求模型「不要编造」。", "impact": "高（warning 级，影响约 7 页/模板），修复对该支柱得分与可见性影响显著", "effort": "高", "risk": "本判定为确定性词表启发式（inferred），只能标「疑似」：无法识别模型自信编造却不带猜测措辞的情况，也不能反向证明「不存在编造」。", "verify": "复测 branded 层 speculative 占比是否回落；人工抽查原始回答核实是否仍存在编造措辞。", "conf": "中低（推断）", "status": "accepted", "finding": "AI 疑似在编造品牌事实", "sev": "mid", "claim": "inferred", "pillar": "P5", "side": "geo", "nref": 1, "ev": "2a51f682"}, {"p": "fill_in", "title": "补齐/修正 sitemap，使其与实际可收录页面集一致（移除已删/noindex 页，补漏收录页）。", "why": "全站发现 21 个页面，但无任何页面来自 sitemap，疑似 sitemap 缺失或未被抓取到，影响新页面发现效率。 sitemap 缺失或与实际偏差大会拖慢新页发现与收录。", "impact": "中低（warning 级），修复为增量改善", "effort": "低", "risk": "技术改动按 fixSnippet 精确修改、改后重新抓取回归，风险低；302/删除/合并类需先备份并核对内链。", "verify": "在 GSC 重新提交 sitemap，确认已发现/已收录数量匹配。", "conf": "高（实测）", "status": "accepted", "finding": "未发现有效 sitemap", "sev": "mid", "claim": "measured_hard", "pillar": "P1", "side": "technical", "nref": 1, "ev": "29ccea9b"}, {"p": "fill_in", "title": "规范 H1：每页唯一 H1，与 title 有区分、承载页面主题。", "why": "H1 与 title 文案完全一致，未能覆盖更多相关语义，建议差异化表达。 H1 缺失/多个/与 title 完全重复会弱化主题表达。", "impact": "中低（warning 级），修复为增量改善", "effort": "低", "risk": "内容改动需人工终审并遵守否定约束（禁堆词/禁编造）。", "verify": "重新抓取确认单一 H1 且与 title 有别。", "conf": "高（实测）", "status": "accepted", "finding": "入口页 H1 与 title 完全重复", "sev": "mid", "claim": "measured_hard", "pillar": "P2", "side": "seo", "nref": 1, "ev": "1b33235b"}, {"p": "fill_in", "title": "补齐 Google 富摘要必填/推荐字段（如 Product 的 offers/aggregateRating、Article 的 datePublished）。", "why": "检测到 1 个结构化数据实体缺少 Google 富摘要必填字段（涉及类型：Article），富摘要无法生成。 必填字段缺失会让富摘要无法生成。", "impact": "中低（warning 级），修复为增量改善", "effort": "中", "risk": "内容改动需人工终审并遵守否定约束（禁堆词/禁编造）。", "verify": "富媒体结果测试确认必填字段齐备、无警告。", "conf": "高（实测）", "status": "accepted", "finding": "Google 富摘要必填字段缺失", "sev": "mid", "claim": "measured_hard", "pillar": "P2", "side": "seo", "nref": 1, "ev": "0c380b5b"}, {"p": "fill_in", "title": "为缺 alt 的图片补描述性 alt（含语义、非堆词），按模板批量补齐。", "why": "全站图片 alt 缺失率约 100%（21/21）；alt 影响图片搜索与可访问性，也是 AI 理解图片内容的入口。 图片 alt 缺失率过高损伤可访问性与图片检索。", "impact": "中低（warning 级），修复为增量改善", "effort": "低", "risk": "内容改动需人工终审并遵守否定约束（禁堆词/禁编造）。", "verify": "重新轻检确认 imgAltMissing 率回落。", "conf": "高（实测）", "status": "accepted", "finding": "图片 alt 缺失率过高", "sev": "mid", "claim": "measured_hard", "pillar": "P2", "side": "seo", "nref": 1, "ev": "29ccea9b"}, {"p": "fill_in", "title": "根据证据优化该内容页，围绕搜索意图补齐深度并保证与前端一致。", "why": "品牌第三方网络提及不足：无 Wikipedia 条目，Reddit 近 365 天自然讨论仅 0 条（低于 3）。AI 引擎主要引用第三方权威语料（品牌提及与 AI 可见性相关 0.664，§2），第三方存在度不足会削弱被引用概率。 该内容问题影响相关性、可提取性或可信度。", "impact": "中低（warning 级），修复为增量改善", "effort": "中", "risk": "内容改动需人工终审并遵守否定约束（禁堆词/禁编造）。", "verify": "GSC/探针观察该页展示、排名或被引用情况改善。", "conf": "中（抽样实测）", "status": "accepted", "finding": "品牌第三方网络语料缺失", "sev": "mid", "claim": "measured_sample", "pillar": "P5", "side": "geo", "nref": 1, "ev": "740403bd"}, {"p": "fill_in", "title": "选用 2026 年仍产出富摘要的结构化类型（Product / Article / Organization / Breadcrumb）；已用 FAQPage/HowTo 的可保留（仍是有效 schema.org 类型，利于 AI 理解问答结构），但不要为富摘要而新增 FAQ/HowTo。", "why": "检测到 FAQ/HowTo 结构化数据：无富摘要收益，2026-05 起谷歌全面停展。标记本身无害可保留，但不应为富摘要目的新增。 schema 缺失或仍以弃用类型（FAQ/HowTo）为主，拿不到 2026 年仍展示的富摘要收益。", "impact": "中低（notice 级），修复为增量改善", "effort": "中", "risk": "内容改动需人工终审并遵守否定约束（禁堆词/禁编造）。", "verify": "用 Google 富媒体结果测试确认目标类型可通过；GSC 增强报告出现对应富摘要。", "conf": "高（实测）", "status": "accepted", "finding": "使用已弃用的富摘要 Schema 类型（FAQ/HowTo）", "sev": "ok", "claim": "measured_hard", "pillar": "P2", "side": "seo", "nref": 3, "ev": "279b4af1"}, {"p": "fill_in", "title": "补 E-E-A-T 代理信号：作者署名+背景、发布/更新日期、关于/联系页，并补充可验证的第一手经验证据（实拍/实操截图、操作步骤、案例数据）。", "why": "入口页缺少作者署名 / 可见日期 / 关于·联系入口中的：author、date。注意：这些是可信度的代理指标，并非 Google 官方排名因子，仅作为经验层参考。 E-E-A-T 代理信号缺失（作者/日期/关于页）会削弱可信度——注意这些是代理指标，非官方排名因子。", "impact": "中低（notice 级），修复为增量改善", "effort": "中", "risk": "内容改动需人工终审并遵守否定约束（禁堆词/禁编造）；本条依据为推断/假设级，落地后以数据验证。", "verify": "人工确认作者/日期/关于页齐备且经验证据可追溯来源。", "conf": "中低（推断）", "status": "accepted", "finding": "E-E-A-T 代理信号缺失", "sev": "ok", "claim": "inferred", "pillar": "P2", "side": "seo", "nref": 1, "ev": "1b33235b"}, {"p": "fill_in", "title": "补齐 Organization sameAs：在结构化数据中关联官方社媒/维基/权威目录，强化实体识别。", "why": "Organization/品牌结构化数据未通过 sameAs 指向 wikidata/linkedin/crunchbase/官方社媒等权威消歧节点，搜索与 AI 引擎更难将品牌锚定为确定实体。实体消歧机制有 Bing 官方确认（sameAs 用于实体识别），但对可见性/引用的效果不做量化断言。 实体 sameAs 关联缺失，搜索与 AI 引擎更难把品牌识别为确定实体。", "impact": "中低（notice 级），修复为增量改善", "effort": "低", "risk": "内容改动需人工终审并遵守否定约束（禁堆词/禁编造）。", "verify": "重新抓取确认 Organization 含 sameAs；观察知识面板/实体识别改善。", "conf": "高（实测）", "status": "accepted", "finding": "Organization/品牌 schema 缺权威 sameAs 消歧节点", "sev": "ok", "claim": "measured_hard", "pillar": "P5", "side": "geo", "nref": 1, "ev": "279b4af1"}, {"p": "fill_in", "title": "根据证据优化该内容页，围绕搜索意图补齐深度并保证与前端一致。", "why": "在 https://metadocu.com/llms.txt 检测到 llms.txt。当前无证据支持其对 AI 可见性有效（Ahrefs 研究：约 97% 从未被读取；Google 将其类比为已弃用的 keywords meta），此处仅作存在性记录，不据此提出优化建议。 该内容问题影响相关性、可提取性或可信度。", "impact": "中低（notice 级），修复为增量改善", "effort": "中", "risk": "内容改动需人工终审并遵守否定约束（禁堆词/禁编造）。", "verify": "GSC/探针观察该页展示、排名或被引用情况改善。", "conf": "高（实测）", "status": "accepted", "finding": "检测到 llms.txt（仅记录，不建议投入）", "sev": "ok", "claim": "measured_hard", "pillar": "P5", "side": "geo", "nref": 1, "ev": "3d2973fa"}, {"p": "low", "title": "补足浅覆盖话题群的内容深度（围绕核心话题扩展子主题页），并在孤立话题群之间建立主题内链，形成话题网络。", "why": "2 个话题群仅 1-2 页（有话题无深度）；2 个话题群群内邻接（成员互链）密度近乎为 0（话题群孤立）。主题权威系行业经验框架、非官方排名因子，此处仅作结构性建议。 话题群仅 1-2 页或群内近乎无站内入度，主题覆盖浅且割裂（结构性推断，非排名断言）。", "impact": "中低（notice 级），修复为增量改善", "effort": "高", "risk": "内容改动需人工终审并遵守否定约束（禁堆词/禁编造）；本条依据为推断/假设级，落地后以数据验证。", "verify": "重新统计话题群页数与群内入度均值是否提升；GSC 观察该话题聚合展示是否上升。", "conf": "中低（推断）", "status": "accepted", "finding": "主题覆盖浅 / 话题群割裂", "sev": "ok", "claim": "inferred", "pillar": "P2", "side": "seo", "nref": 1, "ev": "29ccea9b"}, {"p": "low", "title": "对照确认竞品的引荐域中位数补外链：优先争取行业权威站、真实媒体报道与自然提及；不追求数量堆砌，追求高质量引荐域覆盖。", "why": "本站外链概况（引荐域数 / 反链数 / 域权重），仅概况不做逐链审计。当前无确认竞品的外链数据作对比基准，接入竞品后可判断相对强弱。数据为 DataForSEO 第三方估算。 引荐域数量与质量落后竞品会限制整体权重上限；权威站的自然引荐是最稳的信任信号。", "impact": "中低（notice 级），修复为增量改善", "effort": "高", "risk": "外链数据为第三方估算（L3），仅作概况对比，不做逐链质量断言。", "verify": "3-6 个月后复测引荐域数与竞品中位数的差距（外链见效慢）。", "conf": "中（抽样实测）", "status": "accepted", "finding": "本站外链概况", "sev": "ok", "claim": "measured_sample", "pillar": "P5", "side": "seo", "nref": 1, "ev": "4e8765cb"}, {"p": "low", "title": "建设品牌实体以争取 Knowledge Panel：完善 Organization schema（含 sameAs 指向 Wikidata/LinkedIn/Crunchbase/官方社媒）、保持 NAP 一致、争取权威第三方对品牌的收录与提及。", "why": "品牌词搜索结果未出现 Knowledge Panel，说明品牌实体尚未被 Google 稳定识别为确定实体。这会削弱搜索与 AI 引擎对品牌的锚定。仅提示实体建设方向（Wikidata 条目、权威 sameAs、跨平台一致 NAP），不作处罚性结论。 有知识面板代表 Google 已识别品牌实体；实体清晰也利于 AI 引擎消歧与引用。", "impact": "中低（notice 级），修复为增量改善", "effort": "高", "risk": "无知识面板不作处罚性结论，仅作实体建设方向。", "verify": "复测品牌词 SERP 是否出现 Knowledge Panel。", "conf": "中（抽样实测）", "status": "accepted", "finding": "品牌词 SERP 无 Knowledge Panel", "sev": "ok", "claim": "measured_sample", "pillar": "P5", "side": "geo", "nref": 1, "ev": "bec165e9"}];
+  var DOMS = [["youtube.com", 13, false], ["monday.com", 8, false], ["airtable.com", 7, false], ["metadocu.com", 6, true], ["teamwork.com", 6, false], ["guideflow.com", 6, false], ["asana.com", 6, false], ["forbes.com", 5, false], ["medium.com", 4, false], ["thedigitalprojectmanager.com", 4, false], ["reddit.com", 3, false], ["everhour.com", 3, false], ["rock.so", 3, false], ["project-management.com", 3, false], ["zapier.com", 3, false], ["productive.io", 3, false], ["linkedin.com", 3, false], ["b2bsaasreviews.com", 2, false], ["userp.io", 2, false], ["ones.com", 2, false], ["viasocket.com", 2, false], ["payproglobal.com", 2, false], ["capchase.com", 2, false], ["rethinklab.co", 2, false], ["wrike.com", 2, false], ["soon.works", 2, false], ["saascrmreview.com", 2, false], ["upvoty.com", 2, false], ["goodday.work", 2, false], ["capterra.com", 2, false], ["paddle.com", 2, false], ["adoptkit.com", 2, false], ["resolution.de", 2, false], ["drata.com", 2, false], ["trustpilot.com", 1, false], ["paymoapp.com", 1, false], ["plaky.com", 1, false], ["learn.g2.com", 1, false], ["fyxer.com", 1, false], ["blog.devgenius.io", 1, false], ["plane.so", 1, false], ["github.com", 1, false], ["openproject.org", 1, false], ["cloudwards.net", 1, false], ["projectmanager.com", 1, false], ["dev.to", 1, false], ["rocket.chat", 1, false], ["deskflex.com", 1, false], ["vibe.us", 1, false], ["pluria.co", 1, false], ["saaswhizz.com", 1, false], ["shift.com", 1, false], ["kickidler.com", 1, false], ["cloudvara.com", 1, false], ["achievers.com", 1, false], ["redwerk.com", 1, false], ["mercury.com", 1, false], ["jotform.com", 1, false], ["athubtechnology.com", 1, false], ["partnify.com", 1, false], ["corma.io", 1, false], ["timetics.ai", 1, false], ["techpoint.africa", 1, false], ["clariantcreative.com", 1, false], ["joinx.co", 1, false], ["blog.tmetric.com", 1, false], ["workvivo.com", 1, false], ["clickup.com", 1, false], ["softwarefinder.com", 1, false], ["blog.logicaldoc.com", 1, false], ["zenpilot.com", 1, false], ["flowlu.com", 1, false], ["sacks.substack.com", 1, false], ["backstageseo.com", 1, false], ["itechtrove.net", 1, false], ["rightpatient.com", 1, false], ["fortunebusinessinsights.com", 1, false], ["trulycritic.com", 1, false], ["pmworld360.com", 1, false], ["baserow.io", 1, false], ["saasforwork.com", 1, false], ["useparagon.com", 1, false], ["fr.celoxis.com", 1, false], ["celoxis.com", 1, false], ["getharvest.com", 1, false], ["upskillist.com", 1, false], ["projectinsight.com", 1, false], ["taskrhino.ca", 1, false], ["moesif.com", 1, false], ["brex.com", 1, false], ["febi.ai", 1, false], ["qoreups.com", 1, false], ["growthspreeofficial.com", 1, false], ["velaris.io", 1, false], ["proserveit.com", 1, false], ["quicklaunchanalytics.com", 1, false], ["bizdata360.com", 1, false], ["conseroglobal.com", 1, false], ["noblue2.com", 1, false], ["wideo.co", 1, false], ["innovecs.com", 1, false], ["contentsquare.com", 1, false], ["ezo.io", 1, false], ["knack.com", 1, false], ["vertice.one", 1, false], ["accelo.com", 1, false], ["webmobtech.com", 1, false], ["archbee.com", 1, false], ["railsware.com", 1, false], ["atlassian.com", 1, false], ["help.asana.com", 1, false], ["empyra.com", 1, false], ["gend.co", 1, false], ["catworkx.one", 1, false], ["get-alfred.ai", 1, false], ["lifestack.ai", 1, false], ["cloudeagle.ai", 1, false], ["pricingio.com", 1, false], ["ai-bees.io", 1, false], ["founderpath.com", 1, false], ["business.adobe.com", 1, false], ["quickdiceerp.com", 1, false], ["goto.com", 1, false], ["moxo.com", 1, false], ["invixo.com", 1, false], ["slickplan.com", 1, false], ["es.celoxis.com", 1, false], ["sprinto.com", 1, false], ["v-comply.com", 1, false], ["cybersecuritytribe.com", 1, false], ["calvant.com", 1, false], ["probackup.io", 1, false], ["zeguro.com", 1, false], ["trycomp.ai", 1, false], ["scytale.ai", 1, false], ["unified.to", 1, false], ["techclass.com", 1, false], ["docontrol.io", 1, false]];
+  var Q1 = 'What are the best products or services for B2B SaaS · 项目协作?';
+
+  var NOTES = {
+    a: {
+      sum: '方向说明 · A 报告（检测报告式）',
+      cols: [
+        ['气质', '像一份第三方检测机构出具的报告：方正、表格化、抬头写清检测协议和规则版本，每个结果旁边是证据等级。'],
+        ['适合', '对外交付、需要显得严谨可信的场合。分享报告和营销站最受益。'],
+        ['代价', '工作台会偏正式，信息密度中等。圆角 2px，比主流工具（多为 6px）更硬朗。'],
+        ['字体与颜色', 'IBM Plex Sans + Noto Sans SC，数据用 IBM Plex Mono；强调色是墨水蓝，其余全是中性灰。']
+      ]
+    },
+    b: {
+      sum: '方向说明 · B 工具（专业软件式）',
+      cols: [
+        ['气质', '安静的软件外壳：左侧视图导航，紧凑的数字方块和表格，系统字体，保留现在的品牌青色。'],
+        ['适合', '你自己每天操作、一屏扫读大量数据。'],
+        ['代价', '对外的分享报告会更像软件截图，正式感弱一些。整体最接近 Linear、GitHub 这类工具，辨识度较低。'],
+        ['字体与颜色', '系统字体（苹方 / 微软雅黑），不加载网络字体；强调色品牌青，圆角 6px。']
+      ]
+    },
+    c: {
+      sum: '方向说明 · C 极简（体检报告式）',
+      cols: [
+        ['气质', '大字号、大留白、黑白为主。颜色只出现在有含义的地方：严重度和回答质量。数字大，每个数字配一句白话。'],
+        ['适合', '给不懂 SEO 的站主看，一眼看懂结论。'],
+        ['代价', '工作台一屏信息最少，需要更多滚动；黑色按钮的克制感也意味着品牌色存在感最弱。'],
+        ['字体与颜色', 'Source Sans 3 + Noto Sans SC；强调色就是黑色，控件圆角 10px。']
+      ]
+    }
+  };
+  var SHARED = {
+    never: ['渐变、发光、毛玻璃、模糊入场、数字滚动、列表飞入', '网格或点阵装饰背景、装饰圆弧、大色块横幅', '英文大写等宽小标签、emoji、星星类“智能”图标', '卡片彩色左边条；同一页出现两种以上面板样式', '用颜色表示优先级；一个颜色同时代表两件事', '用骨架屏冒充“没有数据”', '超过 10 行的列表默认全部展开'],
+    same: ['顶栏只保留导航和「新建分析」，去掉营销式页脚', '诊断页改成工作区：上下文抬头 + 视图导航，四步进度条不再兼做导航', '概览先给结论和 4 个关键数字，问题清单上移，长名单默认只显示前 10 条', '建议改成可筛选的列表，行内确认，展开看依据', '证据等级用形状编码（实心 / 空心 / 虚线），严重度用颜色方块']
+  };
+
+  var root = document.documentElement;
+  var state = { view: 'overview', pane: 'overview', dir: 'a', theme: 'system', w: 'desk' };
+  try { var saved = JSON.parse(localStorage.getItem('veris-redesign-proto') || '{}'); for (var k in saved) { if (k in state) state[k] = saved[k]; } } catch (e) {}
+  function save() { try { localStorage.setItem('veris-redesign-proto', JSON.stringify(state)); } catch (e) {} }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function press(attr, val) { document.querySelectorAll('[' + attr + ']').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute(attr) === val)); }); }
+
+  function renderNote() {
+    var n = NOTES[state.dir];
+    document.getElementById('pnote-sum').textContent = n.sum;
+    var html = n.cols.map(function (c) { return '<div><h4>' + esc(c[0]) + '</h4><p>' + esc(c[1]) + '</p></div>'; }).join('');
+    html += '<div><h4>三个方向都不做</h4><ul>' + SHARED.never.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></div>';
+    html += '<div><h4>三个方向共用的结构改动</h4><ul>' + SHARED.same.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></div>';
+    document.getElementById('pnote-body').innerHTML = html;
+  }
+
+  function applyDir() { root.setAttribute('data-dir', state.dir); press('data-dir-btn', state.dir); renderNote(); }
+  function applyTheme() {
+    if (state.theme === 'light' || state.theme === 'dark') root.setAttribute('data-theme', state.theme); else root.removeAttribute('data-theme');
+    press('data-theme-btn', state.theme);
+  }
+  var PANE_NAMES = { issues: '问题', exec: '执行清单', reportpane: '报告', site: '站点结构', kw: '关键词', comp: '竞品', facts: '品牌事实' };
+  function applyView() {
+    var isApp = state.view === 'overview' || state.view === 'recs' || state.view === 'other';
+    document.getElementById('screen-app').hidden = !isApp;
+    document.getElementById('screen-report').hidden = state.view !== 'report';
+    document.getElementById('screen-mkt').hidden = state.view !== 'mkt';
+    press('data-view-btn', state.view);
+    if (isApp) {
+      var pane = state.view === 'recs' ? 'recs' : (state.view === 'overview' ? 'overview' : state.pane);
+      var ov = document.getElementById('pane-overview');
+      ov.hidden = pane !== 'overview'; ov.style.display = pane === 'overview' ? 'contents' : 'none';
+      document.getElementById('pane-recs').hidden = pane !== 'recs';
+      var other = pane !== 'overview' && pane !== 'recs';
+      document.getElementById('pane-other').hidden = !other;
+      if (other) document.getElementById('other-name').textContent = '「' + (PANE_NAMES[pane] || '这个视图') + '」视图';
+      document.querySelectorAll('.tabs a, .datalinks a').forEach(function (a) {
+        if (a.getAttribute('data-pane') === pane) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+      });
+    }
+  }
+  function applyW() { document.getElementById('doc').setAttribute('data-w', state.w); press('data-w', state.w); }
+
+  /* AI 提问网格 */
+  var qgrid = document.getElementById('qgrid');
+  for (var i = 1; i <= 23; i++) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'q'; b.textContent = i; b.setAttribute('aria-pressed', 'false');
+    b.setAttribute('aria-label', '提问 ' + i + '：没提到你');
+    b.dataset.q = i; qgrid.appendChild(b);
+  }
+  qgrid.addEventListener('click', function (e) {
+    var b = e.target.closest('.q'); if (!b) return;
+    qgrid.querySelectorAll('.q').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+    var n = b.dataset.q;
+    document.getElementById('qdetail').innerHTML = n === '1'
+      ? '<b>提问 1</b>　' + esc(Q1) + '<br>DeepSeek：没提到你'
+      : '<b>提问 ' + n + '</b>　原文未载入原型（真实页面点开即可看到）<br>DeepSeek：没提到你';
+  });
+
+  /* 引用域名表 */
+  var domOpen = false;
+  function renderDoms() {
+    var max = DOMS[0][1];
+    var rows = (domOpen ? DOMS : DOMS.slice(0, 10)).map(function (d) {
+      return '<tr' + (d[2] ? ' class="own"' : '') + '><td class="mono">' + esc(d[0]) + (d[2] ? '<span class="you">你的域名</span>' : '') + '</td><td class="r">' + d[1] + '</td><td class="barcol"><div class="bar"><i style="width:' + (d[1] / max * 100).toFixed(1) + '%"></i></div></td></tr>';
+    }).join('');
+    document.getElementById('dom-body').innerHTML = rows;
+    document.getElementById('dom-toggle').textContent = domOpen ? '只看前 10 个' : '显示全部 ' + DOMS.length + ' 个域名';
+  }
+  document.getElementById('dom-toggle').addEventListener('click', function () { domOpen = !domOpen; renderDoms(); });
+
+  /* 建议列表 */
+  var PRI = { quick_win: ['优先处理', '高影响 · 低成本'], strategic: ['重点投入', '高影响 · 高成本'], fill_in: ['顺手补齐', '低影响 · 低成本'], low: ['暂缓处理', '低影响 · 高成本'] };
+  var SEV = { high: ['高', 'sev-high'], mid: ['中', 'sev-mid'], ok: ['提示', 'sev-low'] };
+  var EV = { measured_hard: ['实测', 'ev-hard'], measured_sample: ['抽样实测', 'ev-sample'], inferred: ['推断', 'ev-inferred'], hypothesis: ['假设', 'ev-hypo'] };
+  function lvl(s) { var m = String(s || '').match(/^(中低|中高|高|中|低)/); return m ? m[1] : '—'; }
+  RECS.forEach(function (r, idx) { r.idx = idx; if (idx === 1 || idx === 4) r.status = 'draft'; });
+  var filter = 'all';
+  var openRec = {};
+  function statusHtml(r) {
+    if (r.status === 'draft') return '<button class="btn btn-sm btn-primary" type="button" data-act="accept" data-i="' + r.idx + '">接受</button><button class="btn btn-sm" type="button" data-act="reject" data-i="' + r.idx + '">否决</button>';
+    if (r.status === 'rejected') return '<span class="st-no">已否决</span>';
+    if (r.status === 'edited') return '<span class="st-ok">✓ 已编辑</span>';
+    return '<span class="st-ok">✓ 已接受</span>';
+  }
+  function renderRecs() {
+    var counts = { all: RECS.length, draft: 0, accepted: 0, rejected: 0 };
+    RECS.forEach(function (r) { if (r.status === 'draft') counts.draft++; else if (r.status === 'rejected') counts.rejected++; else counts.accepted++; });
+    Object.keys(counts).forEach(function (k) { document.getElementById('c-' + k).textContent = counts[k]; });
+    var html = '';
+    ['quick_win', 'strategic', 'fill_in', 'low'].forEach(function (p) {
+      var list = RECS.filter(function (r) {
+        if (r.p !== p) return false;
+        if (filter === 'all') return true;
+        if (filter === 'accepted') return r.status === 'accepted' || r.status === 'edited';
+        return r.status === filter;
+      });
+      if (!list.length) return;
+      html += '<div class="group-head"><b>' + PRI[p][0] + '</b><span>' + PRI[p][1] + ' · ' + list.length + ' 条</span></div>';
+      list.forEach(function (r) {
+        var sev = SEV[r.sev] || SEV.ok, ev = EV[r.claim] || EV.inferred, open = !!openRec[r.idx];
+        html += '<div class="rec" data-status="' + r.status + '">' +
+          '<div class="rec-row">' +
+            '<button class="rec-toggle" type="button" aria-expanded="' + open + '" aria-controls="rd-' + r.idx + '" data-toggle="' + r.idx + '">' +
+              '<span class="sev ' + sev[1] + '">' + sev[0] + '</span>' +
+              '<span><span class="rec-title">' + esc(r.title) + '</span><span class="rec-for">针对：' + esc(r.finding) + '</span></span>' +
+            '</button>' +
+            '<span class="rec-meta"><span>影响 <b>' + lvl(r.impact) + '</b></span><span>工作量 <b>' + esc(r.effort) + '</b></span></span>' +
+            '<span class="ev ' + ev[1] + '">' + ev[0] + '</span>' +
+            '<span class="rec-status">' + statusHtml(r) + '</span>' +
+          '</div>' +
+          '<div class="rec-detail" id="rd-' + r.idx + '"' + (open ? '' : ' hidden') + '>' +
+            '<dl class="kv">' +
+              '<div style="display:contents"><dt>为什么</dt><dd>' + esc(r.why) + '</dd></div>' +
+              '<div style="display:contents"><dt>预期影响</dt><dd>' + esc(r.impact) + '</dd></div>' +
+              '<div style="display:contents"><dt>风险</dt><dd>' + esc(r.risk) + '</dd></div>' +
+              '<div style="display:contents"><dt>如何验证</dt><dd>' + esc(r.verify) + '</dd></div>' +
+              '<div style="display:contents"><dt>证据</dt><dd><a href="#" data-noop class="mono">ev_' + esc(r.ev) + '</a>　' + r.nref + ' 条原始数据 · 置信 ' + esc(r.conf) + '</dd></div>' +
+            '</dl>' +
+            '<div class="rec-actions">' + (r.status === 'draft'
+              ? '<button class="btn btn-primary btn-sm" type="button" data-act="accept" data-i="' + r.idx + '">接受</button><button class="btn btn-sm" type="button" data-act="edit" data-i="' + r.idx + '">编辑后接受</button><button class="btn btn-quiet btn-sm" type="button" data-act="reject" data-i="' + r.idx + '">否决</button>'
+              : '<button class="btn btn-sm" type="button" data-act="edit" data-i="' + r.idx + '">编辑</button><button class="btn btn-quiet btn-sm" type="button" data-act="undo" data-i="' + r.idx + '">改回待确认</button>') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      });
+    });
+    if (!html) html = '<div class="placeholder"><p>没有符合这个筛选条件的建议。</p></div>';
+    document.getElementById('recs').innerHTML = html;
+  }
+  document.getElementById('recs').addEventListener('click', function (e) {
+    var t = e.target.closest('[data-toggle]');
+    if (t) { var i = t.getAttribute('data-toggle'); openRec[i] = !openRec[i]; renderRecs(); var again = document.querySelector('[data-toggle="' + i + '"]'); if (again) again.focus(); return; }
+    var a = e.target.closest('[data-act]'); if (!a) return;
+    var r = RECS[Number(a.getAttribute('data-i'))], act = a.getAttribute('data-act');
+    if (act === 'accept') r.status = 'accepted';
+    else if (act === 'edit') r.status = 'edited';
+    else if (act === 'reject') r.status = 'rejected';
+    else if (act === 'undo') r.status = 'draft';
+    renderRecs();
+  });
+  document.querySelectorAll('.filters button').forEach(function (b) {
+    b.addEventListener('click', function () { filter = b.getAttribute('data-f'); document.querySelectorAll('.filters button').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); }); renderRecs(); });
+  });
+
+  /* 事件 */
+  document.addEventListener('click', function (e) {
+    var noop = e.target.closest('[data-noop]'); if (noop) { e.preventDefault(); return; }
+    var v = e.target.closest('[data-view-btn]'); if (v) { state.view = v.getAttribute('data-view-btn'); if (state.view === 'overview' || state.view === 'recs') state.pane = state.view; applyView(); save(); window.scrollTo(0, 0); return; }
+    var d = e.target.closest('[data-dir-btn]'); if (d) { state.dir = d.getAttribute('data-dir-btn'); applyDir(); save(); return; }
+    var th = e.target.closest('[data-theme-btn]'); if (th) { state.theme = th.getAttribute('data-theme-btn'); applyTheme(); save(); return; }
+    var w = e.target.closest('[data-w]'); if (w && w.tagName === 'BUTTON') { state.w = w.getAttribute('data-w'); applyW(); save(); return; }
+    var p = e.target.closest('[data-pane]');
+    if (p) {
+      e.preventDefault();
+      state.pane = p.getAttribute('data-pane');
+      state.view = state.pane === 'overview' ? 'overview' : (state.pane === 'recs' ? 'recs' : 'other');
+      applyView(); save(); return;
+    }
+    var go = e.target.closest('[data-go]');
+    if (go) {
+      var g = go.getAttribute('data-go');
+      if (g === 'report') { state.view = 'report'; } else { state.pane = g; state.view = 'other'; }
+      applyView(); save(); window.scrollTo(0, 0);
+    }
+  });
+
+  applyDir(); applyTheme(); applyView(); applyW(); renderDoms(); renderRecs();
+})();
+</script>
