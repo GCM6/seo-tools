@@ -1,11 +1,19 @@
 import type { ReactNode } from 'react'
 
-// A deliberately small Markdown previewer. Delivery drafts and the execution
-// decision report are plain text from our own server-side assemblers, so
-// rendering only the structural Markdown we produce keeps the preview safe
-// without adding an HTML parsing dependency.
-// Standalone module so ActionReportWorkspace (and any future delivery-style
-// card) can import it without pulling in card-specific applied/copy state.
+// 小型 Markdown 渲染：交付稿、执行报告是服务端自己拼的纯文本；AI 回答原文也会带 **加粗**、`代码`。
+// 只渲染结构性 Markdown（标题、列表、引用、代码块）和两种行内格式（**加粗**、`行内代码`），
+// 不解析 HTML、不用 dangerouslySetInnerHTML，所以对 LLM 原文也是安全的（design-system §4 Markdown：
+// AI 回答必须渲染，不能显示 ** 原文）。
+const INLINE_RE = /(\*\*[^*\n]+\*\*|`[^`\n]+`)/g
+
+export function renderInline(text: string): ReactNode[] {
+  return text.split(INLINE_RE).map((part, i) => {
+    if (part.length > 4 && part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{part.slice(2, -2)}</strong>
+    if (part.length > 2 && part.startsWith('`') && part.endsWith('`')) return <code key={i}>{part.slice(1, -1)}</code>
+    return part
+  })
+}
+
 export function MarkdownPreview({ markdown }: { markdown: string }) {
   const nodes: ReactNode[] = []
   const lines = markdown.split('\n')
@@ -26,20 +34,20 @@ export function MarkdownPreview({ markdown }: { markdown: string }) {
         index += 1
       }
       if (index < lines.length) index += 1
-      nodes.push(<pre key={`code-${index}`} className="delivery-code">{code.join('\n')}</pre>)
+      nodes.push(<pre key={`code-${index}`} className="ui-code">{code.join('\n')}</pre>)
       continue
     }
 
     const heading = /^(#{1,3})\s+(.+)$/.exec(line)
     if (heading) {
       const Tag = heading[1].length === 1 ? 'h2' : heading[1].length === 2 ? 'h3' : 'h4'
-      nodes.push(<Tag key={`heading-${index}`}>{heading[2]}</Tag>)
+      nodes.push(<Tag key={`heading-${index}`}>{renderInline(heading[2])}</Tag>)
       index += 1
       continue
     }
 
     if (line.startsWith('> ')) {
-      nodes.push(<blockquote key={`quote-${index}`}>{line.slice(2)}</blockquote>)
+      nodes.push(<blockquote key={`quote-${index}`}>{renderInline(line.slice(2))}</blockquote>)
       index += 1
       continue
     }
@@ -52,7 +60,7 @@ export function MarkdownPreview({ markdown }: { markdown: string }) {
       }
       nodes.push(
         <ul key={`list-${index}`}>
-          {items.map((item, itemIndex) => <li key={`${index}-${itemIndex}`}>{item}</li>)}
+          {items.map((item, itemIndex) => <li key={`${index}-${itemIndex}`}>{renderInline(item)}</li>)}
         </ul>,
       )
       continue
@@ -66,15 +74,15 @@ export function MarkdownPreview({ markdown }: { markdown: string }) {
       }
       nodes.push(
         <ol key={`list-${index}`}>
-          {items.map((item, itemIndex) => <li key={`${index}-${itemIndex}`}>{item}</li>)}
+          {items.map((item, itemIndex) => <li key={`${index}-${itemIndex}`}>{renderInline(item)}</li>)}
         </ol>,
       )
       continue
     }
 
-    nodes.push(<p key={`paragraph-${index}`}>{line}</p>)
+    nodes.push(<p key={`paragraph-${index}`}>{renderInline(line)}</p>)
     index += 1
   }
 
-  return <div className="delivery-preview">{nodes}</div>
+  return <div className="ui-prose">{nodes}</div>
 }

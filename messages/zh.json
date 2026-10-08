@@ -376,6 +376,7 @@
       "cancel": "中止诊断",
       "cancelling": "正在中止…",
       "cancelConfirm": "要中止本轮诊断吗？已采集的证据会保留。",
+      "keepRunning": "继续诊断",
       "cancelFailed": "中止失败，请稍后再试。",
       "streamLabel": "证据流",
       "evidence": {
@@ -1344,5 +1345,146 @@
       "token_exchange_failed": "Google 授权成功，但换取访问令牌失败，GSC 未连接。请重新连接；若反复出现，请检查 GOOGLE_OAUTH_CLIENT_SECRET 与回调地址配置。"
     },
     "reauth": "Google 授权已失效（被撤销或已过期），无法读取 GSC 资源，采集也会失败。请点「重新连接 GSC」重新授权。"
+  },
+  "workspace": {
+    "crumbProjects": "项目",
+    "runType": {
+      "baseline": "基线诊断",
+      "retest": "回测诊断"
+    },
+    "facts": {
+      "market": "市场",
+      "finishedAt": "完成于",
+      "startedAt": "开始于",
+      "protocol": "检测协议",
+      "rules": "规则版本",
+      "evidence": "证据",
+      "evidenceCount": "{n} 条",
+      "runId": "编号",
+      "timeUnknown": "时间未记录"
+    },
+    "life": {
+      "label": "诊断进度",
+      "collect": "采集证据",
+      "diagnose": "生成诊断",
+      "review": "确认建议",
+      "execute": "执行",
+      "retest": "4–6 周后复查",
+      "failed": "未完成"
+    },
+    "tabs": {
+      "label": "诊断视图",
+      "overview": "概览",
+      "issues": "问题",
+      "recs": "建议",
+      "exec": "执行清单",
+      "report": "报告",
+      "rawData": "原始数据",
+      "site": "站点结构",
+      "keywords": "关键词",
+      "competitors": "竞品",
+      "facts": "品牌事实"
+    },
+    "action": {
+      "review": "确认建议（{n} 条待确认）",
+      "reviewNone": "查看建议",
+      "execute": "打开执行清单",
+      "share": "分享报告"
+    },
+    "pillarShort": {
+      "P1": "P1 技术健康",
+      "P2": "P2 结构化数据",
+      "P3": "P3 关键词与内容",
+      "P4": "P4 SERP 竞争格局",
+      "P5": "P5 品牌与 GEO"
+    },
+    "sev": {
+      "high": "高",
+      "mid": "中",
+      "ok": "提示"
+    }
+  },
+  "overview": {
+    "coverage": "数据覆盖 {up} / {total}",
+    "coverageMissing": "未接入：{names}。补齐后重新诊断，覆盖会更完整。",
+    "coverageAction": "去设置",
+    "conclusionTitle": "结论",
+    "conclusionNote": "每个结果都标了证据等级，可展开看原始数据",
+    "lead": {
+      "aiAbsent": "AI 目前不会主动推荐 {brand}：{total} 个不提品牌名的提问里，提到你 0 次。",
+      "aiPartial": "{total} 个不提品牌名的提问里，AI 提到 {brand} {present} 次。",
+      "aiUnmeasured": "本轮没有测到 AI 会不会主动推荐你。",
+      "topIssue": "最先要修的是：{title}。",
+      "noIssue": "本轮没有发现需要处理的问题。"
+    },
+    "col": {
+      "item": "检测项目",
+      "result": "结果",
+      "note": "说明",
+      "evidence": "证据"
+    },
+    "notConnected": "未接入",
+    "notMeasured": "本轮未测量",
+    "connect": "去连接",
+    "viewEvidence": "原始数据",
+    "topIssuesTitle": "优先处理的问题",
+    "allIssues": "全部 {n} 个问题",
+    "aiTitle": "AI 可见度",
+    "aiNote": "开发者 API 采样，方向性指标，不等于用户在 App 里看到的结果",
+    "probePending": "已配置 AI 引擎（{providers}），本轮还没有探针结果，重新诊断后会出数。",
+    "sovTitle": "竞品提及占比",
+    "sovNote": "品牌与竞品在全部 AI 回答样本中的提及占比",
+    "citedTitle": "AI 回答引用的域名",
+    "citedNote": "回答正文真正引用的域名，按次数排序",
+    "aioTitle": "Google AI 概览",
+    "aioNote": "真实搜索结果页采样",
+    "perEngineTitle": "分引擎可见度",
+    "sentimentLine": "品牌提及情感（每条提问每个引擎 n={n}）：正面 {pos} · 中性 {neu} · 负面 {neg} · 比较 {cmp}",
+    "footnote": "只展示本轮已采集或已生成的真实数据；依赖未接入数据源的部分如实标注为未接入。",
+    "showAll": "显示全部 {n} 个",
+    "showLess": "只看前 {n} 个",
+    "domainCol": "域名",
+    "countCol": "引用次数",
+    "shareCol": "占比",
+    "metric": {
+      "indexVisibility": "Google 可见性信号",
+      "aiVisibility": "AI 主动推荐",
+      "avgRank": "平均自然排名",
+      "crawlableText": "无 JS 正文可读性",
+      "schemaCoverage": "首页结构化数据"
+    },
+    "metricNote": {
+      "indexVisibility": "Google 检索结果中你的站点出现的信号",
+      "aiVisibility": "不提品牌名的提问中，AI 提到你的次数",
+      "avgRank": "Google 自然搜索位置，越小越靠前",
+      "crawlableText": "不执行 JavaScript 时能读到的正文占比",
+      "schemaCoverage": "首页使用的结构化数据类型数"
+    },
+    "pending": {
+      "search_provider": "需要接入 Google 可见性检索（CSE）才能测量。",
+      "ai_probe": "需要接入至少一个 AI 引擎，并在新建分析时勾选。",
+      "gsc": "需要在项目页连接 Search Console 并选择资源。",
+      "render_fallback": "渲染抓取未配置，本轮只采集了初始 HTML，无法比较渲染前后的正文。",
+      "uncollected": "数据源已就绪，本轮没有采集到这项证据，重新诊断即可补上。"
+    }
+  },
+  "issues": {
+    "title": "问题",
+    "note": "按严重度排序，展开查看说明与原始证据",
+    "filterSeverity": "按严重度筛选",
+    "filterSide": "按维度筛选",
+    "sevLabel": "严重度",
+    "sideLabel": "维度",
+    "all": "全部",
+    "side": {
+      "geo": "GEO",
+      "seo": "SEO",
+      "technical": "技术"
+    },
+    "empty": "本轮没有发现问题。",
+    "emptyFiltered": "没有符合筛选条件的问题。",
+    "clearFilters": "清除筛选",
+    "evidenceLabel": "原始证据",
+    "noEvidence": "这条问题没有可展示的原始证据。"
   }
 }

@@ -1,7 +1,7 @@
 import { setRequestLocale, getTranslations } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Shell } from '@/components/Shell'
+import { RunWorkspace } from '@/components/RunWorkspace'
 import { BrandFactRow, type FactStatus } from '@/components/BrandFactRow'
 import { getRun, getProject, getBrandFacts } from '@/lib/repositories'
 import { addBrandFact, setBrandFactStatus, removeBrandFact } from './actions'
@@ -24,7 +24,7 @@ export default async function FactsPage({
   const facts = await getBrandFacts(project.id)
 
   return (
-    <Shell runId={id} domain={project.domain}>
+    <RunWorkspace runId={id} locale={locale} current="facts">
       <section className="screen show">
         <div className="sec-h">
           <div>
@@ -130,6 +130,6 @@ export default async function FactsPage({
           </Link>
         </div>
       </section>
-    </Shell>
+    </RunWorkspace>
   )
 }

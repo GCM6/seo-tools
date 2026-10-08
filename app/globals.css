@@ -4015,6 +4015,8 @@
 
 /* 屏显表格（打印表格样式在 @media print 内另有定义）。 */
 .report-table-wrap {
+  /* relative：表头里 sr-only 的绝对定位说明文字以它为包含块，才会被这里的横向滚动裁住，不撑宽整页 */
+  position: relative;
   overflow-x: auto;
   margin-bottom: 14px;
 }

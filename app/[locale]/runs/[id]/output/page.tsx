@@ -1,7 +1,7 @@
 import { setRequestLocale, getTranslations } from 'next-intl/server'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Shell } from '@/components/Shell'
+import { RunWorkspace } from '@/components/RunWorkspace'
 import { ActionReportWorkspace } from '@/components/ActionReportWorkspace'
 import { ActionList, type ActionListItem, type ActionListPrompt, type ActionListRejectedItem } from '@/components/ActionList'
 import { RetestPlanCard } from '@/components/RetestPlanCard'
@@ -145,7 +145,7 @@ export default async function OutputPage({
   })
 
   return (
-    <Shell runId={id} domain={domain}>
+    <RunWorkspace runId={id} locale={locale} current="exec">
       <div className="sec-h output-page-head">
         <div>
           <h2>{t('title')}</h2>
@@ -217,6 +217,6 @@ export default async function OutputPage({
       />
 
       <div className="note">{t('note')}</div>
-    </Shell>
+    </RunWorkspace>
   )
 }

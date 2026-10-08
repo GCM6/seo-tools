@@ -9,18 +9,15 @@ import { scanSource, type StyleRule } from './style-guard'
 const PENDING_MIGRATION = new Set([
   'app/[locale]/page.tsx',
   'app/[locale]/rules/RulesAdminClient.tsx',
-  'app/[locale]/runs/[id]/page.tsx',
   'app/[locale]/settings/SettingsClient.tsx',
   'components/BrandAliasesCard.tsx',
   'components/BrandFactRow.tsx',
   'components/GscConnectCard.tsx',
   'components/NewAnalysisForm.tsx',
   'components/PillarGroupCard.tsx',
-  'components/PresenceMap.tsx',
   'components/ProjectList.tsx',
   'components/ReportToc.tsx',
   'components/ReportView.tsx',
-  'components/StatStrip.tsx',
 ])
 
 const ROOT = process.cwd()

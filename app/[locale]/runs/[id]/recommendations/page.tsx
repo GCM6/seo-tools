@@ -1,6 +1,6 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import Link from 'next/link'
-import { Shell } from '@/components/Shell'
+import { RunWorkspace } from '@/components/RunWorkspace'
 import { RecCard, type RecStatus } from '@/components/RecCard'
 import { notFound } from 'next/navigation'
 import { getRun, getRecommendations, getFindings } from '@/lib/repositories'
@@ -44,7 +44,7 @@ export default async function RecommendationsPage({
   const pendingCount = recs.filter((r) => r.status === 'draft').length
 
   return (
-    <Shell runId={id}>
+    <RunWorkspace runId={id} locale={locale} current="recs">
       <div className="sec-h rec-page-head">
         <div>
           <Link href={`/${locale}/runs/${id}`} className="rec-back-link">
@@ -103,6 +103,6 @@ export default async function RecommendationsPage({
       )}
 
       <div className="note">{t('note')}</div>
-    </Shell>
+    </RunWorkspace>
   )
 }

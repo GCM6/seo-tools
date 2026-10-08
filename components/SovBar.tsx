@@ -8,25 +8,28 @@ export interface SovRow {
   you: boolean
 }
 
-// Share-of-Voice bars — competitor visibility vs. yours. The "you" row is
-// tinted with the measured colour and carries the localized "(you)" suffix.
+// 竞品提及占比（Share of Voice）：一行一个品牌，自有品牌用强调色条并带「（你）」后缀。
 export function SovBar({ rows }: { rows: SovRow[] }) {
   const t = useTranslations('screen2')
 
   return (
-    <div className="card sov">
-      {rows.map((r) => (
-        <div key={r.name} className="sov-row">
-          <span className={r.you ? 'nm you' : 'nm'}>
-            {r.name}
-            {r.you ? t('youSuffix') : ''}
-          </span>
-          <div className={r.you ? 'bar you' : 'bar'}>
-            <i style={{ width: `${r.pct}%` }} />
-          </div>
-          <span className="pct">{r.pct}%</span>
-        </div>
-      ))}
+    <div className="ui-panel">
+      <div className="ui-panel__body">
+        <ul className="ui-sov">
+          {rows.map((r) => (
+            <li key={r.name} className={r.you ? 'is-you' : undefined}>
+              <span className="ui-sov__name">
+                {r.name}
+                {r.you ? t('youSuffix') : ''}
+              </span>
+              <span className={r.you ? 'ui-bar ui-bar--own' : 'ui-bar'} aria-hidden="true">
+                <i style={{ width: `${r.pct}%` }} />
+              </span>
+              <b className="ui-num">{r.pct}%</b>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   )
 }

@@ -22,6 +22,11 @@ export const getFinding = (id: string) => db.query.findings.findFirst({ where: e
 export const getRecommendations = (runId: string) => db.select().from(recommendations).where(eq(recommendations.runId, runId))
 export const getEvidence = (id: string) => db.query.evidenceArtifacts.findFirst({ where: eq(evidenceArtifacts.id, id) })
 export const getRunEvidence = (runId: string) => db.select().from(evidenceArtifacts).where(eq(evidenceArtifacts.runId, runId))
+// 只要条数时用这个，避免为了诊断页抬头的「证据 N 条」把整批证据 payload 读出来。
+export const countRunEvidence = async (runId: string): Promise<number> => {
+  const rows = await db.select({ n: sql<number>`count(*)` }).from(evidenceArtifacts).where(eq(evidenceArtifacts.runId, runId))
+  return Number(rows[0]?.n ?? 0)
+}
 export const getBrandFacts = (projectId: string) => db.select().from(brandFacts).where(eq(brandFacts.projectId, projectId))
 export const getBrandFact = (id: string) => db.query.brandFacts.findFirst({ where: eq(brandFacts.id, id) })
 

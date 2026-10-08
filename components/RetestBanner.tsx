@@ -3,10 +3,13 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { Button } from './Button'
+import { Notice } from './Notice'
 
-// 回测到期横幅（spec §5.1-6 / §7.4-5）。客户端叶子：一键发起同协议重跑。
+// 回测到期提示（spec §5.1-6 / §7.4-5）。客户端叶子：一键发起同协议重跑。
 // POST /api/runs/{id}/retest 由回测端点负责建 retest run 并派发采集事件，成功后
 // 跳到返回的 retest run 总览页。到期判定在服务端（page.tsx 比较 nextRetestDueAt）。
+// 统一用 Notice 组件（design-system §4 Notice），不再是一条没有样式的 banner。
 export function RetestBanner({ runId, locale }: { runId: string; locale: string }) {
   const t = useTranslations('retest')
   const router = useRouter()
@@ -35,12 +38,16 @@ export function RetestBanner({ runId, locale }: { runId: string; locale: string 
   }
 
   return (
-    <div className="banner retest-due" role="status">
-      <span className="banner-title">{t('dueTitle')}</span>
-      <button type="button" className="act acc on" onClick={start} disabled={loading}>
-        {loading ? t('starting') : t('dueCta')}
-      </button>
-      {error ? <span className="err">{t('error')}</span> : null}
-    </div>
+    <Notice
+      tone="warn"
+      title={t('dueTitle')}
+      action={
+        <Button variant="primary" size="sm" onClick={start} loading={loading}>
+          {loading ? t('starting') : t('dueCta')}
+        </Button>
+      }
+    >
+      {error ? <span className="ui-error">{t('error')}</span> : null}
+    </Notice>
   )
 }

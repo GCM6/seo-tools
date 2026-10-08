@@ -12,10 +12,12 @@ const platformLabels = {
   github: 'GitHub',
 } as const
 
+const listLabels = { domain: '域名', count: '引用次数', showAll: '显示全部', showLess: '收起' }
+
 describe('CitedDomainsCard', () => {
   it('renders nothing when there are no cited domains', () => {
     const { container } = render(
-      <CitedDomainsCard rows={[]} ownedLabel="自有" thirdPartyLabel="第三方" platformLabels={platformLabels} />,
+      <CitedDomainsCard rows={[]} ownedLabel="自有" thirdPartyLabel="第三方" platformLabels={platformLabels} listLabels={listLabels} />,
     )
     expect(container).toBeEmptyDOMElement()
   })
@@ -30,6 +32,7 @@ describe('CitedDomainsCard', () => {
         ownedLabel="自有"
         thirdPartyLabel="第三方"
         platformLabels={platformLabels}
+        listLabels={listLabels}
       />,
     )
     expect(screen.getByText('metadocu.com')).toBeInTheDocument()
@@ -47,6 +50,7 @@ describe('CitedDomainsCard', () => {
         ownedLabel="自有"
         thirdPartyLabel="第三方"
         platformLabels={platformLabels}
+        listLabels={listLabels}
       />,
     )
     expect(screen.getByText('Reddit')).toBeInTheDocument()
@@ -59,6 +63,7 @@ describe('CitedDomainsCard', () => {
         ownedLabel="自有"
         thirdPartyLabel="第三方"
         platformLabels={platformLabels}
+        listLabels={listLabels}
       />,
     )
     for (const label of Object.values(platformLabels)) {

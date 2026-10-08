@@ -3,8 +3,9 @@ import { render, screen } from '@testing-library/react'
 import { SeverityMark, severityLevel } from './SeverityMark'
 
 describe('severityLevel', () => {
-  it('high / mid 原样映射', () => {
+  it('high / mid 原样映射，旧别名 hi 也算 high', () => {
     expect(severityLevel('high')).toBe('high')
+    expect(severityLevel('hi')).toBe('high')
     expect(severityLevel('mid')).toBe('mid')
   })
 

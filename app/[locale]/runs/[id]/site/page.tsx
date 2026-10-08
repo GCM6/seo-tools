@@ -1,7 +1,7 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Shell } from '@/components/Shell'
+import { RunWorkspace } from '@/components/RunWorkspace'
 import { SitePageActions } from '@/components/SitePageActions'
 import { EmptyStateCTA } from '@/components/EmptyStateCTA'
 import { Term } from '@/components/Term'
@@ -58,14 +58,14 @@ export default async function SiteStructurePage({
 
   if (!payload) {
     return (
-      <Shell runId={id} domain={project?.domain}>
+      <RunWorkspace runId={id} locale={locale} current="site">
         <section className="screen show">
           <Link href={`/${locale}/runs/${id}`} className="rec-back-link">
             <span aria-hidden="true">←</span>
             {t('backToDiagnosis')}
           </Link>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1 className="text-lg font-semibold">{t('title')}</h1>
+            <h2 className="ui-sec-head__title">{t('title')}</h2>
             <div className="flex items-center gap-3 text-xs">
               <Link href={`/${locale}/runs/${id}/report`} className="underline underline-offset-2">
                 {t('viewReport')}
@@ -84,7 +84,7 @@ export default async function SiteStructurePage({
             />
           </div>
         </section>
-      </Shell>
+      </RunWorkspace>
     )
   }
 
@@ -125,16 +125,16 @@ export default async function SiteStructurePage({
     : []
 
   return (
-    <Shell runId={id} domain={project?.domain}>
+    <RunWorkspace runId={id} locale={locale} current="site">
       <section className="screen show">
         <Link href={`/${locale}/runs/${id}`} className="rec-back-link">
           <span aria-hidden="true">←</span>
           {t('backToDiagnosis')}
         </Link>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-lg font-semibold">
+          <h2 className="ui-sec-head__title">
             {project?.domain} · {t('title')}
-          </h1>
+          </h2>
           <div className="flex items-center gap-3 text-xs">
             <Link href={`/${locale}/runs/${id}/report`} className="underline underline-offset-2">
               {t('viewReport')}
@@ -316,6 +316,6 @@ export default async function SiteStructurePage({
           </div>
         </div>
       </section>
-    </Shell>
+    </RunWorkspace>
   )
 }

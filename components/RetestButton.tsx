@@ -70,18 +70,18 @@ export function RetestButton({
   }
 
   return (
-    <span className="retest-btn-wrap">
-      <button type="button" className={className ?? 'run-btn'} onClick={start} disabled={disabled || pending}>
+    <span className="ui-inline-actions">
+      <button type="button" className={className ?? 'ui-btn'} onClick={start} disabled={disabled || pending} aria-busy={pending || undefined}>
         {pending ? labels.starting : labels.cta}
       </button>
-      {state.kind === 'error' ? <span className="err">{labels.error}</span> : null}
+      {state.kind === 'error' ? <span className="ui-error" role="status">{labels.error}</span> : null}
       {state.kind === 'needsSetup' ? (
-        <Link href={`/${locale}/new?projectId=${state.projectId}`} className="err">
+        <Link href={`/${locale}/new?projectId=${state.projectId}`} className="ui-error">
           {labels.needsSetup ?? labels.error}
         </Link>
       ) : null}
       {state.kind === 'inProgress' ? (
-        <Link href={`/${locale}/runs/${state.runId}`} className="err">
+        <Link href={`/${locale}/runs/${state.runId}`} className="ui-error">
           {labels.inProgress}
         </Link>
       ) : null}

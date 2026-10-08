@@ -4,7 +4,7 @@ export type SeverityLevel = 'high' | 'mid' | 'low' | 'pass'
 
 /** findings.severity（high | mid | ok）→ 标记级别；未知值按「提示」处理，不冒充更高或达标。 */
 export function severityLevel(severity: string): SeverityLevel {
-  if (severity === 'high') return 'high'
+  if (severity === 'high' || severity === 'hi') return 'high' // 'hi' 是旧代码里的 CSS 类名别名
   if (severity === 'mid') return 'mid'
   return 'low'
 }

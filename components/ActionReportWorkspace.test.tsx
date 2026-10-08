@@ -82,7 +82,9 @@ describe('ActionReportWorkspace', () => {
     expect(await screen.findByText('AI summary added')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand preview' }))
-    expect(screen.getByText('`rec_1` is the first action.')).toBeInTheDocument()
+    // 行内 Markdown 已渲染：`rec_1` 变成 <code>，不再显示反引号原文（design-system §4 Markdown）。
+    const item = screen.getByText((_, el) => el?.tagName === 'LI' && el.textContent === 'rec_1 is the first action.')
+    expect(item.querySelector('code')).toHaveTextContent('rec_1')
   })
 
   describe('AI error typing — distinct copy per HTTP status, not one folded message', () => {

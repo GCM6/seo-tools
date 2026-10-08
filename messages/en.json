@@ -376,6 +376,7 @@
       "cancel": "Stop diagnosis",
       "cancelling": "Stopping…",
       "cancelConfirm": "Stop this diagnosis? Evidence already collected will be kept.",
+      "keepRunning": "Keep running",
       "cancelFailed": "Could not stop the diagnosis. Please try again later.",
       "streamLabel": "Evidence stream",
       "evidence": {
@@ -1344,5 +1345,146 @@
       "token_exchange_failed": "Google consent succeeded but exchanging the code for tokens failed; GSC is not connected. Please reconnect; if it keeps happening, check GOOGLE_OAUTH_CLIENT_SECRET and the callback URI."
     },
     "reauth": "The Google authorization has expired or been revoked, so GSC properties cannot be read and collection will fail. Click \"Reconnect GSC\" to authorize again."
+  },
+  "workspace": {
+    "crumbProjects": "Projects",
+    "runType": {
+      "baseline": "Baseline diagnosis",
+      "retest": "Retest"
+    },
+    "facts": {
+      "market": "Market",
+      "finishedAt": "Finished",
+      "startedAt": "Started",
+      "protocol": "Protocol",
+      "rules": "Rules",
+      "evidence": "Evidence",
+      "evidenceCount": "{n} items",
+      "runId": "ID",
+      "timeUnknown": "Time not recorded"
+    },
+    "life": {
+      "label": "Diagnosis progress",
+      "collect": "Collect evidence",
+      "diagnose": "Diagnose",
+      "review": "Confirm recommendations",
+      "execute": "Execute",
+      "retest": "Retest in 4–6 weeks",
+      "failed": "incomplete"
+    },
+    "tabs": {
+      "label": "Diagnosis views",
+      "overview": "Overview",
+      "issues": "Issues",
+      "recs": "Recommendations",
+      "exec": "Action list",
+      "report": "Report",
+      "rawData": "Raw data",
+      "site": "Site structure",
+      "keywords": "Keywords",
+      "competitors": "Competitors",
+      "facts": "Brand facts"
+    },
+    "action": {
+      "review": "Review recommendations ({n} pending)",
+      "reviewNone": "View recommendations",
+      "execute": "Open action list",
+      "share": "Share report"
+    },
+    "pillarShort": {
+      "P1": "P1 Technical health",
+      "P2": "P2 Structured data",
+      "P3": "P3 Keywords & content",
+      "P4": "P4 SERP landscape",
+      "P5": "P5 Brand & GEO"
+    },
+    "sev": {
+      "high": "High",
+      "mid": "Medium",
+      "ok": "Note"
+    }
+  },
+  "overview": {
+    "coverage": "Data coverage {up} / {total}",
+    "coverageMissing": "Not connected: {names}. Connect them and rerun for fuller coverage.",
+    "coverageAction": "Open settings",
+    "conclusionTitle": "Conclusion",
+    "conclusionNote": "Every result shows its evidence grade; expand a row to see the raw data",
+    "lead": {
+      "aiAbsent": "AI doesn't recommend {brand} yet: mentioned 0 times in {total} questions that don't name the brand.",
+      "aiPartial": "In {total} questions that don't name the brand, AI mentioned {brand} {present} times.",
+      "aiUnmeasured": "This run didn't measure whether AI recommends you.",
+      "topIssue": "Fix this first: {title}.",
+      "noIssue": "This run found no issues to fix."
+    },
+    "col": {
+      "item": "Check",
+      "result": "Result",
+      "note": "What it means",
+      "evidence": "Evidence"
+    },
+    "notConnected": "Not connected",
+    "notMeasured": "Not measured this run",
+    "connect": "Connect",
+    "viewEvidence": "Raw data",
+    "topIssuesTitle": "Fix these first",
+    "allIssues": "All {n} issues",
+    "aiTitle": "AI visibility",
+    "aiNote": "Sampled through developer APIs; directional, not what users see in the apps",
+    "probePending": "AI engines are configured ({providers}) but this run has no probe results yet. Rerun the diagnosis to collect them.",
+    "sovTitle": "Share of mentions",
+    "sovNote": "How often your brand and competitors are mentioned across all AI answers",
+    "citedTitle": "Domains cited in AI answers",
+    "citedNote": "Domains actually cited in answer text, by count",
+    "aioTitle": "Google AI Overviews",
+    "aioNote": "Sampled from real search result pages",
+    "perEngineTitle": "Visibility by engine",
+    "sentimentLine": "Brand mention sentiment (n={n} per question per engine): positive {pos} · neutral {neu} · negative {neg} · comparison {cmp}",
+    "footnote": "Only data collected or generated in this run is shown; anything that depends on an unconnected source is labelled as such.",
+    "showAll": "Show all {n}",
+    "showLess": "Show top {n}",
+    "domainCol": "Domain",
+    "countCol": "Citations",
+    "shareCol": "Share",
+    "metric": {
+      "indexVisibility": "Google visibility signal",
+      "aiVisibility": "AI recommends you",
+      "avgRank": "Average organic position",
+      "crawlableText": "Text readable without JS",
+      "schemaCoverage": "Homepage structured data"
+    },
+    "metricNote": {
+      "indexVisibility": "Signals of your site appearing in Google results",
+      "aiVisibility": "Mentions of you in questions that don't name the brand",
+      "avgRank": "Position in Google organic results; lower is better",
+      "crawlableText": "Share of body text readable without running JavaScript",
+      "schemaCoverage": "Structured data types used on the homepage"
+    },
+    "pending": {
+      "search_provider": "Connect Google visibility search (CSE) to measure this.",
+      "ai_probe": "Connect at least one AI engine and select it when creating the analysis.",
+      "gsc": "Connect Search Console on the project page and pick a property.",
+      "render_fallback": "Rendering isn't configured, so only the initial HTML was collected; rendered vs. raw text can't be compared.",
+      "uncollected": "The data source is ready but this evidence wasn't collected in this run; rerun to fill it in."
+    }
+  },
+  "issues": {
+    "title": "Issues",
+    "note": "Sorted by severity; expand a row for details and raw evidence",
+    "filterSeverity": "Filter by severity",
+    "filterSide": "Filter by area",
+    "sevLabel": "Severity",
+    "sideLabel": "Area",
+    "all": "All",
+    "side": {
+      "geo": "GEO",
+      "seo": "SEO",
+      "technical": "Technical"
+    },
+    "empty": "This run found no issues.",
+    "emptyFiltered": "No issues match these filters.",
+    "clearFilters": "Clear filters",
+    "evidenceLabel": "Raw evidence",
+    "noEvidence": "This issue has no raw evidence to show."
   }
 }

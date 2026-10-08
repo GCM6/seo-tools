@@ -108,9 +108,10 @@ function demandLabel(row: IntentPageFitArtifactPayload['rows'][number], t: Repor
 // 语言由调用方 setRequestLocale 决定；本组件无任何 /[locale] 内部导航链接，可用于无 locale 的分享路由。
 // run 缺失即 notFound()——路由级 404。
 export async function ReportView({ runId }: { runId: string }) {
-  const [t, tt, run] = await Promise.all([
+  const [t, tt, to, run] = await Promise.all([
     getTranslations('report'),
     getTranslations('terms'),
+    getTranslations('overview'),
     getRun(runId),
   ])
   // 术语翻译层（P1-3「术语裸奔」修复）：术语解释文案统一放 terms.* 命名空间，
@@ -658,6 +659,12 @@ export async function ReportView({ runId }: { runId: string }) {
                   ownedLabel={t('geo.citedDomainsOwned')}
                   thirdPartyLabel={t('geo.citedDomainsThirdParty')}
                   platformLabels={citedDomainsPlatformLabels}
+                  listLabels={{
+                    domain: to('domainCol'),
+                    count: to('countCol'),
+                    showAll: to('showAll', { n: probeSummary.citedDomains.length }),
+                    showLess: to('showLess', { n: 10 }),
+                  }}
                 />
               </div>
             ) : null}
