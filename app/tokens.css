@@ -101,3 +101,32 @@
   --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
+
+/* 打印 / 存 PDF 一律用浅色纸面：暗色模式下直接打印会变成白纸浅字。值与上方浅色块相同。 */
+@media print {
+  :root { --bg: #FFFFFF; }
+  :root.dark {
+    --bg: #FFFFFF;
+    --surface: #FFFFFF;
+    --surface-2: #F4F6F8;
+    --ink: #14171C;
+    --ink-2: #464C56;
+    --ink-3: #656C78;
+    --line: #D8DCE2;
+    --line-strong: #B3BAC5;
+    --ctl-border: #858C98;
+    --accent: #234A9A;
+    --accent-hover: #1B3B7D;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #E7EDF8;
+    --on-ink: #FFFFFF;
+    --sev-high: #B42318;
+    --sev-high-soft: #FBEAE8;
+    --sev-mid: #A44C0A;
+    --sev-mid-soft: #FBF0E4;
+    --sev-low: #8B929D;
+    --ok: #2B7A4B;
+    --ok-soft: #E6F2EB;
+    color-scheme: light;
+  }
+}

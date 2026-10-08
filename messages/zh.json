@@ -957,17 +957,59 @@
     "shareCopy": "复制",
     "shareCopied": "已复制 ✓",
     "shareReady": "只读链接已生成",
+    "shareError": "生成失败，请重试",
+    "toolbar": "报告操作",
     "generatedBy": "由 Veris 生成 · 证据化 SEO + GEO 诊断",
+    "doc": {
+      "facts": {
+        "date": "诊断日期",
+        "market": "市场",
+        "protocol": "检测协议",
+        "rules": "规则版本",
+        "evidence": "证据",
+        "evidenceCount": "{count} 条",
+        "reportId": "报告编号"
+      },
+      "sec": {
+        "conclusion": "结论",
+        "keyData": "关键数据",
+        "readEvidence": "证据等级怎么读",
+        "retest": "下一次复查",
+        "details": "详细章节"
+      },
+      "knowledge": "知识溯源",
+      "knowledgeSources": "{count} 个原始来源",
+      "target": "针对：",
+      "impact": "影响",
+      "effort": "工作量",
+      "validation": "怎么验证：",
+      "fixExample": "参考修复示例（静态模板）",
+      "health": "健康分",
+      "healthNote": "满分 100，按 5 个维度加权，只用来看整体走向",
+      "pillarsAria": "5 个维度的健康分",
+      "ladder": {
+        "hard": "有可复查的原始数据，例如 Search Console 数据、实际抓取到的页面。",
+        "sample": "按固定协议抽样测得，例如一组 AI 提问。样本有限，看方向，不看小数点。",
+        "inferred": "根据证据合理推出，没有直接测量。",
+        "hypothesis": "待验证的猜测，不作为结论使用。",
+        "note": "没有证据支撑的说法不会写进这份报告。"
+      },
+      "retestBody": "改完以后 4–6 周，用同一套提问、市场和引擎再测一次，前后结果才能直接对比。",
+      "retestDue": "建议复查日期：{date}",
+      "detailsNote": "完整明细按章节收起，点章节标题展开；打印或存为 PDF 时会全部展开。",
+      "footerId": "报告编号 {id}",
+      "footerTrust": "每条结论都标了证据等级，原始数据按报告编号留档"
+    },
     "toc": {
-      "summary": "1. 执行摘要",
-      "priority": "2. 优先级矩阵",
-      "roadmap": "3. 行动路线图",
-      "pillars": "4. 五支柱明细",
-      "geo": "5. GEO 可见度补充",
-      "keywords": "6. 关键词现状与缺口",
-      "competitors": "7. 竞品对比",
-      "method": "8. 方法与范围",
-      "retest": "9. 回测计划与闭环结果"
+      "summary": "执行摘要",
+      "priority": "优先级矩阵",
+      "roadmap": "行动路线图",
+      "pillars": "五支柱明细",
+      "geo": "GEO 可见度补充",
+      "keywords": "关键词现状与缺口",
+      "competitors": "竞品对比",
+      "method": "方法与范围",
+      "retest": "回测计划与闭环结果"
     },
     "claim": {
       "measured_hard": "实测",
@@ -988,7 +1030,7 @@
       "noFindings": "本轮未发现相关问题——这可能表示站点在已检查范围内表现良好，也可能表示证据覆盖不完整。请查看『诊断范围与覆盖度』确认数据源状态。",
       "pillarBarsAria": "五支柱健康分条形图",
       "evidenceLadderTitle": "证据等级（可信度阶梯）",
-      "nextStepsTitle": "接下来该做的 3 件事",
+      "nextStepsTitle": "先做这 3 件事",
       "nextStepsViewDetail": "查看详情 →"
     },
     "evidenceLadder": {
@@ -1086,7 +1128,7 @@
       "colUndetermined": "未判定",
       "engineOnline": "检索型",
       "engineMemory": "记忆型",
-      "empty": "本轮无 AI 探针数据。",
+      "empty": "本次诊断没有采集 AI 回答样本，所以这一节为空。",
       "probeProxyNote": "口径说明：以上四家 AI 探针（ChatGPT / Perplexity / Gemini / DeepSeek）数据来自开发者 API 采样，反映模型可判定的代理指标，不是真实曝光实测。",
       "aioSectionTitle": "Google AI Overviews 实测曝光",
       "aioMeasuredBadge": "实测",
@@ -1254,7 +1296,7 @@
       }
     },
     "competitors": {
-      "empty": "尚未确认竞品，请先到竞品页确认后再生成对比。",
+      "empty": "本次诊断没有确认竞品，所以这一节为空。",
       "col": {
         "domain": "域名",
         "overlap": "重叠度",
@@ -1528,5 +1570,9 @@
     "clearFilters": "清除筛选",
     "evidenceLabel": "原始证据",
     "noEvidence": "这条问题没有可展示的原始证据。"
+  },
+  "share": {
+    "expiredTitle": "这个报告链接已失效",
+    "expiredBody": "链接可能已经过期或被撤销。请联系把链接发给你的人，重新生成一个。"
   }
 }

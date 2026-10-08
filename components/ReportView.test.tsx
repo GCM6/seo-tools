@@ -15,8 +15,8 @@ vi.mock('@/components/KeywordTable', () => ({
 // 简易 t()：按 key 路径查真实 messages/zh.json 并做 {var} 插值，而不是把每个 key 手写死一份
 // 期望字符串——这样测试断言读到的就是产品会渲染出的同一份文案，新增/改名 key 忘记同步会直接
 // 因「missing message」报错，不会静默通过。
-function resolveMessage(namespace: string, key: string, vars?: Record<string, unknown>): string {
-  const path = [...namespace.split('.'), ...key.split('.')]
+function resolveMessage(namespace: string | undefined, key: string, vars?: Record<string, unknown>): string {
+  const path = [...(namespace ? namespace.split('.') : []), ...key.split('.')]
   let node: unknown = zhMessages
   for (const p of path) {
     if (typeof node !== 'object' || node === null) throw new Error(`missing message: ${namespace}.${key}`)
@@ -27,7 +27,7 @@ function resolveMessage(namespace: string, key: string, vars?: Record<string, un
 }
 
 vi.mock('next-intl/server', () => ({
-  getTranslations: async (namespace: string) => {
+  getTranslations: async (namespace?: string) => {
     const t = (key: string, vars?: Record<string, unknown>) => resolveMessage(namespace, key, vars)
     return t
   },
@@ -39,16 +39,6 @@ vi.mock('next/navigation', () => ({
     throw new Error('NEXT_NOT_FOUND')
   },
 }))
-
-// ReportToc（§ 目录，'use client'）挂载后订阅 IntersectionObserver；jsdom 不提供该全局，
-// 真实浏览器/Next 运行时才有。这里用最小桩满足挂载副作用，不测目录高亮行为本身（不在本任务范围）。
-class IntersectionObserverStub {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-// @ts-expect-error jsdom 环境没有该全局，测试期补一个最小桩
-globalThis.IntersectionObserver ??= IntersectionObserverStub
 
 interface Fixtures {
   run: Record<string, unknown> | null
@@ -191,8 +181,8 @@ describe('ReportView §4 GEO 补充 —— AIO 实测曝光 + 被引用域名', 
     expect(screen.getByText('出现 AI Overview')).toBeInTheDocument()
     expect(screen.getByText('本轮 AI Overview 未引用任何域名')).toBeInTheDocument()
     expect(screen.queryByText('DataForSEO 已配置，但本轮尚未采集 AI Overviews 曝光数据')).not.toBeInTheDocument()
-    // 只有 AIO 这块允许出现「实测」字样
-    expect(screen.getByText('实测')).toBeInTheDocument()
+    // GEO 章节里只有 AIO 区块带「实测」徽章（四家 AI 探针是代理指标，不得标实测）
+    expect(within(screen.getByTestId('report-aio')).getByText('实测')).toBeInTheDocument()
   })
 
   it('AIO 命中时展示 owned 徽标（domain 参数生效）', async () => {
@@ -207,10 +197,10 @@ describe('ReportView §4 GEO 补充 —— AIO 实测曝光 + 被引用域名', 
       },
     ]
     await renderReport()
-    expect(screen.getByText('example.com')).toBeInTheDocument()
-    expect(screen.getByText('wikipedia.org')).toBeInTheDocument()
-    const ownedRow = screen.getByText('example.com').closest('li')
-    const thirdPartyRow = screen.getByText('wikipedia.org').closest('li')
+    // 文档抬头也显示 example.com，查询限定在 AIO 区块内
+    const aio = screen.getByTestId('report-aio')
+    const ownedRow = within(aio).getByText('example.com').closest('li')
+    const thirdPartyRow = within(aio).getByText('wikipedia.org').closest('li')
     expect(ownedRow).toHaveTextContent('自有域名')
     expect(thirdPartyRow).not.toHaveTextContent('自有域名')
   })
@@ -233,8 +223,9 @@ describe('ReportView §4 GEO 补充 —— AIO 实测曝光 + 被引用域名', 
     state.fx.evidence = [{ id: 'ev_probe_1', type: 'ai_answer', request: { web_search_enabled: true }, payload: { answerText: 'example.com 是……' } }]
     await renderReport()
     expect(screen.getByText('被引用域名 Top 列表')).toBeInTheDocument()
-    const ownedRow = screen.getByText('example.com').closest('li')
-    const thirdPartyRow = screen.getByText('wikipedia.org').closest('li')
+    const cited = screen.getByTestId('report-cited-domains')
+    const ownedRow = within(cited).getByText('example.com').closest('li')
+    const thirdPartyRow = within(cited).getByText('wikipedia.org').closest('li')
     expect(ownedRow).toHaveTextContent('自有')
     expect(thirdPartyRow).toHaveTextContent('第三方')
   })
@@ -405,7 +396,7 @@ describe('ReportView §6 关键词现状 —— 意图承接地图', () => {
 // 优先级矩阵/行动路线图上移到五支柱明细之前，方法与范围下沉到回测之前。
 // 只验证重排顺序、新增的「接下来做的 3 件事」渲染/空态、以及 constraint.* 文案改写；
 // 不复测已有各段内部渲染逻辑（前面各 describe 块已覆盖）。
-describe('ReportView §P1-1 结论先行重排', () => {
+describe('ReportView 文档结构（结论先行）', () => {
   beforeEach(() => {
     state.fx = baseFixtures()
   })
@@ -432,20 +423,39 @@ describe('ReportView §P1-1 结论先行重排', () => {
     }
   }
 
-  it('9 个段落标题按新顺序渲染：执行摘要→优先级矩阵→行动路线图→五支柱明细→GEO→关键词→竞品→方法与范围→回测', async () => {
+  it('文档结构（ux-blueprint §5）：编号区段 ①–⑤ 在前，8 个详细章节按顺序默认折叠在后', async () => {
+    state.fx.recommendations = [recommendationRow({ id: 'r1', what: '修复移动端渲染空白问题', priority: 'quick_win' })]
     await renderReport()
-    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
-    expect(headings).toEqual([
-      '1. 执行摘要',
-      '2. 优先级矩阵',
-      '3. 行动路线图',
-      '4. 五支柱明细',
-      '5. GEO 可见度补充',
-      '6. 关键词现状与缺口',
-      '7. 竞品对比',
-      '8. 方法与范围',
-      '9. 回测计划与闭环结果',
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+      '1结论',
+      '2先做这 3 件事',
+      '3关键数据',
+      '4证据等级怎么读',
+      '5下一次复查',
+      '详细章节',
     ])
+    expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+      '优先级矩阵',
+      '行动路线图',
+      '五支柱明细',
+      'GEO 可见度补充',
+      '关键词现状与缺口',
+      '竞品对比',
+      '方法与范围',
+      '回测计划与闭环结果',
+    ])
+    for (const id of ['sec-priority', 'sec-roadmap', 'sec-pillars', 'sec-geo', 'sec-keywords', 'sec-competitors', 'sec-method', 'sec-retest']) {
+      const chapter = document.getElementById(id)
+      expect(chapter?.tagName).toBe('DETAILS')
+      expect(chapter).not.toHaveAttribute('open')
+    }
+  })
+
+  it('抬头：分享页标题是 h1，报告编号 R-<run id 前 8 位>，页脚同号', async () => {
+    await renderReport()
+    expect(screen.getByRole('heading', { level: 1, name: 'example.com' })).toBeInTheDocument()
+    expect(screen.getByText('R-run_1')).toBeInTheDocument()
+    expect(screen.getByText('报告编号 R-run_1')).toBeInTheDocument()
   })
 
   it('约束定位卡使用改写后的人话文案（保留原 constraint.* key，不再是术语堆砌）', async () => {
@@ -497,6 +507,13 @@ describe('ReportView §P1-1 结论先行重排', () => {
     await renderReport()
     expect(screen.queryByTestId('next-steps')).not.toBeInTheDocument()
     expect(screen.queryByText(resolveMessage('report', 'summary.nextStepsTitle'))).not.toBeInTheDocument()
+    // 后面的区段编号顺延，不留空号
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent).slice(0, 4)).toEqual([
+      '1结论',
+      '2关键数据',
+      '3证据等级怎么读',
+      '4下一次复查',
+    ])
   })
 })
 

@@ -188,14 +188,9 @@ function SortableHeader({
 }) {
   return (
     <th aria-sort={active ? (dir === 'desc' ? 'descending' : 'ascending') : 'none'}>
-      <button
-        type="button"
-        className="act"
-        style={{ minHeight: 'auto', padding: '2px 4px', whiteSpace: 'nowrap' }}
-        onClick={onClick}
-      >
+      <button type="button" className="ui-th-sort" onClick={onClick}>
         {children}
-        <span aria-hidden="true" style={{ marginLeft: 4, opacity: active ? 1 : 0.35 }}>
+        <span aria-hidden="true" className="ui-th-sort__icon">
           {active ? (dir === 'desc' ? '▼' : '▲') : '↕'}
         </span>
       </button>
@@ -229,7 +224,7 @@ export function KeywordTable({
   const hasMore = sortedRows.length > PAGE_SIZE
 
   if (!rows.length) {
-    return <p className="note">{t('keywords.empty')}</p>
+    return <p className="ui-result__note">{t('keywords.empty')}</p>
   }
 
   const toggleSort = (key: Exclude<SortKey, 'default'>) => {
@@ -247,9 +242,9 @@ export function KeywordTable({
 
   return (
     <>
-      <p className="note">{t('keywords.estimateNote')}</p>
-      <div className="report-table-wrap">
-        <table className="report-table">
+      <p className="ui-footnote">{t('keywords.estimateNote')}</p>
+      <div className="ui-table-wrap">
+        <table className="ui-table">
           <thead>
             <tr>
               <th>{t('keywords.col.keyword')}</th>
@@ -271,7 +266,7 @@ export function KeywordTable({
               <tr key={row.keywordId}>
                 <td>{row.text}</td>
                 <td>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                  <div className="flex flex-col items-start gap-1">
                     {row.hasMetric ? <EvidenceBadge grade="hard" label={t('keywords.type.measured')} /> : null}
                     {row.hasGap ? (
                       <Tag>{`${t('keywords.type.gap')} · ${t(`keywords.gapType.${row.gapType}`)}`}</Tag>
@@ -290,7 +285,7 @@ export function KeywordTable({
         </table>
       </div>
       {hasMore ? (
-        <button type="button" className="act" onClick={() => setExpanded((v) => !v)}>
+        <button type="button" className="ui-btn ui-btn--sm" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
           {expanded ? t('keywords.collapse') : t('keywords.expandAll', { count: sortedRows.length })}
         </button>
       ) : null}

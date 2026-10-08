@@ -1,12 +1,13 @@
 import { setRequestLocale, getTranslations } from 'next-intl/server'
 import { RunWorkspace } from '@/components/RunWorkspace'
+import { buttonClass } from '@/components/Button'
 import { ReportView } from '@/components/ReportView'
 import { PrintButton } from './PrintButton'
 import { ShareButton } from './ShareButton'
 import { notFound } from 'next/navigation'
 import { getRun } from '@/lib/repositories'
 
-// 报告页 = 诊断工作区外壳 + 工具栏 + 共享 ReportView（与只读分享页共用同一套渲染，spec §SP-G1e-1）。
+// 报告页 = 诊断工作区外壳 + 工具条 + 共享 ReportView（与只读分享页是同一份文档，ux-blueprint §3.5）。
 // 取数与渲染都在 ReportView 内；本页只做存在性检查与工具栏。
 export default async function ReportPage({
   params,
@@ -23,8 +24,9 @@ export default async function ReportPage({
 
   return (
     <RunWorkspace runId={id} locale={locale} current="report">
-      <div className="report-toolbar no-print">
-        <a className="ghost" href={`/api/runs/${id}/report?format=md`} download>
+      <div className="ui-doc-toolbar" role="toolbar" aria-label={t('toolbar')}>
+        {/* 导出走 API 下载，不用 next/link（会预取 API 路由） */}
+        <a className={buttonClass({ size: 'sm' })} href={`/api/runs/${id}/report?format=md`} download>
           {t('exportMd')}
         </a>
         <PrintButton label={t('print')} />
@@ -35,10 +37,11 @@ export default async function ReportPage({
           copyLabel={t('shareCopy')}
           copiedLabel={t('shareCopied')}
           readyLabel={t('shareReady')}
+          errorLabel={t('shareError')}
         />
       </div>
 
-      <ReportView runId={id} />
+      <ReportView runId={id} locale={locale} variant="workspace" />
     </RunWorkspace>
   )
 }

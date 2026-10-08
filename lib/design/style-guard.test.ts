@@ -14,10 +14,7 @@ const PENDING_MIGRATION = new Set([
   'components/BrandFactRow.tsx',
   'components/GscConnectCard.tsx',
   'components/NewAnalysisForm.tsx',
-  'components/PillarGroupCard.tsx',
   'components/ProjectList.tsx',
-  'components/ReportToc.tsx',
-  'components/ReportView.tsx',
 ])
 
 const ROOT = process.cwd()

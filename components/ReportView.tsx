@@ -4,14 +4,26 @@ import { PriorityMatrix } from '@/components/PriorityMatrix'
 import { KeywordTable } from '@/components/KeywordTable'
 import { PillarBars } from '@/components/PillarBars'
 import { EvidenceLadder } from '@/components/EvidenceLadder'
-import { BlurText } from '@/components/fx/BlurText'
 import { PillarGroupCard } from '@/components/PillarGroupCard'
-import { ReportToc } from '@/components/ReportToc'
 import { CitedDomainsCard } from '@/components/CitedDomainsCard'
 import { Term } from '@/components/Term'
 import { EvidenceBadge } from '@/components/EvidenceBadge'
 import { Tag } from '@/components/Tag'
-import type { EvidenceGrade } from '@/lib/evidence'
+import { Notice } from '@/components/Notice'
+import { Facts } from '@/components/Facts'
+import { LocalTime } from '@/components/LocalTime'
+import { CodeBlock } from '@/components/CodeBlock'
+import { DomainCountTable } from '@/components/DomainCountTable'
+import { ResultTable } from '@/components/ResultTable'
+import { statCardRows, resultTableHead } from '@/components/KeyResults'
+import { SeverityMark, severityLevel } from '@/components/SeverityMark'
+import { ReportDocBehavior } from '@/components/ReportDocBehavior'
+import { labelKeyForGrade, type EvidenceGrade } from '@/lib/evidence'
+import { deriveStatCards } from '@/lib/diagnostics'
+import { dataSourceStatus } from '@/lib/config/data-sources'
+import { marketLabel } from '@/lib/markets'
+import { displayDomain, runShortId } from '@/lib/runs/workspace'
+import { shortLevel, splitRecommendation } from '@/lib/runs/recommendations'
 import {
   getRun,
   getFindings,
@@ -83,17 +95,15 @@ const RETEST_METRIC_KEYS: Record<string, string> = {
   'aio.owned_cited_rate': 'aioOwnedCitedRate',
 }
 
-// claim_type → provenance tag（变体 + 中文标签）。铁律：实测仅 L3/L4；健康分/约束卡不走这里，恒「推断」。
-// claim_type → 证据徽章等级（design-system §3.1）。以前 hypothesis 借用了「差距」红色，现与推断、实测按形状区分。
-const CLAIM_TAG: Record<string, { grade: EvidenceGrade; key: string }> = {
-  measured_hard: { grade: 'hard', key: 'measured_hard' },
-  measured_sample: { grade: 'sample', key: 'measured_sample' },
-  inferred: { grade: 'inferred', key: 'inferred' },
-  hypothesis: { grade: 'hypothesis', key: 'hypothesis' },
+// claim_type → 证据徽章等级（design-system §3.1）。标签统一用 common.tag.*（实测 / 抽样实测 / 推断 / 疑似），
+// 与工作台其它页面同一套叫法；健康分、约束判断不走这里，恒为「推断」。
+const CLAIM_GRADE: Record<string, EvidenceGrade> = {
+  measured_hard: 'hard',
+  measured_sample: 'sample',
+  inferred: 'inferred',
+  hypothesis: 'hypothesis',
 }
-
-const SEV_CLASS: Record<FindingSeverity, string> = { high: 'hi', mid: 'mid', ok: 'ok' }
-const EVIDENCE_LADDER_TONE = { l0: 'g', l1: 'g', l2: 'i', l3: 'm', l4: 'm' } as const
+const LADDER: EvidenceGrade[] = ['hard', 'sample', 'inferred', 'hypothesis']
 const IPF_ARTIFACT_TYPE = 'intent_page_fit_map'
 type ReportTranslator = (key: string, vars?: Record<string, string | number | Date>) => string
 
@@ -103,15 +113,27 @@ function demandLabel(row: IntentPageFitArtifactPayload['rows'][number], t: Repor
   return '—'
 }
 
-// 报告主体（9 段 + 目录，第 4 段 GEO 可见度补充见 spec 2026-07-13-geo-branded-unbranded-redesign.md）。
-// 报告页与只读分享页共用同一套渲染（spec §SP-G1e-1 / G2d）。
-// 语言由调用方 setRequestLocale 决定；本组件无任何 /[locale] 内部导航链接，可用于无 locale 的分享路由。
+// 报告文档（ux-blueprint §5，原型「分享报告」A）：工作台报告页与只读分享页共用同一份。
+// 抬头（事实栏）→ ① 结论 → ② 先做这 3 件事 → ③ 关键数据 → ④ 证据等级怎么读 → ⑤ 下一次复查
+// → 详细章节（8 章，默认折叠，打印时展开）→ 页脚（报告编号）。
+// 语言由调用方 setRequestLocale 决定，locale 只用于市场名；本组件没有任何 /[locale] 内部导航链接，
+// 可用于无 locale 的分享路由。variant 只影响文档标题的层级（分享页 h1；工作台里抬头已有 h1，用 h2）。
 // run 缺失即 notFound()——路由级 404。
-export async function ReportView({ runId }: { runId: string }) {
-  const [t, tt, to, run] = await Promise.all([
+export async function ReportView({
+  runId,
+  locale = 'zh',
+  variant = 'share',
+}: {
+  runId: string
+  locale?: string
+  variant?: 'share' | 'workspace'
+}) {
+  const [t, tt, to, ts, tRoot, run] = await Promise.all([
     getTranslations('report'),
     getTranslations('terms'),
     getTranslations('overview'),
+    getTranslations('screen2'),
+    getTranslations(),
     getRun(runId),
   ])
   // 术语翻译层（P1-3「术语裸奔」修复）：术语解释文案统一放 terms.* 命名空间，
@@ -297,10 +319,10 @@ export async function ReportView({ runId }: { runId: string }) {
 
   const pillarName = (p: Pillar) => t(`pillarNames.${p.toLowerCase()}`)
   const scoreText = (s: number | null) => (s === null ? t('summary.unscored') : String(s))
-  const claimLabel = (ct: string) => {
-    const tag = CLAIM_TAG[ct]
-    return tag ? t(`claim.${tag.key}`) : ct
-  }
+  const gradeOf = (ct: string): EvidenceGrade => CLAIM_GRADE[ct] ?? 'inferred'
+  const gradeLabel = (g: EvidenceGrade) => tRoot(labelKeyForGrade(g))
+  const badgeFor = (ct: string) => <EvidenceBadge grade={gradeOf(ct)} label={gradeLabel(gradeOf(ct))} />
+  const inferredBadge = <EvidenceBadge grade="inferred" label={gradeLabel('inferred')} />
   // 回测表指标名人类可读化；未登记的 metricName（新增遗漏 / 历史脏数据）原样兜底显示原始 key。
   const metricLabel = (name: string) => {
     const key = RETEST_METRIC_KEYS[name]
@@ -321,15 +343,13 @@ export async function ReportView({ runId }: { runId: string }) {
     low: t('priority.low'),
     count: (n: number) => t('priority.count', { count: n }),
     empty: t('priority.empty'),
+    target: t('doc.target'),
   }
-
-  // 证据等级 L0–L4 阶梯（plan-ux §5.1）；tone 复用 .tag 语义色：L0/L1→g、L2→i、L3/L4→m。
-  const ladderLevels = (['l0', 'l1', 'l2', 'l3', 'l4'] as const).map((code) => ({
-    code: code.toUpperCase(),
-    name: t(`evidenceLadder.${code}.name`),
-    desc: t(`evidenceLadder.${code}.desc`),
-    tone: EVIDENCE_LADDER_TONE[code],
-  }))
+  // 矩阵里同名建议靠「针对：问题」区分（ux-blueprint §3.3 的同一条规则）。
+  const findingTitle = new Map(findingRows.map((f) => [f.id, f.title]))
+  const matrixTargets: Record<string, string> = Object.fromEntries(
+    recRows.flatMap((r) => (r.findingId && findingTitle.has(r.findingId) ? [[r.id, findingTitle.get(r.findingId)!]] : [])),
+  )
 
   // 引用平台徽标文案（CitedDomainsCard 新增 prop，i18n-free 惯例：调用方 t() 解析好再传入）。
   const citedDomainsPlatformLabels: Record<Exclude<CitationPlatform, 'other'>, string> = {
@@ -341,18 +361,6 @@ export async function ReportView({ runId }: { runId: string }) {
     github: t('geo.citedDomainsPlatformGithub'),
   }
 
-  const toc: [string, string][] = [
-    ['sec-summary', t('toc.summary')],
-    ['sec-priority', t('toc.priority')],
-    ['sec-roadmap', t('toc.roadmap')],
-    ['sec-pillars', t('toc.pillars')],
-    ['sec-geo', t('toc.geo')],
-    ['sec-keywords', t('toc.keywords')],
-    ['sec-competitors', t('toc.competitors')],
-    ['sec-method', t('toc.method')],
-    ['sec-retest', t('toc.retest')],
-  ]
-
   // P1-1「报告结论不先行」修复：第一屏「接下来做的 3 件事」直接取优先级矩阵 top3
   // （quick_win 优先，其余象限补足），不改矩阵本身的分类逻辑，只在渲染层截取前 3 条。
   // 优先级矩阵为空（无建议）时，调用方按此数组长度整块不渲染，不硬凑空态。
@@ -363,499 +371,616 @@ export async function ReportView({ runId }: { runId: string }) {
     ...model.priorityMatrix.low,
   ].slice(0, 3)
 
+  // ③ 关键数据：与概览页同一套口径（deriveStatCards），报告里不带「去连接」入口和原始数据。
+  const sources = dataSourceStatus()
+  const cards = deriveStatCards(
+    evidence.map((e) => ({ id: e.id, type: e.type, claimLevel: e.claimLevel, payload: e.payload, sitePageId: e.sitePageId })),
+    { probe: probeSummary, sources: { renderProvider: sources.renderProvider, renderStaticFallback: sources.renderStaticFallback } },
+  )
+  const overall = model.execSummary.health.overall
+  const keyRows = [
+    ...statCardRows(cards, { t: to, ts, tRoot }),
+    {
+      key: 'health',
+      label: t('doc.health'),
+      value: overall === null ? t('summary.unscored') : Number.isInteger(overall) ? String(overall) : overall.toFixed(1),
+      muted: overall === null,
+      note: t('doc.healthNote'),
+      evidence: inferredBadge,
+    },
+  ]
+
+  const findingById = new Map(findingRows.map((f) => [f.id, f]))
+  const sevLabel = (sev: string) => t(`severity.${sev === 'high' || sev === 'mid' ? sev : 'ok'}`)
+  const reportId = `R-${runShortId(run.id)}`
+  const domainText = project ? displayDomain(project.domain) : run.id
+  const TitleTag = variant === 'workspace' ? 'h2' : 'h1'
+  const copyLabels = { copyLabel: tRoot('common.actions.copyCode'), copiedLabel: tRoot('common.actions.copied') }
+
   return (
-    <>
-      <div className="sec-h">
-        <h2>
-          <BlurText>{t('title')}</BlurText>
-        </h2>
-        <span className="meta">{t('counts', { findings: model.counts.findings, recs: model.counts.recommendations, gated: model.counts.gated })}</span>
-      </div>
-
-      <div className="report-layout">
-        <ReportToc toc={toc} title={t('title')} />
-
-        <div className="report-body">
-          {knowledgeSession ? (
-            <aside className="report-knowledge-trace">
-              <div>
-                <span>KNOWLEDGE PROVENANCE / 知识溯源</span>
-                <strong>{knowledgeSession.knowledgeReleaseVersion} · {knowledgeSession.workflowVersion} · {knowledgeSession.ruleConfigVersion}</strong>
-              </div>
-              {knowledgeSourceUrls.length ? (
-                <details>
-                  <summary>{knowledgeSourceUrls.length} original sources / 原始来源</summary>
-                  <ul>{knowledgeSourceUrls.slice(0, 20).map((url) => <li key={url}>{url.startsWith('http') ? <a href={url} target="_blank" rel="noreferrer">{url}</a> : <code>{url}</code>}</li>)}</ul>
-                </details>
-              ) : null}
-            </aside>
-          ) : null}
-          {/* ——— 跨版本回测横幅（规则库升级提示，V0 暂不触发） ——— */}
-          {versionDelta && (
-            <div role="alert" style={{ background: '#fef3c7', border: '1px solid #f59e0b', padding: 12, marginBottom: 16 }}>
-              {t('rulesUpgradedBanner', { from: versionDelta.from, to: versionDelta.to })}
-            </div>
-          )}
-
-          {/* ——— 1. 执行摘要 ——— */}
-          <section id="sec-summary" className="report-section">
-            <h3>{t('toc.summary')}</h3>
-
-            <div className="card report-constraint">
-              <div className="report-constraint-h">
-                <span className="report-constraint-title">{t('summary.constraintTitle')}</span>
-                <span className="tag i">
-                  <span className="dot" />
-                  {t('claim.inferred')}
-                </span>
-              </div>
-              <p>{t(`constraint.${model.execSummary.constraint.kind}`)}</p>
-              {model.execSummary.constraint.focusPillars.length ? (
-                <p className="report-focus">
-                  {t('summary.focusPillars')}
-                  {model.execSummary.constraint.focusPillars.map((p) => pillarName(p)).join(' · ')}
-                </p>
-              ) : null}
-            </div>
-
-            {/* ——— 「接下来做的 3 件事」：取优先级矩阵 top3（quick_win 优先），
-                每项跳到 §优先级矩阵 详情；矩阵为空（无建议）时整块不渲染，不硬凑空态 ——— */}
-            {nextSteps.length > 0 ? (
-              <div className="card report-roadmap-group" data-testid="next-steps">
-                <h4>{t('summary.nextStepsTitle')}</h4>
-                <ul>
-                  {nextSteps.map((r) => (
-                    <li key={r.id}>
-                      <div className="report-roadmap-what">{r.what}</div>
-                      <div className="report-roadmap-val note">
-                        <a href="#sec-priority">{t('summary.nextStepsViewDetail')}</a>
-                      </div>
+    <article className="ui-doc">
+      <ReportDocBehavior />
+      <header className="ui-doc__head">
+        <p className="ui-doc__brand">
+          <span className="ui-doc__brand-name">Veris</span>
+          <span className="ui-doc__kind">· {t('title')}</span>
+        </p>
+        <TitleTag className="ui-doc__title">{domainText}</TitleTag>
+        <Facts
+          items={[
+            { label: t('doc.facts.date'), value: capturedAt ? <LocalTime iso={capturedAt} dateOnly /> : '—' },
+            {
+              label: t('doc.facts.market'),
+              value: (project && marketLabel(project.market, locale)) || project?.market || '—',
+            },
+            { label: t('doc.facts.protocol'), value: run.protocolVersion ?? '—', mono: true },
+            { label: t('doc.facts.rules'), value: run.rulesVersion ?? '—', mono: true },
+            { label: t('doc.facts.evidence'), value: t('doc.facts.evidenceCount', { count: evidence.length }) },
+            { label: t('doc.facts.reportId'), value: reportId, mono: true },
+          ]}
+        />
+        {knowledgeSession ? (
+          <div className="ui-doc__trace">
+            <p>
+              {t('doc.knowledge')}：
+              <span className="ui-mono">
+                {knowledgeSession.knowledgeReleaseVersion} · {knowledgeSession.workflowVersion} · {knowledgeSession.ruleConfigVersion}
+              </span>
+            </p>
+            {knowledgeSourceUrls.length ? (
+              <details className="ui-disclosure">
+                <summary>{t('doc.knowledgeSources', { count: knowledgeSourceUrls.length })}</summary>
+                <ul className="ui-kv__list ui-mono">
+                  {knowledgeSourceUrls.slice(0, 20).map((url) => (
+                    <li key={url}>
+                      {url.startsWith('http') ? (
+                        <a href={url} target="_blank" rel="noreferrer">
+                          {url}
+                        </a>
+                      ) : (
+                        url
+                      )}
                     </li>
                   ))}
                 </ul>
-              </div>
-            ) : null}
-
-            <div className="card report-health">
-              <div className="report-health-h">
-                <span>{t('summary.healthTitle')}</span>
-                <span className="tag i">
-                  <span className="dot" />
-                  {t('claim.inferred')}
-                </span>
-              </div>
-              <PillarBars
-                overall={model.execSummary.health.overall}
-                overallLabel={t('summary.overall')}
-                unscoredLabel={t('summary.unscored')}
-                ariaLabel={t('summary.pillarBarsAria')}
-                pillars={PILLARS.map((p) => ({
-                  key: p,
-                  label: pillarName(p),
-                  score: model.execSummary.health.pillars[p].score,
-                }))}
-              />
-              <details className="report-breakdown">
-                <summary>{t('summary.breakdownToggle')}</summary>
-                <p className="report-breakdown-explain">{t('summary.breakdownExplainIntro')}</p>
-                <p className="report-breakdown-explain">{t('summary.breakdownExplainRelation')}</p>
-                <pre>{model.execSummary.health.breakdown}</pre>
               </details>
-            </div>
+            ) : null}
+          </div>
+        ) : null}
+      </header>
 
-            <h4>{t('summary.topFindings')}</h4>
-            {model.execSummary.topFindings.length ? (
-              <ul className="report-top">
-                {model.execSummary.topFindings.map((f) => (
-                  <li key={f.id}>
-                    <span className={`sev ${SEV_CLASS[f.severity]}`} />
-                    <span className="report-top-title">{f.title}</span>
-                    <EvidenceBadge grade={CLAIM_TAG[f.claimType]?.grade ?? 'inferred'} label={claimLabel(f.claimType)} />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="note">{t('summary.noFindings')}</p>
-            )}
+      {/* 规则库升级后，旧报告不能直接和新结果对比（V0 同版本 / 旧数据 null → 不显示） */}
+      {versionDelta ? <Notice tone="warn">{t('rulesUpgradedBanner', { from: versionDelta.from, to: versionDelta.to })}</Notice> : null}
 
-            <EvidenceLadder title={t('summary.evidenceLadderTitle')} levels={ladderLevels} />
-          </section>
+      {/* ——— ① 结论：现状判断 + 影响最大的问题（按严重度排序） ——— */}
+      <section className="ui-doc__sec" aria-labelledby="doc-sec-1">
+        <h2 id="doc-sec-1" className="ui-doc__h">
+          <span className="ui-doc__sn">1</span>
+          {t('doc.sec.conclusion')}
+        </h2>
+        <div className="ui-doc__lead">
+          <p>
+            <b>{t('summary.constraintTitle')}：</b>
+            <span>{t(`constraint.${model.execSummary.constraint.kind}`)}</span> {inferredBadge}
+          </p>
+          {model.execSummary.constraint.focusPillars.length ? (
+            <p className="ui-footnote">
+              {t('summary.focusPillars')}
+              {model.execSummary.constraint.focusPillars.map((p) => pillarName(p)).join(' · ')}
+            </p>
+          ) : null}
+        </div>
+        {model.execSummary.topFindings.length ? (
+          <ul className="ui-doc__findings">
+            {model.execSummary.topFindings.map((f) => (
+              <li key={f.id}>
+                <SeverityMark level={severityLevel(f.severity)} label={sevLabel(f.severity)} />
+                <p>
+                  <b>{f.title}</b>
+                  {f.description ? <> {f.description}</> : null}
+                </p>
+                {badgeFor(f.claimType)}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="ui-result__note">{t('summary.noFindings')}</p>
+        )}
+      </section>
 
-          {/* ——— 2. 优先级矩阵（原第 7 段，上移到第一屏之后，紧跟「接下来做的 3 件事」）——— */}
-          <section id="sec-priority" className="report-section">
-            <h3>{t('toc.priority')}</h3>
-            <PriorityMatrix matrix={model.priorityMatrix} labels={matrixLabels} />
-          </section>
-
-          {/* ——— 3. 行动路线图（原第 8 段，随优先级矩阵一并上移）——— */}
-          <section id="sec-roadmap" className="report-section">
-            <h3>{t('toc.roadmap')}</h3>
-            {model.roadmap.length ? (
-              (['quick', 'mid', 'long'] as const).map((h) => {
-                const items = model.roadmap.filter((i) => i.horizon === h)
-                if (!items.length) return null
-                return (
-                  <div key={h} className="card report-roadmap-group">
-                    <h4>{t(`roadmap.${h}`)}</h4>
-                    <ul>
-                      {items.map((i) => (
-                        <li key={i.recommendation.id}>
-                          <div className="report-roadmap-what">{i.recommendation.what}</div>
-                          {i.recommendation.validationMethod ? (
-                            <div className="report-roadmap-val note">
-                              {t('roadmap.validation')}: {i.recommendation.validationMethod}
-                            </div>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )
-              })
-            ) : (
-              <p className="note">{t('roadmap.empty')}</p>
-            )}
-          </section>
-
-          {/* ——— 4. 五支柱明细 ——— */}
-          <section id="sec-pillars" className="report-section">
-            <h3>{t('toc.pillars')}</h3>
-            {model.pillarGroups.map((g) => {
-              const bySev: Record<FindingSeverity, ReportFinding[]> = { high: [], mid: [], ok: [] }
-              for (const f of g.findings) bySev[f.severity].push(f)
+      {/* ——— ② 先做这 3 件事：优先级矩阵 top3（quick_win 优先）；矩阵为空时整块不渲染，不硬凑空态 ——— */}
+      {nextSteps.length > 0 ? (
+        <section className="ui-doc__sec" aria-labelledby="doc-sec-2" data-testid="next-steps">
+          <h2 id="doc-sec-2" className="ui-doc__h">
+            <span className="ui-doc__sn">2</span>
+            {t('summary.nextStepsTitle')}
+          </h2>
+          <ol className="ui-doc__todo">
+            {nextSteps.map((r) => {
+              const { action, fixSnippet } = splitRecommendation(r.what)
+              const finding = r.findingId ? findingById.get(r.findingId) : undefined
+              const impact = shortLevel(r.expectedImpact)
+              const effort = shortLevel(r.effort)
               return (
-                <PillarGroupCard
-                  key={g.pillar}
-                  pillarName={pillarName(g.pillar)}
-                  scoreText={scoreText(g.score)}
-                  isScored={g.scored}
-                  unscoredLabel={t('pillars.unscored')}
-                  noFindingsLabel={t('pillars.noFindings')}
-                  findingsCount={g.findings.length}
-                  findingsLabel={t('pillars.findingsUnit', { count: g.findings.length })}
-                >
-                  {g.findings.length ? (
-                    (['high', 'mid', 'ok'] as FindingSeverity[]).map((sev) =>
-                      bySev[sev].length ? (
-                        <div key={sev} className="report-sev-group">
-                          <div className="report-sev-label">
-                            <span className={`sev ${SEV_CLASS[sev]}`} />
-                            {t(`severity.${sev}`)}
-                          </div>
-                          <ul>
-                            {bySev[sev].map((f) => {
-                              const isLab = g.pillar === 'P1' && f.evidenceRefs.some((r) => LAB_TYPES.has(r.split('_')[0]))
-                              return (
-                                <li key={f.id}>
-                                  <div className="report-finding-title">
-                                    {f.title}
-                                    <EvidenceBadge grade={CLAIM_TAG[f.claimType]?.grade ?? 'inferred'} label={claimLabel(f.claimType)} />
-                                    {isLab ? (
-                                      <span className="report-lab">
-                                        <Tag><Term explain={tt('labData')}>{t('labTag')}</Term></Tag>
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                  {f.description ? <div className="report-finding-desc">{f.description}</div> : null}
-                                  {f.evidenceRefs.length ? (
-                                    <div className="report-evidence mono">{t('pillars.evidence')}: {f.evidenceRefs.join(' · ')}</div>
-                                  ) : null}
-                                </li>
-                              )
-                            })}
-                          </ul>
-                        </div>
-                      ) : null,
-                    )
+                <li key={r.id}>
+                  <div className="ui-doc__todo-title">{action}</div>
+                  <div className="ui-doc__todo-meta">
+                    {finding ? (
+                      <span>
+                        {t('doc.target')}
+                        {finding.title}
+                      </span>
+                    ) : null}
+                    {impact ? (
+                      <span>
+                        {t('doc.impact')} <b>{impact}</b>
+                      </span>
+                    ) : null}
+                    {effort ? (
+                      <span>
+                        {t('doc.effort')} <b>{effort}</b>
+                      </span>
+                    ) : null}
+                    {finding ? badgeFor(finding.claimType) : null}
+                  </div>
+                  {r.validationMethod ? (
+                    <p className="ui-doc__todo-body">
+                      {t('doc.validation')}
+                      {r.validationMethod}
+                    </p>
                   ) : null}
-                </PillarGroupCard>
+                  {fixSnippet ? <CodeBlock label={t('doc.fixExample')} code={fixSnippet} {...copyLabels} /> : null}
+                  <a className="ui-doc__more" href="#sec-priority">
+                    {t('summary.nextStepsViewDetail')}
+                  </a>
+                </li>
               )
             })}
-          </section>
+          </ol>
+        </section>
+      ) : null}
 
-          {/* ——— 5. GEO 可见度补充（spec 2026-07-13-geo-branded-unbranded-redesign.md）——— */}
-          <section id="sec-geo" className="report-section">
-            <h3>{t('toc.geo')}</h3>
-            <p className="note">{t('geo.meta')}</p>
-            {probeSummary ? (
-              <div className="card report-method">
-                <p>
-                  {t('geo.unbrandedHeadline', {
-                    present: probeSummary.unbranded.present,
-                    total: probeSummary.unbranded.total,
-                    wilsonPct: Math.round(probeSummary.unbranded.wilsonLow * 100),
-                  })}
-                </p>
-                {/* P1-2 修复：mapWilsonNote 的人话解释此前只存在于诊断页 screen2 命名空间，
-                    没带进报告——这里补一句等价说明，并把「95% 置信下限」本身做成可 hover 的 Term。 */}
-                <p className="note">
-                  <Term explain={tt('wilsonLowerBound')}>{t('geo.wilsonLabel')}</Term>：{t('geo.wilsonNote')}
-                </p>
-                <p>
-                  {t('geo.brandedHeadline', {
-                    brandedTotal: probeSummary.branded.perEngine.reduce(
-                      (sum, e) => sum + e.grounded + e.speculative + e.unknown + e.unverified + e.undetermined,
-                      0,
-                    ),
-                    grounded: probeSummary.branded.perEngine.reduce((sum, e) => sum + e.grounded, 0),
-                    speculative: probeSummary.branded.perEngine.reduce((sum, e) => sum + e.speculative, 0),
-                  })}
-                </p>
-                <p>{t('geo.citationRate', { pct: Math.round(probeSummary.citationRate * 100) })}</p>
+      {/* ——— ③ 关键数据：结果表（与概览同口径）+ 5 个维度的健康分 ——— */}
+      <section className="ui-doc__sec" aria-labelledby="doc-sec-3">
+        <h2 id="doc-sec-3" className="ui-doc__h">
+          <span className="ui-doc__sn">{nextSteps.length > 0 ? 3 : 2}</span>
+          {t('doc.sec.keyData')}
+        </h2>
+        <ResultTable rows={keyRows} head={resultTableHead(to)} />
+        <PillarBars
+          unscoredLabel={t('summary.unscored')}
+          ariaLabel={t('doc.pillarsAria')}
+          pillars={PILLARS.map((p) => ({
+            key: p,
+            label: pillarName(p),
+            score: model.execSummary.health.pillars[p].score,
+          }))}
+        />
+        <details className="ui-disclosure">
+          <summary>{t('summary.breakdownToggle')}</summary>
+          <div className="ui-doc__block">
+            <p>{t('summary.breakdownExplainIntro')}</p>
+            <p>{t('summary.breakdownExplainRelation')}</p>
+            <pre className="ui-code ui-code--wrap">{model.execSummary.health.breakdown}</pre>
+          </div>
+        </details>
+      </section>
 
-                {probeSummary.branded.perEngine.length > 0 ? (
-                  <div className="report-table-wrap">
-                    <table className="report-table">
-                      <thead>
-                        <tr>
-                          <th>{t('geo.colEngine')}</th>
-                          <th>{t('geo.colType')}</th>
-                          <th><Term explain={tt('claimGrounded')}>{t('geo.colGrounded')}</Term></th>
-                          <th><Term explain={tt('claimSpeculative')}>{t('geo.colSpeculative')}</Term></th>
-                          <th>{t('geo.colUnknown')}</th>
-                          <th><Term explain={tt('claimUnverified')}>{t('geo.colUnverified')}</Term></th>
-                          <th><Term explain={tt('claimUndetermined')}>{t('geo.colUndetermined')}</Term></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {probeSummary.branded.perEngine.map((e) => (
-                          <tr key={e.provider}>
-                            <td className="mono">{e.provider}</td>
-                            <td>{e.webSearchEnabled ? t('geo.engineOnline') : t('geo.engineMemory')}</td>
-                            <td>{e.grounded}</td>
-                            <td>{e.speculative}</td>
-                            <td>{e.unknown}</td>
-                            <td>{e.unverified}</td>
-                            <td>{e.undetermined}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : null}
-                <p className="note">{t('geo.probeProxyNote')}</p>
-              </div>
-            ) : (
-              <p className="note">{t('geo.empty')}</p>
-            )}
+      {/* ——— ④ 证据等级怎么读：正文里出现的 4 种徽章 ——— */}
+      <section className="ui-doc__sec" aria-labelledby="doc-sec-4">
+        <h2 id="doc-sec-4" className="ui-doc__h">
+          <span className="ui-doc__sn">{nextSteps.length > 0 ? 4 : 3}</span>
+          {t('doc.sec.readEvidence')}
+        </h2>
+        <EvidenceLadder
+          levels={LADDER.map((g) => ({ grade: g, label: gradeLabel(g), desc: t(`doc.ladder.${g}`) }))}
+          note={t('doc.ladder.note')}
+        />
+      </section>
 
-            {/* ⑤ 被引用域名 Top 列表（owned/third_party 归属，只认 citedUrls 不含 retrievedUrls，
-                口径同 components/CitedDomainsCard.tsx）——只在有正文引用样本时展示。 */}
-            {probeSummary && probeSummary.citedDomains.length > 0 ? (
-              <div className="card report-method">
-                <h4>{t('geo.citedDomainsTitle')}</h4>
-                <p className="note">{t('geo.citedDomainsMeta')}</p>
-                {/* 社区/UGC 来源占引用比（新增，unbranded 口径）：无样本时说明「未能计算」，
-                    不显示 0%——避免「无数据」被误读成「测得 0%」（见 summary.ts ugcCitationShare 注释）。 */}
-                <p className="note">
-                  <b>{t('geo.ugcCitationShareTitle')}</b>：
-                  {probeSummary.ugcCitationShare === null
-                    ? t('geo.ugcCitationShareUnavailable')
-                    : t('geo.ugcCitationShareValue', { pct: Math.round(probeSummary.ugcCitationShare * 100) })}
-                </p>
-                <p className="note">{t('geo.ugcCitationShareNote')}</p>
-                <CitedDomainsCard
-                  rows={probeSummary.citedDomains}
-                  ownedLabel={t('geo.citedDomainsOwned')}
-                  thirdPartyLabel={t('geo.citedDomainsThirdParty')}
-                  platformLabels={citedDomainsPlatformLabels}
-                  listLabels={{
-                    domain: to('domainCol'),
-                    count: to('countCol'),
-                    showAll: to('showAll', { n: probeSummary.citedDomains.length }),
-                    showLess: to('showLess', { n: 10 }),
-                  }}
-                />
-              </div>
-            ) : null}
+      {/* ——— ⑤ 下一次复查 ——— */}
+      <section className="ui-doc__sec" aria-labelledby="doc-sec-5">
+        <h2 id="doc-sec-5" className="ui-doc__h">
+          <span className="ui-doc__sn">{nextSteps.length > 0 ? 5 : 4}</span>
+          {t('doc.sec.retest')}
+        </h2>
+        <p className="ui-result__note">{t('doc.retestBody')}</p>
+        {project?.nextRetestDueAt ? <p>{t('doc.retestDue', { date: project.nextRetestDueAt.slice(0, 10) })}</p> : null}
+      </section>
 
-            {/* 双口径的实测半边：Google AI Overviews 真实 SERP 采样（唯一允许「实测」字样的区块，
-                spec 见 components/AioExposureCard.tsx 的口径注释）。不复用该 client 组件的原因见本文件
-                顶部 import 注释——分享页无 NextIntlClientProvider，这里内联走 report.geo.* i18n-free 渲染。
-                三种空态：①未配置 DataForSEO；②已配置但本轮未采集；③已采集且如实展示（含 0 命中）。 */}
-            <div className="card report-method">
-              <h4>{t('geo.aioSectionTitle')}</h4>
-              <p className="note">
-                <span className="tag m">
-                  <span className="dot" />
-                  {t('geo.aioMeasuredBadge')}
-                </span>{' '}
-                {t('geo.aioMeta')}
-              </p>
-              {!dataforseoConfigured ? (
-                <p className="note">{t('geo.aioEmptyNotConfigured')}</p>
-              ) : !aioSummary ? (
-                <p className="note">{t('geo.aioEmptyNotCollected')}</p>
+      {/* ——— 详细章节：8 章默认折叠（打印时由 ReportDocBehavior 全部展开）——— */}
+      <section className="ui-doc__sec" aria-labelledby="doc-sec-details">
+        <h2 id="doc-sec-details" className="ui-doc__h">
+          {t('doc.sec.details')}
+        </h2>
+        <p className="ui-footnote">{t('doc.detailsNote')}</p>
+
+        <div className="ui-doc__chapters">
+          {/* 优先级矩阵 */}
+          <details className="ui-doc__chapter" id="sec-priority">
+            <summary>
+              <h3>{t('toc.priority')}</h3>
+            </summary>
+            <div className="ui-doc__chapter-body">
+              <PriorityMatrix matrix={model.priorityMatrix} labels={matrixLabels} targets={matrixTargets} />
+            </div>
+          </details>
+
+          {/* 行动路线图 */}
+          <details className="ui-doc__chapter" id="sec-roadmap">
+            <summary>
+              <h3>{t('toc.roadmap')}</h3>
+            </summary>
+            <div className="ui-doc__chapter-body">
+              {model.roadmap.length ? (
+                (['quick', 'mid', 'long'] as const).map((h) => {
+                  const items = model.roadmap.filter((i) => i.horizon === h)
+                  if (!items.length) return null
+                  return (
+                    <div key={h} className="ui-doc__block">
+                      <h4 className="ui-doc__h4">{t(`roadmap.${h}`)}</h4>
+                      <ol className="ui-doc__steps">
+                        {items.map((i) => {
+                          const { action, fixSnippet } = splitRecommendation(i.recommendation.what)
+                          return (
+                            <li key={i.recommendation.id}>
+                              <span className="ui-doc__step-what">{action}</span>
+                              {i.recommendation.validationMethod ? (
+                                <span className="ui-footnote">
+                                  {t('roadmap.validation')}：{i.recommendation.validationMethod}
+                                </span>
+                              ) : null}
+                              {fixSnippet ? <CodeBlock label={t('doc.fixExample')} code={fixSnippet} {...copyLabels} /> : null}
+                            </li>
+                          )
+                        })}
+                      </ol>
+                    </div>
+                  )
+                })
               ) : (
-                <>
-                  <div className="stats aio-exposure-stats">
-                    <div className="stat">
-                      <div className="k">{t('geo.aioPresentLabel')}</div>
-                      <div className="v">
-                        <b>{aioSummary.aioPresentCount}</b>
-                        <small>{t('geo.aioOf', { total: aioSummary.measuredQueries })}</small>
-                      </div>
-                    </div>
-                    <div className="stat">
-                      <div className="k">{t('geo.aioOwnedLabel')}</div>
-                      <div className="v">
-                        <b>{aioSummary.ownedCitedCount}</b>
-                        <small>{t('geo.aioOf', { total: aioSummary.aioPresentCount })}</small>
-                      </div>
-                    </div>
-                    <div className="stat">
-                      <div className="k">{t('geo.aioMeasuredLabel')}</div>
-                      <div className="v">
-                        <b>{aioSummary.measuredQueries}</b>
-                        <small>{t('geo.aioOf', { total: aioSummary.totalQueries })}</small>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="aio-exposure-block">
-                    <div className="fb-l">{t('geo.aioDomainsTitle')}</div>
-                    {aioSummary.citedDomains.length === 0 ? (
-                      <p className="note">{t('geo.aioNoDomains')}</p>
-                    ) : (
-                      <ul className="aio-exposure-domains">
-                        {aioSummary.citedDomains.map((d) => (
-                          <li
-                            key={d.domain}
-                            className={d.origin === 'owned' ? 'aio-exposure-domain owned' : 'aio-exposure-domain'}
-                          >
-                            <span className="aio-exposure-domain-name">{d.domain}</span>
-                            {d.origin === 'owned' ? (
-                              <span className="tag ok">
-                                <span className="dot" />
-                                {t('geo.aioOwnedBadge')}
-                              </span>
-                            ) : null}
-                            <span className="aio-exposure-domain-count">{t('geo.aioDomainCount', { count: d.count })}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </>
+                <p className="ui-result__note">{t('roadmap.empty')}</p>
               )}
             </div>
-          </section>
+          </details>
 
-          {/* ——— 6. 关键词现状与缺口 ——— */}
-          <section id="sec-keywords" className="report-section">
-            <h3>{t('toc.keywords')}</h3>
-            {intentPageFit ? (
-              <div className="card report-method" data-testid="intent-page-fit-map">
-                <h4>{t('keywords.intentMap.title')}</h4>
-                <p className="note">
-                  {t('keywords.intentMap.meta', {
-                    rows: intentPageFit.rowCount,
-                    issues: intentPageFit.issueRowCount,
-                  })}
-                </p>
-                {intentPageFit.rows.length ? (
-                  <div className="report-table-wrap">
-                    <table className="report-table">
-                      <thead>
-                        <tr>
-                          <th>{t('keywords.intentMap.col.query')}</th>
-                          <th>{t('keywords.intentMap.col.intent')}</th>
-                          <th>{t('keywords.intentMap.col.page')}</th>
-                          <th>{t('keywords.intentMap.col.demand')}</th>
-                          <th>{t('keywords.intentMap.col.fit')}</th>
-                          <th>{t('keywords.intentMap.col.issues')}</th>
-                          <th>{t('keywords.intentMap.col.action')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {intentPageFit.rows.slice(0, 12).map((row) => (
-                          <tr key={`${row.query}:${row.currentUrl ?? 'missing'}`}>
-                            <td>{row.query}</td>
-                            <td>{t(`keywords.intentMap.intent.${row.intent as SearchIntentKind}`)}</td>
-                            <td>
-                              {row.currentUrl ? (
-                                <>
-                                  <div className="mono">{row.currentUrl}</div>
-                                  <span className="tag g">
-                                    <span className="dot" />
-                                    {t(`keywords.intentMap.role.${(row.currentPageRole ?? 'unknown') as PageRole}`)}
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="tag i">
-                                  <span className="dot" />
-                                  {t('keywords.intentMap.noPage')}
-                                </span>
-                              )}
-                            </td>
-                            <td>{demandLabel(row, t)}</td>
-                            <td>{t('keywords.intentMap.fitScore', { score: row.fitScore })}</td>
-                            <td>
-                              {row.issueCodes.map((code) => (
-                                <span key={code} className="tag i">
-                                  <span className="dot" />
-                                  {t(`keywords.intentMap.issue.${code as IntentPageFitIssueCode}`)}
-                                </span>
-                              ))}
-                            </td>
-                            <td>{t(`keywords.intentMap.action.${row.action as IntentPageFitAction}`)}</td>
+          {/* 五支柱明细 */}
+          <details className="ui-doc__chapter" id="sec-pillars">
+            <summary>
+              <h3>{t('toc.pillars')}</h3>
+            </summary>
+            <div className="ui-doc__chapter-body">
+              {model.pillarGroups.map((g) => {
+                const bySev: Record<FindingSeverity, ReportFinding[]> = { high: [], mid: [], ok: [] }
+                for (const f of g.findings) bySev[f.severity].push(f)
+                return (
+                  <PillarGroupCard
+                    key={g.pillar}
+                    pillarName={pillarName(g.pillar)}
+                    scoreText={scoreText(g.score)}
+                    isScored={g.scored}
+                    unscoredLabel={t('pillars.unscored')}
+                    noFindingsLabel={t('pillars.noFindings')}
+                    findingsCount={g.findings.length}
+                    findingsLabel={t('pillars.findingsUnit', { count: g.findings.length })}
+                  >
+                    <ul className="ui-doc__plist">
+                      {(['high', 'mid', 'ok'] as FindingSeverity[]).flatMap((sev) =>
+                        bySev[sev].map((f) => {
+                          const isLab = g.pillar === 'P1' && f.evidenceRefs.some((r) => LAB_TYPES.has(r.split('_')[0]))
+                          return (
+                            <li key={f.id}>
+                              <SeverityMark level={severityLevel(sev)} label={sevLabel(sev)} />
+                              <div className="ui-doc__pitem">
+                                <p className="ui-doc__ptitle">
+                                  {f.title} {badgeFor(f.claimType)}
+                                  {isLab ? (
+                                    <>
+                                      {' '}
+                                      <Tag>
+                                        <Term explain={tt('labData')}>{t('labTag')}</Term>
+                                      </Tag>
+                                    </>
+                                  ) : null}
+                                </p>
+                                {f.description ? <p className="ui-result__note">{f.description}</p> : null}
+                                {f.evidenceRefs.length ? (
+                                  <p className="ui-doc__refs">
+                                    {t('pillars.evidence')}：<span className="ui-mono">{f.evidenceRefs.join(' · ')}</span>
+                                  </p>
+                                ) : null}
+                              </div>
+                            </li>
+                          )
+                        }),
+                      )}
+                    </ul>
+                  </PillarGroupCard>
+                )
+              })}
+            </div>
+          </details>
+
+          {/* GEO 可见度补充（spec 2026-07-13-geo-branded-unbranded-redesign.md） */}
+          <details className="ui-doc__chapter" id="sec-geo">
+            <summary>
+              <h3>{t('toc.geo')}</h3>
+            </summary>
+            <div className="ui-doc__chapter-body">
+              <p className="ui-footnote">{t('geo.meta')}</p>
+              {probeSummary ? (
+                <div className="ui-doc__block">
+                  <p>
+                    {t('geo.unbrandedHeadline', {
+                      present: probeSummary.unbranded.present,
+                      total: probeSummary.unbranded.total,
+                      wilsonPct: Math.round(probeSummary.unbranded.wilsonLow * 100),
+                    })}
+                  </p>
+                  {/* P1-2：mapWilsonNote 的人话解释，把「95% 置信下限」做成可悬停的 Term。 */}
+                  <p className="ui-footnote">
+                    <Term explain={tt('wilsonLowerBound')}>{t('geo.wilsonLabel')}</Term>：{t('geo.wilsonNote')}
+                  </p>
+                  <p>
+                    {t('geo.brandedHeadline', {
+                      brandedTotal: probeSummary.branded.perEngine.reduce(
+                        (sum, e) => sum + e.grounded + e.speculative + e.unknown + e.unverified + e.undetermined,
+                        0,
+                      ),
+                      grounded: probeSummary.branded.perEngine.reduce((sum, e) => sum + e.grounded, 0),
+                      speculative: probeSummary.branded.perEngine.reduce((sum, e) => sum + e.speculative, 0),
+                    })}
+                  </p>
+                  <p>{t('geo.citationRate', { pct: Math.round(probeSummary.citationRate * 100) })}</p>
+
+                  {probeSummary.branded.perEngine.length > 0 ? (
+                    <div className="ui-table-wrap">
+                      <table className="ui-table">
+                        <thead>
+                          <tr>
+                            <th>{t('geo.colEngine')}</th>
+                            <th>{t('geo.colType')}</th>
+                            <th className="ui-num">
+                              <Term explain={tt('claimGrounded')}>{t('geo.colGrounded')}</Term>
+                            </th>
+                            <th className="ui-num">
+                              <Term explain={tt('claimSpeculative')}>{t('geo.colSpeculative')}</Term>
+                            </th>
+                            <th className="ui-num">{t('geo.colUnknown')}</th>
+                            <th className="ui-num">
+                              <Term explain={tt('claimUnverified')}>{t('geo.colUnverified')}</Term>
+                            </th>
+                            <th className="ui-num">
+                              <Term explain={tt('claimUndetermined')}>{t('geo.colUndetermined')}</Term>
+                            </th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {probeSummary.branded.perEngine.map((e) => (
+                            <tr key={e.provider}>
+                              <td className="ui-mono">{e.provider}</td>
+                              <td>{e.webSearchEnabled ? t('geo.engineOnline') : t('geo.engineMemory')}</td>
+                              <td className="ui-num">{e.grounded}</td>
+                              <td className="ui-num">{e.speculative}</td>
+                              <td className="ui-num">{e.unknown}</td>
+                              <td className="ui-num">{e.unverified}</td>
+                              <td className="ui-num">{e.undetermined}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                  <p className="ui-footnote">{t('geo.probeProxyNote')}</p>
+                </div>
+              ) : (
+                <p className="ui-result__note">{t('geo.empty')}</p>
+              )}
+
+              {/* 被引用域名 Top 列表（只认 citedUrls，不含 retrievedUrls，口径同 CitedDomainsCard）——只在有引用样本时展示。 */}
+              {probeSummary && probeSummary.citedDomains.length > 0 ? (
+                <div className="ui-doc__block" data-testid="report-cited-domains">
+                  <h4 className="ui-doc__h4">{t('geo.citedDomainsTitle')}</h4>
+                  <p className="ui-footnote">{t('geo.citedDomainsMeta')}</p>
+                  {/* 社区 / UGC 来源占引用比：无样本时说明「未能计算」，不显示 0%（避免把「无数据」读成「测得 0%」）。 */}
+                  <p className="ui-footnote">
+                    <b>{t('geo.ugcCitationShareTitle')}</b>：
+                    {probeSummary.ugcCitationShare === null
+                      ? t('geo.ugcCitationShareUnavailable')
+                      : t('geo.ugcCitationShareValue', { pct: Math.round(probeSummary.ugcCitationShare * 100) })}
+                  </p>
+                  <p className="ui-footnote">{t('geo.ugcCitationShareNote')}</p>
+                  <CitedDomainsCard
+                    rows={probeSummary.citedDomains}
+                    ownedLabel={t('geo.citedDomainsOwned')}
+                    thirdPartyLabel={t('geo.citedDomainsThirdParty')}
+                    platformLabels={citedDomainsPlatformLabels}
+                    listLabels={{
+                      domain: to('domainCol'),
+                      count: to('countCol'),
+                      showAll: to('showAll', { n: probeSummary.citedDomains.length }),
+                      showLess: to('showLess', { n: 10 }),
+                    }}
+                  />
+                </div>
+              ) : null}
+
+              {/* 双口径的实测半边：Google AI Overviews 真实 SERP 采样（唯一允许「实测」字样的曝光区块）。
+                  分享页没有客户端 i18n 上下文，不复用 AioExposureCard（client），这里内联走 report.geo.*。
+                  三种空态：①未配置 DataForSEO；②已配置但本轮未采集；③已采集且如实展示（含 0 命中）。 */}
+              <div className="ui-doc__block" data-testid="report-aio">
+                <h4 className="ui-doc__h4">
+                  {t('geo.aioSectionTitle')} <EvidenceBadge grade="hard" label={t('geo.aioMeasuredBadge')} />
+                </h4>
+                <p className="ui-footnote">{t('geo.aioMeta')}</p>
+                {!dataforseoConfigured ? (
+                  <p className="ui-result__note">{t('geo.aioEmptyNotConfigured')}</p>
+                ) : !aioSummary ? (
+                  <p className="ui-result__note">{t('geo.aioEmptyNotCollected')}</p>
                 ) : (
-                  <p className="note">{t('keywords.intentMap.clean')}</p>
+                  <>
+                    <div className="ui-trio">
+                      <div>
+                        <span className="ui-big">
+                          <b>{aioSummary.aioPresentCount}</b>
+                          <small> {t('geo.aioOf', { total: aioSummary.measuredQueries })}</small>
+                        </span>
+                        <span className="ui-trio__cap">{t('geo.aioPresentLabel')}</span>
+                      </div>
+                      <div>
+                        <span className="ui-big">
+                          <b>{aioSummary.ownedCitedCount}</b>
+                          <small> {t('geo.aioOf', { total: aioSummary.aioPresentCount })}</small>
+                        </span>
+                        <span className="ui-trio__cap">{t('geo.aioOwnedLabel')}</span>
+                      </div>
+                      <div>
+                        <span className="ui-big">
+                          <b>{aioSummary.measuredQueries}</b>
+                          <small> {t('geo.aioOf', { total: aioSummary.totalQueries })}</small>
+                        </span>
+                        <span className="ui-trio__cap">{t('geo.aioMeasuredLabel')}</span>
+                      </div>
+                    </div>
+                    <p className="ui-label">{t('geo.aioDomainsTitle')}</p>
+                    {aioSummary.citedDomains.length === 0 ? (
+                      <p className="ui-result__note">{t('geo.aioNoDomains')}</p>
+                    ) : (
+                      <DomainCountTable
+                        rows={aioSummary.citedDomains.map((d) => ({ domain: d.domain, count: d.count, own: d.origin === 'owned' }))}
+                        labels={{
+                          domain: to('domainCol'),
+                          count: to('countCol'),
+                          own: t('geo.aioOwnedBadge'),
+                          showAll: to('showAll', { n: aioSummary.citedDomains.length }),
+                          showLess: to('showLess', { n: 10 }),
+                        }}
+                      />
+                    )}
+                  </>
                 )}
               </div>
-            ) : null}
-            <KeywordTable keywordMetrics={keywordMetrics} keywordGaps={keywordGaps} keywordText={keywordText} />
-          </section>
+            </div>
+          </details>
 
-          {/* ——— 7. 竞品对比 ——— */}
-          <section id="sec-competitors" className="report-section">
-            <h3>{t('toc.competitors')}</h3>
-            {competitors.length ? (
-              <div className="report-table-wrap">
-                <table className="report-table">
-                  <thead>
-                    <tr>
-                      <th>{t('competitors.col.domain')}</th>
-                      <th>{t('competitors.col.overlap')}</th>
-                      <th>{t('competitors.col.shared')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {competitors.map((c) => (
-                      <tr key={c.id}>
-                        <td className="mono">{c.domain}</td>
-                        <td>{c.overlapScore ?? '—'}</td>
-                        <td>{c.sharedKeywordsCount}</td>
+          {/* 关键词现状与缺口 */}
+          <details className="ui-doc__chapter" id="sec-keywords">
+            <summary>
+              <h3>{t('toc.keywords')}</h3>
+            </summary>
+            <div className="ui-doc__chapter-body">
+              {intentPageFit ? (
+                <div className="ui-doc__block" data-testid="intent-page-fit-map">
+                  <h4 className="ui-doc__h4">{t('keywords.intentMap.title')}</h4>
+                  <p className="ui-footnote">
+                    {t('keywords.intentMap.meta', {
+                      rows: intentPageFit.rowCount,
+                      issues: intentPageFit.issueRowCount,
+                    })}
+                  </p>
+                  {intentPageFit.rows.length ? (
+                    <div className="ui-table-wrap">
+                      <table className="ui-table">
+                        <thead>
+                          <tr>
+                            <th>{t('keywords.intentMap.col.query')}</th>
+                            <th>{t('keywords.intentMap.col.intent')}</th>
+                            <th>{t('keywords.intentMap.col.page')}</th>
+                            <th>{t('keywords.intentMap.col.demand')}</th>
+                            <th>{t('keywords.intentMap.col.fit')}</th>
+                            <th>{t('keywords.intentMap.col.issues')}</th>
+                            <th>{t('keywords.intentMap.col.action')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {intentPageFit.rows.slice(0, 12).map((row) => (
+                            <tr key={`${row.query}:${row.currentUrl ?? 'missing'}`}>
+                              <td>{row.query}</td>
+                              <td>{t(`keywords.intentMap.intent.${row.intent as SearchIntentKind}`)}</td>
+                              <td>
+                                {row.currentUrl ? (
+                                  <>
+                                    <div className="ui-mono">{row.currentUrl}</div>
+                                    <Tag>{t(`keywords.intentMap.role.${(row.currentPageRole ?? 'unknown') as PageRole}`)}</Tag>
+                                  </>
+                                ) : (
+                                  <Tag>{t('keywords.intentMap.noPage')}</Tag>
+                                )}
+                              </td>
+                              <td>{demandLabel(row, t)}</td>
+                              <td>{t('keywords.intentMap.fitScore', { score: row.fitScore })}</td>
+                              <td>
+                                <span className="ui-tags">
+                                  {row.issueCodes.map((code) => (
+                                    <Tag key={code}>{t(`keywords.intentMap.issue.${code as IntentPageFitIssueCode}`)}</Tag>
+                                  ))}
+                                </span>
+                              </td>
+                              <td>{t(`keywords.intentMap.action.${row.action as IntentPageFitAction}`)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="ui-result__note">{t('keywords.intentMap.clean')}</p>
+                  )}
+                </div>
+              ) : null}
+              <KeywordTable keywordMetrics={keywordMetrics} keywordGaps={keywordGaps} keywordText={keywordText} />
+            </div>
+          </details>
+
+          {/* 竞品对比 */}
+          <details className="ui-doc__chapter" id="sec-competitors">
+            <summary>
+              <h3>{t('toc.competitors')}</h3>
+            </summary>
+            <div className="ui-doc__chapter-body">
+              {competitors.length ? (
+                <div className="ui-table-wrap">
+                  <table className="ui-table">
+                    <thead>
+                      <tr>
+                        <th>{t('competitors.col.domain')}</th>
+                        <th className="ui-num">{t('competitors.col.overlap')}</th>
+                        <th className="ui-num">{t('competitors.col.shared')}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="note">{t('competitors.empty')}</p>
-            )}
-          </section>
+                    </thead>
+                    <tbody>
+                      {competitors.map((c) => (
+                        <tr key={c.id}>
+                          <td className="ui-mono">{c.domain}</td>
+                          <td className="ui-num">{c.overlapScore ?? '—'}</td>
+                          <td className="ui-num">{c.sharedKeywordsCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="ui-result__note">{t('competitors.empty')}</p>
+              )}
+            </div>
+          </details>
 
-          {/* ——— 8. 方法与范围 ——— */}
-          <section id="sec-method" className="report-section">
-            <h3>{t('toc.method')}</h3>
-            <div className="card report-method">
-              <dl>
+          {/* 方法与范围 */}
+          <details className="ui-doc__chapter" id="sec-method">
+            <summary>
+              <h3>{t('toc.method')}</h3>
+            </summary>
+            <div className="ui-doc__chapter-body">
+              <dl className="ui-kv">
                 <dt>{t('method.capturedAt')}</dt>
-                <dd>{capturedAt || '—'}</dd>
+                <dd>{capturedAt ? <LocalTime iso={capturedAt} /> : '—'}</dd>
                 <dt>{t('method.protocol')}</dt>
-                <dd className="mono">{run.protocolVersion}</dd>
+                <dd className="ui-mono">{run.protocolVersion}</dd>
                 <dt>{t('method.dataSources')}</dt>
                 <dd>
                   {dataSources.length ? (
-                    <span className="report-sources">
+                    <span className="ui-tags">
                       {dataSources.map((s) => (
-                        <span key={s} className="report-source-chip">{t(`method.sourceLabels.${s}`)}</span>
+                        <Tag key={s}>{t(`method.sourceLabels.${s}`)}</Tag>
                       ))}
                     </span>
                   ) : (
@@ -863,149 +988,164 @@ export async function ReportView({ runId }: { runId: string }) {
                   )}
                 </dd>
               </dl>
-            </div>
 
-            {model.reportContract ? (
-              <div className="card report-method">
-                <h4>{t('contract.scopeTitle')}</h4>
-                <p className="note">{t('contract.scopeMeta')}</p>
-                <dl>
-                  <dt>{t('contract.domain')}</dt>
-                  <dd className="mono">{model.reportContract.scope.domain || '—'}</dd>
-                  <dt>{t('contract.entryUrl')}</dt>
-                  <dd className="mono">{model.reportContract.scope.entryUrl || '—'}</dd>
-                  <dt>{t('contract.market')}</dt>
-                  <dd>{model.reportContract.scope.targetMarket || '—'}</dd>
-                  <dt>{t('contract.language')}</dt>
-                  <dd>{model.reportContract.scope.language || '—'}</dd>
-                  <dt><Term explain={tt('reportLevel')}>{t('contract.level')}</Term></dt>
-                  <dd>
-                    <strong>{model.reportContract.level}</strong> · {t(`contract.levelDesc.${model.reportContract.level}`)}
-                  </dd>
-                  <dt>{t('contract.coverage')}</dt>
-                  <dd>
-                    {t('contract.discovered')}: {model.reportContract.coverage.totalDiscovered} · {t('contract.checked')}: {model.reportContract.coverage.checkedPages}
-                    {model.reportContract.coverage.truncated ? ` · ${t('contract.truncated')}` : ''}
-                  </dd>
-                  {model.reportContract.coverage.gscTimeWindow ? (
-                    <>
-                      <dt>{t('contract.gscWindow')}</dt>
-                      <dd>{model.reportContract.coverage.gscTimeWindow}</dd>
-                    </>
-                  ) : null}
-                  <dt>{t('contract.aiSamples')}</dt>
-                  <dd>{model.reportContract.coverage.aiValidSamples ?? 0}</dd>
-                  <dt>{t('contract.competitors')}</dt>
-                  <dd>{model.reportContract.coverage.confirmedCompetitors ?? 0}</dd>
-                </dl>
+              {model.reportContract ? (
+                <div className="ui-doc__block">
+                  <h4 className="ui-doc__h4">{t('contract.scopeTitle')}</h4>
+                  <p className="ui-footnote">{t('contract.scopeMeta')}</p>
+                  <dl className="ui-kv">
+                    <dt>{t('contract.domain')}</dt>
+                    <dd className="ui-mono">{model.reportContract.scope.domain || '—'}</dd>
+                    <dt>{t('contract.entryUrl')}</dt>
+                    <dd className="ui-mono">{model.reportContract.scope.entryUrl || '—'}</dd>
+                    <dt>{t('contract.market')}</dt>
+                    <dd>{model.reportContract.scope.targetMarket || '—'}</dd>
+                    <dt>{t('contract.language')}</dt>
+                    <dd>{model.reportContract.scope.language || '—'}</dd>
+                    <dt>
+                      <Term explain={tt('reportLevel')}>{t('contract.level')}</Term>
+                    </dt>
+                    <dd>
+                      <strong>{model.reportContract.level}</strong> · {t(`contract.levelDesc.${model.reportContract.level}`)}
+                    </dd>
+                    <dt>{t('contract.coverage')}</dt>
+                    <dd>
+                      {t('contract.discovered')}: {model.reportContract.coverage.totalDiscovered} · {t('contract.checked')}:{' '}
+                      {model.reportContract.coverage.checkedPages}
+                      {model.reportContract.coverage.truncated ? ` · ${t('contract.truncated')}` : ''}
+                    </dd>
+                    {model.reportContract.coverage.gscTimeWindow ? (
+                      <>
+                        <dt>{t('contract.gscWindow')}</dt>
+                        <dd>{model.reportContract.coverage.gscTimeWindow}</dd>
+                      </>
+                    ) : null}
+                    <dt>{t('contract.aiSamples')}</dt>
+                    <dd>{model.reportContract.coverage.aiValidSamples ?? 0}</dd>
+                    <dt>{t('contract.competitors')}</dt>
+                    <dd>{model.reportContract.coverage.confirmedCompetitors ?? 0}</dd>
+                  </dl>
 
-                <h4>{t('contract.dataSourcesTitle')}</h4>
-                {model.reportContract.dataSources.length ? (
-                  <ul>
-                    {model.reportContract.dataSources.map((source) => (
-                      <li key={source.sourceKey}>
-                        {source.sourceKey === 'dataforseo' ? (
-                          <Term explain={tt('dataforseo')}>{t(`contract.sourceLabel.${source.sourceKey}`)}</Term>
-                        ) : (
-                          t(`contract.sourceLabel.${source.sourceKey}`)
-                        )}
-                        ：{t(`contract.sourceStatus.${source.status}`)}
-                        {source.capturedEvidenceCount ? ` · ${source.capturedEvidenceCount}` : ''}
-                        {source.failureReason ? ` · ${source.failureReason}` : ''}
-                        {source.children?.length ? (
-                          <ul className="report-subsources" aria-label={t('contract.subSourceTitle')}>
-                            {source.children.map((child) => (
-                              <li key={child.sourceKey}>
-                                {t(`contract.subSourceLabel.${child.sourceKey.replace(':', '_')}`)}
-                                ：{t(`contract.sourceStatus.${child.status}`)}
-                                {child.capturedEvidenceCount ? ` · ${child.capturedEvidenceCount}` : ''}
-                                {child.failureReason ? ` · ${child.failureReason}` : ''}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="note">{t('method.noSources')}</p>
-                )}
-
-                {model.reportContract.gaps.length ? (
-                  <>
-                    <h4>{t('contract.gapsTitle')}</h4>
-                    <p className="note">{t('contract.gapHint')}</p>
-                    <ul>
-                      {model.reportContract.gaps.map((sourceKey) => (
-                        <li key={sourceKey}>
-                          {sourceKey.includes(':')
-                            ? `${t(`contract.sourceLabel.${sourceKey.split(':')[0]}`)} · ${t(`contract.subSourceLabel.${sourceKey.replace(':', '_')}`)}`
-                            : t(`contract.sourceLabel.${sourceKey}`)}
+                  <h4 className="ui-doc__h4">{t('contract.dataSourcesTitle')}</h4>
+                  {model.reportContract.dataSources.length ? (
+                    <ul className="ui-doc__sources">
+                      {model.reportContract.dataSources.map((source) => (
+                        <li key={source.sourceKey}>
+                          {source.sourceKey === 'dataforseo' ? (
+                            <Term explain={tt('dataforseo')}>{t(`contract.sourceLabel.${source.sourceKey}`)}</Term>
+                          ) : (
+                            t(`contract.sourceLabel.${source.sourceKey}`)
+                          )}
+                          ：{t(`contract.sourceStatus.${source.status}`)}
+                          {source.capturedEvidenceCount ? ` · ${source.capturedEvidenceCount}` : ''}
+                          {source.failureReason ? ` · ${source.failureReason}` : ''}
+                          {source.children?.length ? (
+                            <ul className="ui-doc__subsources" aria-label={t('contract.subSourceTitle')}>
+                              {source.children.map((child) => (
+                                <li key={child.sourceKey}>
+                                  {t(`contract.subSourceLabel.${child.sourceKey.replace(':', '_')}`)}
+                                  ：{t(`contract.sourceStatus.${child.status}`)}
+                                  {child.capturedEvidenceCount ? ` · ${child.capturedEvidenceCount}` : ''}
+                                  {child.failureReason ? ` · ${child.failureReason}` : ''}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
-                  </>
-                ) : null}
-              </div>
-            ) : null}
+                  ) : (
+                    <p className="ui-result__note">{t('method.noSources')}</p>
+                  )}
 
-            {model.freshness.stale.length ? (
-              <div className="card report-stale">
-                <div className="report-stale-h">{t('method.staleTitle')}</div>
-                <p>{t('method.staleIntro', { date: model.freshness.oldestVerifiedAt ?? t('method.staleNever') })}</p>
-                <ul>
-                  {model.freshness.stale.map((s) => (
-                    <li key={s.artifactKey}>
-                      {s.label} · <a href={s.sourceUrl} target="_blank" rel="noreferrer">{s.sourceUrl}</a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <p className="note">{t('method.fresh')}</p>
-            )}
-          </section>
-
-          {/* ——— 9. 回测计划与闭环结果 ——— */}
-          <section id="sec-retest" className="report-section">
-            <h3>{t('toc.retest')}</h3>
-            <div className="card report-protocol-lock">{t('retest.protocolLock')}</div>
-            {retestSnapshots.length ? (
-              <>
-                <div className="report-table-wrap">
-                  <table className="report-table">
-                    <thead>
-                      <tr>
-                        <th>{t('retest.col.metric')}</th>
-                        <th>{t('retest.col.baseline')}</th>
-                        <th>{t('retest.col.retest')}</th>
-                        <th>{t('retest.col.delta')}</th>
-                        <th>{t('retest.col.interpretation')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {retestSnapshots.map((s) => (
-                        <tr key={s.id}>
-                          <td>{metricLabel(s.metricName)}</td>
-                          <td>{s.baselineValue || '—'}</td>
-                          <td>{s.retestValue || '—'}</td>
-                          <td>{s.delta || '—'}</td>
-                          <td>{s.interpretation}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  {model.reportContract.gaps.length ? (
+                    <div className="ui-doc__block">
+                      <h4 className="ui-doc__h4">{t('contract.gapsTitle')}</h4>
+                      <p className="ui-footnote">{t('contract.gapHint')}</p>
+                      <ul className="ui-doc__sources">
+                        {model.reportContract.gaps.map((sourceKey) => (
+                          <li key={sourceKey}>
+                            {sourceKey.includes(':')
+                              ? `${t(`contract.sourceLabel.${sourceKey.split(':')[0]}`)} · ${t(`contract.subSourceLabel.${sourceKey.replace(':', '_')}`)}`
+                              : t(`contract.sourceLabel.${sourceKey}`)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </div>
-                <p className="note">
-                  <span className="tag i"><span className="dot" />{t('claim.inferred')}</span> {t('retest.compound')}
-                </p>
-              </>
-            ) : (
-              <p className="note">{t('retest.empty')}</p>
-            )}
-          </section>
+              ) : null}
+
+              {model.freshness.stale.length ? (
+                <Notice tone="warn" title={t('method.staleTitle')}>
+                  {t('method.staleIntro', { date: model.freshness.oldestVerifiedAt ?? t('method.staleNever') })}
+                  <ul className="ui-doc__sources">
+                    {model.freshness.stale.map((s) => (
+                      <li key={s.artifactKey}>
+                        {s.label} ·{' '}
+                        <a href={s.sourceUrl} target="_blank" rel="noreferrer">
+                          {s.sourceUrl}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </Notice>
+              ) : (
+                <p className="ui-footnote">{t('method.fresh')}</p>
+              )}
+            </div>
+          </details>
+
+          {/* 回测计划与闭环结果 */}
+          <details className="ui-doc__chapter" id="sec-retest">
+            <summary>
+              <h3>{t('toc.retest')}</h3>
+            </summary>
+            <div className="ui-doc__chapter-body">
+              <Notice>{t('retest.protocolLock')}</Notice>
+              {retestSnapshots.length ? (
+                <>
+                  <div className="ui-table-wrap">
+                    <table className="ui-table">
+                      <thead>
+                        <tr>
+                          <th>{t('retest.col.metric')}</th>
+                          <th>{t('retest.col.baseline')}</th>
+                          <th>{t('retest.col.retest')}</th>
+                          <th>{t('retest.col.delta')}</th>
+                          <th>{t('retest.col.interpretation')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {retestSnapshots.map((s) => (
+                          <tr key={s.id}>
+                            <td>{metricLabel(s.metricName)}</td>
+                            <td>{s.baselineValue || '—'}</td>
+                            <td>{s.retestValue || '—'}</td>
+                            <td>{s.delta || '—'}</td>
+                            <td>{s.interpretation}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="ui-footnote">
+                    {inferredBadge} {t('retest.compound')}
+                  </p>
+                </>
+              ) : (
+                <p className="ui-result__note">{t('retest.empty')}</p>
+              )}
+            </div>
+          </details>
         </div>
-      </div>
-    </>
+      </section>
+
+      <footer className="ui-doc__foot">
+        <span>{t('doc.footerId', { id: reportId })}</span>
+        <span>{t('generatedBy')}</span>
+        <span>{t('doc.footerTrust')}</span>
+      </footer>
+    </article>
   )
 }

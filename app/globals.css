@@ -3627,7 +3627,8 @@
   details {
     display: block !important;
   }
-  details > summary {
+  /* 报告章节标题（.ui-doc__chapter）要随正文打印，只隐藏旧式「展开」类摘要。 */
+  details:not(.ui-doc__chapter) > summary {
     display: none !important;
   }
 }

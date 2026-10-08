@@ -2,31 +2,26 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { EvidenceLadder } from './EvidenceLadder'
 
-// EvidenceLadder 是 i18n-free 纯展示：调用方 t() 后传入已翻译的 L0–L4 阶梯，
-// tone 决定语义色（复用 .tag 变体 g/i/m），可直接用于 Server Component。
+// 「证据等级怎么读」：用正文里同一个 EvidenceBadge（形状区分）做图例，各配一句白话。i18n-free。
 const levels = [
-  { code: 'L0', name: '不可入库', desc: '不允许入库为结论', tone: 'g' as const },
-  { code: 'L1', name: '假设', desc: '待验证', tone: 'g' as const },
-  { code: 'L2', name: '推断', desc: '基于证据的推断', tone: 'i' as const },
-  { code: 'L3', name: '样本实测', desc: '样本抽测', tone: 'm' as const },
-  { code: 'L4', name: '硬证据实测', desc: 'GSC 硬证据', tone: 'm' as const },
+  { grade: 'hard' as const, label: '实测', desc: '有可复查的原始数据' },
+  { grade: 'sample' as const, label: '抽样实测', desc: '按固定协议抽样测得' },
+  { grade: 'inferred' as const, label: '推断', desc: '根据证据推出' },
+  { grade: 'hypothesis' as const, label: '疑似', desc: '待验证的猜测' },
 ]
 
 describe('EvidenceLadder', () => {
-  it('渲染标题与全部 5 级 L0–L4', () => {
-    render(<EvidenceLadder title="证据等级" levels={levels} />)
-    expect(screen.getByText('证据等级')).toBeInTheDocument()
+  it('每一级都是正文同款徽章 + 一句说明', () => {
+    const { container } = render(<EvidenceLadder levels={levels} note="没有证据的说法不会写进报告。" />)
     for (const l of levels) {
-      expect(screen.getByText(l.code)).toBeInTheDocument()
-      expect(screen.getByText(l.name)).toBeInTheDocument()
+      expect(screen.getByText(l.label)).toBeInTheDocument()
       expect(screen.getByText(l.desc)).toBeInTheDocument()
     }
-  })
-
-  it('tone 落到语义色类（m/i/g）', () => {
-    const { container } = render(<EvidenceLadder title="证据等级" levels={levels} />)
-    expect(container.querySelectorAll('.ladder-dot.m').length).toBe(2)
-    expect(container.querySelectorAll('.ladder-dot.i').length).toBe(1)
-    expect(container.querySelectorAll('.ladder-dot.g').length).toBe(2)
+    // 形状编码与正文一致：实测实心、抽样实测实心 ink-2、推断空心、疑似虚线。
+    expect(container.querySelector('.ui-ev--hard')).toHaveTextContent('实测')
+    expect(container.querySelector('.ui-ev--sample')).toHaveTextContent('抽样实测')
+    expect(container.querySelector('.ui-ev--inferred')).toHaveTextContent('推断')
+    expect(container.querySelector('.ui-ev--hypothesis')).toHaveTextContent('疑似')
+    expect(screen.getByText('没有证据的说法不会写进报告。')).toBeInTheDocument()
   })
 })
