@@ -62,6 +62,8 @@ const PREFLIGHT_DIMENSIONS: Dimension[] = [
   'eeat', 'content', 'structured_data', 'site_type', 'rich_results', 'rankings', 'keywords', 'technical', 'geo', 'competitors', 'backlinks',
 ]
 const MAX_TARGET_KEYWORDS = 20
+// 预检数据源 → 设置页面板锚点（SettingsClient 的 id=source-<key>）；GSC 是项目级授权，不在设置页。
+const SETTINGS_ANCHOR: Record<string, string> = { ai_probe: 'aiProbe', dataforseo: 'dataforseo', psi: 'psi', render: 'render' }
 
 const keywordLines = (text: string) => text.split('\n').map((k) => k.trim()).filter(Boolean)
 
@@ -246,6 +248,7 @@ export function NewAnalysisForm({
   }
 
   const preflightView = preflight && preflight.forProject === projectId ? preflight : null
+  const preflightDone = Boolean(preflightView?.items)
   const listSep = locale === 'zh' ? '、' : ', '
   const preflightLabels: PreflightPanelLabels = {
     title: tp('title'),
@@ -273,7 +276,7 @@ export function NewAnalysisForm({
       case 'select_gsc_site':
         return `/${locale}/projects/${projectId}#gsc`
       case 'configure_key':
-        return `/${locale}/settings`
+        return `/${locale}/settings${SETTINGS_ANCHOR[item.source] ? `#source-${SETTINGS_ANCHOR[item.source]}` : ''}`
       default:
         return null
     }
@@ -547,44 +550,50 @@ export function NewAnalysisForm({
                 />
               ) : null}
 
-              <div className="ui-group">
-                <h3 className="ui-subhead" id={`${uid}-sources`}>
-                  {t('dataSourceLabel')}
-                </h3>
-                <ul className="ui-sources" aria-labelledby={`${uid}-sources`}>
-                  <li className="ui-source">
-                    <div className="ui-source__main">
-                      <p className="ui-source__name">{t('gscTitle')}</p>
-                      <p className="ui-hint">{gscReady ? t('gscDesc') : activeGscConnected ? t('gscPropertyRequired') : t('gscImpact')}</p>
-                    </div>
-                    {gscReady ? (
-                      <StatusText status="accepted" label={t('stateConnected')} />
-                    ) : activeGscConnected && projectId ? (
-                      <ButtonLink href={`/${locale}/projects/${projectId}#gsc`} size="sm">
-                        {t('gscSelectPropertyCta')}
-                      </ButtonLink>
-                    ) : (
-                      <Button size="sm" onClick={connectGsc} disabled={!gscAppConfigured}>
-                        {t('gscConnectCta')}
-                      </Button>
-                    )}
-                  </li>
-                  <li className="ui-source">
-                    <div className="ui-source__main">
-                      <p className="ui-source__name">{t('aiProbeTitle')}</p>
-                      <p className="ui-hint">{aiProbeConfigured ? t('aiProbeDesc') : t('aiProbeImpact')}</p>
-                    </div>
-                    {aiProbeConfigured ? (
-                      <StatusText status="accepted" label={t('stateConfigured')} />
-                    ) : (
-                      <ButtonLink href={`/${locale}/settings#source-aiProbe`} size="sm">
-                        {t('aiProbeCta')}
-                      </ButtonLink>
-                    )}
-                  </li>
-                </ul>
-              </div>
-              {!activeGscConnected && !gscAppConfigured ? <p className="ui-hint">{t('gscNotConfiguredHint')}</p> : null}
+              {/* 预检成功时「运行前检查」表已经覆盖每个数据源的状态和修复入口（连接 GSC / 选择资源 / 去配置），
+                  下面两行只在预检加载中或失败时作兜底，避免同一个数据源出现两次（第 5 批用户拍板）。 */}
+              {preflightDone ? null : (
+                <>
+                  <div className="ui-group">
+                    <h3 className="ui-subhead" id={`${uid}-sources`}>
+                      {t('dataSourceLabel')}
+                    </h3>
+                    <ul className="ui-sources" aria-labelledby={`${uid}-sources`}>
+                      <li className="ui-source">
+                        <div className="ui-source__main">
+                          <p className="ui-source__name">{t('gscTitle')}</p>
+                          <p className="ui-hint">{gscReady ? t('gscDesc') : activeGscConnected ? t('gscPropertyRequired') : t('gscImpact')}</p>
+                        </div>
+                        {gscReady ? (
+                          <StatusText status="accepted" label={t('stateConnected')} />
+                        ) : activeGscConnected && projectId ? (
+                          <ButtonLink href={`/${locale}/projects/${projectId}#gsc`} size="sm">
+                            {t('gscSelectPropertyCta')}
+                          </ButtonLink>
+                        ) : (
+                          <Button size="sm" onClick={connectGsc} disabled={!gscAppConfigured}>
+                            {t('gscConnectCta')}
+                          </Button>
+                        )}
+                      </li>
+                      <li className="ui-source">
+                        <div className="ui-source__main">
+                          <p className="ui-source__name">{t('aiProbeTitle')}</p>
+                          <p className="ui-hint">{aiProbeConfigured ? t('aiProbeDesc') : t('aiProbeImpact')}</p>
+                        </div>
+                        {aiProbeConfigured ? (
+                          <StatusText status="accepted" label={t('stateConfigured')} />
+                        ) : (
+                          <ButtonLink href={`/${locale}/settings#source-aiProbe`} size="sm">
+                            {t('aiProbeCta')}
+                          </ButtonLink>
+                        )}
+                      </li>
+                    </ul>
+                  </div>
+                  {!activeGscConnected && !gscAppConfigured ? <p className="ui-hint">{t('gscNotConfiguredHint')}</p> : null}
+                </>
+              )}
               {gscConnectError && !activeGscConnected ? (
                 <Notice tone="error">{tg(`error.${gscConnectError}`, { expected: gscRedirectOrigin ?? 'GOOGLE_OAUTH_REDIRECT_URI' })}</Notice>
               ) : null}

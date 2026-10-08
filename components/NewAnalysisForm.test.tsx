@@ -434,6 +434,26 @@ describe('第 2 步运行前预检（SP-A §4.5）', () => {
     expect(reauth.getAttribute('href')).toContain('/api/gsc/auth?projectId=proj_x')
   })
 
+  it('预检成功时只保留检查表：同一个数据源不再重复出现，修复入口在表格行里', async () => {
+    const preflightItems = [
+      { source: 'project', state: 'ready', reason: null, affects: [], fix: null },
+      { source: 'gsc', state: 'unavailable', reason: 'gsc_not_connected', affects: ['rankings', 'keywords'], fix: { action: 'reauth_gsc', href: '/api/gsc/auth' } },
+      { source: 'ai_probe', state: 'unavailable', reason: 'ai_not_configured', affects: ['geo'], fix: { action: 'configure_key', href: '/settings' } },
+    ]
+    vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+      url === '/api/projects/proj_x/preflight'
+        ? new Response(JSON.stringify({ items: preflightItems }), { status: 200 })
+        : new Response(JSON.stringify({ id: 'proj_x' }), { status: 201 }),
+    ))
+    renderForm()
+    await advanceToConnect()
+    await screen.findByText(/本次无法评估/)
+    expect(screen.queryByRole('heading', { name: '真实数据源' })).toBeNull()
+    expect(screen.getAllByText(/Google Search Console/)).toHaveLength(1)
+    expect(screen.getByRole('link', { name: '连接 GSC' }).getAttribute('href')).toContain('/api/gsc/auth?projectId=proj_x')
+    expect(screen.getByRole('link', { name: '去配置' })).toHaveAttribute('href', '/zh/settings#source-aiProbe')
+  })
+
   it('预检请求失败不阻断向导：显示"检查没有完成"，仍可进入下一步', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) =>
       url === '/api/projects/proj_x/preflight'

@@ -43,7 +43,8 @@ export function SiteHeaderView({ locale, labels }: { locale: string; labels: Sit
         <div className="ui-top__actions">
           <LocaleSwitch />
           <ThemeToggle />
-          <ButtonLink href={`/${locale}/new`} variant="primary">
+          {/* 次按钮：每屏只留页面自己的一个主按钮，顶栏入口不与之抢（第 5 批用户拍板） */}
+          <ButtonLink href={`/${locale}/new`}>
             {labels.newAnalysis}
           </ButtonLink>
         </div>

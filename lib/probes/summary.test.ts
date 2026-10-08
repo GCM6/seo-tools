@@ -532,12 +532,13 @@ describe('samplesPerPromptPerEngine（SP-A §5.3：文案写实际 n，而不是
 })
 
 describe('界面文案描述本次采样时写实际 n（SP-A §5.3）', () => {
+  // 情感分布现在由概览页的 overview.sentimentLine 渲染（旧的 screen2.sentimentMeta 已随改版删除，UI 改版第 5 批）。
   it('情感分布说明带 {n} 占位符；报告 GEO 区块说明不再写死 n=5', async () => {
     const { readFileSync } = await import('node:fs')
     for (const locale of ['zh', 'en']) {
       const m = JSON.parse(readFileSync(`messages/${locale}.json`, 'utf8'))
-      expect(m.screen2.sentimentMeta, locale).toContain('{n}')
-      expect(m.screen2.sentimentMeta, locale).not.toContain('n=5')
+      expect(m.overview.sentimentLine, locale).toContain('{n}')
+      expect(m.overview.sentimentLine, locale).not.toContain('n=5')
       expect(m.report.geo.meta, locale).not.toContain('n=5')
     }
   })
