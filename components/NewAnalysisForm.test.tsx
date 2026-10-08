@@ -24,22 +24,35 @@ async function advanceToConnect() {
 }
 
 describe('NewAnalysisForm 向导可见性', () => {
-  it('渲染 section.screen.show（否则整屏被 display:none 隐藏）', () => {
+  it('不再套旧的 .screen 显隐外壳（旧样式里 .screen 默认 display:none）', () => {
     const { container } = renderForm()
-    expect(container.querySelector('section.screen')).toHaveClass('show')
+    expect(container.querySelector('.screen')).toBeNull()
   })
 
-  it('默认从第 1 步开始，显示步骤指示', () => {
+  it('默认从第 1 步开始，标题上方写「第 1 步，共 3 步」', () => {
     renderForm()
     expect(screen.getByLabelText('网址')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '你的网站' })).toBeInTheDocument()
+    expect(screen.getByText('第 1 步，共 3 步')).toBeInTheDocument()
   })
 
-  it('未接入 GSC 时，在创建项目之前先说明其能补齐的实测数据', () => {
+  it('未接入 GSC 时，在创建项目之前先用一条提示说明其能补齐的实测数据', () => {
     renderForm()
-    expect(screen.getByText('建议连接 GSC，补齐实测搜索数据')).toBeInTheDocument()
-    expect(screen.getByText(/点击、曝光、CTR 和平均排名/)).toBeInTheDocument()
-    expect(screen.getByText('项目级')).toBeInTheDocument()
+    const notice = screen.getByRole('status')
+    expect(notice).toHaveTextContent('建议连接 GSC，补齐实测搜索数据')
+    expect(notice).toHaveTextContent(/点击、曝光、CTR 和平均排名/)
+  })
+
+  it('网址格式提示在离开输入框后才出现，判断和服务端一致（长后缀域名不误报）', () => {
+    renderForm()
+    const url = screen.getByLabelText('网址')
+    fireEvent.change(url, { target: { value: 'bad' } })
+    expect(screen.queryByText(/网址格式不对/)).toBeNull()
+    fireEvent.blur(url)
+    expect(screen.getByText(/网址格式不对/)).toBeInTheDocument()
+    expect(url).toHaveAttribute('aria-invalid', 'true')
+    fireEvent.change(url, { target: { value: 'studio.consulting' } })
+    expect(screen.queryByText(/网址格式不对/)).toBeNull()
   })
 })
 
@@ -125,6 +138,13 @@ describe('NewAnalysisForm 第 2 步引擎多选预填（savedEngines 回填，sp
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ id: 'proj_x' }), { status: 201 })))
   })
 
+  it('换到下一步后，焦点落在新步骤的标题上', async () => {
+    renderForm()
+    await advanceToConnect()
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: '连接数据' }))
+    expect(screen.getByText('第 2 步，共 3 步')).toBeInTheDocument()
+  })
+
   it('传 savedEngines 仅含一个引擎 key 时，仅该 chip 选中', async () => {
     renderForm({ savedEngines: ['Perplexity'] })
     await advanceToConnect()
@@ -184,19 +204,19 @@ describe('NewAnalysisForm 第 2 步数据连接三态', () => {
     expect(link).toHaveAttribute('href', '/zh/settings#source-aiProbe')
   })
 
-  it('AI 探针已配显示「已配置 ✓」，无去配置链接', async () => {
+  it('AI 探针已配显示「已配置」，无去配置链接', async () => {
     renderForm({ aiProbeConfigured: true })
     await advanceToConnect()
-    expect(screen.getByText('已配置 ✓')).toBeInTheDocument()
+    expect(screen.getByText('已配置')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '去配置' })).not.toBeInTheDocument()
   })
 
-  it('GSC 已授权且已选择资源时显示「已连接 ✓」而非连接按钮', async () => {
+  it('GSC 已授权且已选择资源时显示「已连接」而非连接按钮', async () => {
     renderForm({ gscConnected: true, gscSiteUrl: 'sc-domain:example.com' })
     fireEvent.change(screen.getByLabelText('网址'), { target: { value: 'https://example.com' } })
     fireEvent.change(screen.getByLabelText('产品/服务品类（英文）'), { target: { value: 'saas tool' } })
     fireEvent.click(screen.getByRole('button', { name: '下一步' }))
-    await screen.findByText('已连接 ✓')
+    await screen.findByText('已连接')
     expect(screen.queryByRole('button', { name: '连接 GSC' })).not.toBeInTheDocument()
   })
 
@@ -220,7 +240,7 @@ describe('NewAnalysisForm 第 2 步数据连接三态', () => {
     })
     expect(screen.getByText(/还需在项目详情页选择一个已授权 GSC 资源/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '选择 GSC 资源' })).toHaveAttribute('href', '/zh/projects/proj_x#gsc')
-    expect(screen.queryByText('已连接 ✓')).not.toBeInTheDocument()
+    expect(screen.queryByText('已连接')).not.toBeInTheDocument()
   })
 
   it('输入已存在域名时，同步该项目的 GSC 资源与默认探针配置', async () => {
@@ -244,7 +264,7 @@ describe('NewAnalysisForm 第 2 步数据连接三态', () => {
     renderForm()
     await advanceToConnect()
 
-    await screen.findByText('已连接 ✓')
+    await screen.findByText('已连接')
     expect(screen.getByRole('checkbox', { name: 'ChatGPT' })).not.toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'Perplexity' })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'Gemini' })).not.toBeChecked()

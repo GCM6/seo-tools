@@ -238,7 +238,8 @@
     "targetKeywordsInvalid": "One English keyword per line (2–80 characters), at most 20 lines.",
     "competitorsLabel": "Competitors (optional, enter manually)",
     "competitorsPlaceholder": "e.g. Competitor A, Competitor B, Competitor C (comma-separated)",
-    "enginesLabel": "Probe engines (proxy-metric source for GEO visibility · developer-API sampling)",
+    "enginesLabel": "Probe engines",
+    "enginesHint": "Source of the GEO visibility proxy metrics: sampled through each vendor's developer API, which is not what people see in the consumer apps.",
     "dataSourceLabel": "Real data sources",
     "gscTitle": "Connect Google Search Console (read-only)",
     "gscDesc": "Once connected, see your real rankings, impressions and clicks — the most accurate ground truth for diagnosis",
@@ -255,7 +256,9 @@
     "stepSite": "Your site",
     "stepConnect": "Connect data",
     "stepConfirm": "Confirm & estimate",
-    "step1Sub": "Enter a domain — we'll smart-fill the rest, editable anytime.",
+    "step1Sub": "Once you enter the URL, we pick a target market from the domain and suggest categories from the homepage. You can change both.",
+    "stepOf": "Step {step} of {total}",
+    "urlInvalid": "That doesn't look like a web address. Try example.com or https://example.com.",
     "step2Sub": "The more real sources you connect, the wider the coverage; you can also skip.",
     "step3Sub": "Confirm the diagnostic boundary, then start collecting.",
     "next": "Next",
@@ -264,10 +267,9 @@
     "competitorsOptionalHint": "Leave blank — AI auto-discovers candidates you confirm later on the competitors page.",
     "gscImpact": "Not connected: no real rankings / clicks / impressions (L4 measured ground truth)",
     "gscRecommendationTitle": "Recommended: connect GSC for measured search data",
-    "gscRecommendationDetail": "It adds clicks, impressions, CTR, and average position. Read-only access stays bound to this project so the diagnosis has a fuller evidence base.",
-    "gscRecommendationScope": "Project-level",
-    "stateConnected": "Connected ✓",
-    "stateConfigured": "Configured ✓",
+    "gscRecommendationDetail": "It adds clicks, impressions, CTR and average position (read-only, bound to this project only). You can connect it in the next step.",
+    "stateConnected": "Connected",
+    "stateConfigured": "Configured",
     "gscConnectCta": "Connect GSC",
     "gscSelectPropertyCta": "Choose GSC property",
     "gscPropertyRequired": "Your Google account is authorized, but you still need to choose an authorized GSC property from the project detail page. This diagnosis will not collect GSC data yet.",
@@ -291,14 +293,14 @@
     "estimateCostValue": "~${low}–${high}",
     "estimateProbeCallsValue": "~{calls}",
     "estimateDisclaimer": "An estimate — actual usage governs; the real protocol is visible after collection.",
-    "run": "Start diagnosis →",
+    "run": "Start diagnosis",
     "starting": "Starting…",
     "submitError": "Couldn't start the analysis. Please try again.",
     "errorInvalidDomain": "Invalid site URL. Please check it and try again.",
     "errorDispatchFailed": "Failed to dispatch the collection job: the background job service (Inngest) is unavailable. Start it and try again.",
     "errorCategoryRequired": "Enter your product/service category in English before starting the diagnosis.",
     "errorMarketRequired": "Choose a target market before starting the diagnosis.",
-    "note": "Diagnosis is asynchronous: only evidence collected from real sources reaches the next screen; unconfigured sources stay pending."
+    "note": "Diagnosis runs in the background: only evidence that was actually collected reaches the results; sources you haven't connected are marked as pending."
   },
   "screen2": {
     "currentTitle": "Current state (objective real data)",
@@ -1459,9 +1461,29 @@
   "routeFallback": {
     "loading": "Loading diagnosis data…"
   },
+  "newAnalysis": {
+    "title": "New analysis",
+    "description": "Enter a URL to start a diagnosis, or start from the problem you want to solve.",
+    "modeLabel": "How to start",
+    "modeSite": "Diagnose a website",
+    "modeGoal": "Start from a problem"
+  },
+  "goalLauncher": {
+    "intro": "Describe what you want to solve. We work out whether it's new-site planning, a diagnosis, growth work or learning, then order the checks.",
+    "goalLabel": "What do you want to solve?",
+    "goalPlaceholder": "Example: organic traffic dropped suddenly and key product pages are losing rankings. Find out why.",
+    "domainLabel": "Domain (optional)",
+    "domainHint": "Leave it empty for new-site planning or learning questions.",
+    "submit": "Build the diagnosis route",
+    "submitting": "Building…",
+    "errorInvalidDomain": "That domain doesn't look right. Try example.com.",
+    "errorWorkflow": "The diagnosis workflow isn't ready yet. Try again later.",
+    "errorDispatchFailed": "The session was created, but the collection job couldn't be dispatched: the background job service (Inngest) is unavailable. Start it and try again.",
+    "errorGeneric": "Couldn't build the diagnosis route. Try again later."
+  },
   "notFound": {
     "title": "Page not found",
-    "description": "The project, run or page you requested does not exist. It may have been deleted, or the link is wrong.",
+    "description": "The link may be out of date, or the project has been deleted.",
     "backToProjects": "Back to projects"
   },
   "runError": {

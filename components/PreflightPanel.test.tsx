@@ -38,6 +38,19 @@ describe('PreflightPanel（SP-A §4.5：向导第 2 步）', () => {
     expect(screen.queryByRole('link', { name: '去配置' })).toBeNull()
   })
 
+  it('GSC 从没连接过：修复入口写「连接 GSC」；授权失效时才写「重新授权」', () => {
+    const fixHref = (i: { fix: { action: string } | null }) => (i.fix?.action === 'reauth_gsc' ? '/api/gsc/auth?projectId=proj_1' : null)
+    const neverConnected = buildPreflight({ ...allGood, gsc: { platformConfigured: true, connected: false, siteSelected: false, tokenOk: null } })
+    const { unmount } = render(<PreflightPanel status="done" items={neverConnected} labels={{ ...labels, connectGsc: '连接 GSC' }} fixHref={fixHref} />)
+    expect(screen.getByRole('link', { name: '连接 GSC' })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: '重新授权' })).toBeNull()
+    unmount()
+
+    const expired = buildPreflight({ ...allGood, gsc: { ...allGood.gsc, tokenOk: false, tokenError: 'invalid_grant' } })
+    render(<PreflightPanel status="done" items={expired} labels={{ ...labels, connectGsc: '连接 GSC' }} fixHref={fixHref} />)
+    expect(screen.getByRole('link', { name: '重新授权' })).toBeTruthy()
+  })
+
   it('全部就绪：显示就绪说明，DataForSEO 带余额', () => {
     render(<PreflightPanel status="done" items={buildPreflight(allGood)} labels={labels} fixHref={() => null} />)
     expect(screen.getByText(zh.allReady)).toBeTruthy()

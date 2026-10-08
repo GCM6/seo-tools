@@ -584,6 +584,47 @@
   .ui-alias__remove:hover { color: var(--sev-high); background: var(--sev-high-soft); }
   .ui-alias__remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+  /* ---------- 新建分析（ux-blueprint §4：二选一开始方式 + 三步向导 + 右侧预估） ---------- */
+  .ui-modes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .ui-modes > [role="tabpanel"] { min-width: 0; }
+  .ui-wizard { display: grid; grid-template-columns: minmax(0, 46rem) minmax(0, 300px); align-items: start; gap: 16px; }
+  .ui-wizard__main, .ui-wizard__aside { min-width: 0; }
+  .ui-wizard__note { grid-column: 1 / -1; margin: 0; }
+  @media (max-width: 899px) { .ui-wizard { grid-template-columns: minmax(0, 1fr); } }
+  .ui-wizard__count { margin: 0 0 2px; font-size: var(--fs-xs); color: var(--ink-3); }
+  /* 换步骤时焦点移到标题（tabindex=-1，只为读屏播报），标题不是可操作控件，不画焦点框。 */
+  .ui-wizard__heading .ui-panel__title:focus { outline: none; }
+  .ui-wizard__body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .ui-wizard__aside .ui-wizard__body { gap: 12px; }
+  .ui-wizard__nav { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
+  .ui-goal { max-width: 46rem; }
+  .ui-goal .ui-panel__body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .ui-field--narrow { max-width: 22rem; }
+  .ui-field__extra { display: grid; gap: 6px; }
+  .ui-group { display: grid; gap: 8px; min-width: 0; }
+  .ui-subhead { margin: 0; padding: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--ink); }
+  .ui-fieldset { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 0; border: 0; }
+  .ui-fieldset > legend { padding: 0; margin-bottom: 6px; }
+  .ui-checks { display: flex; flex-wrap: wrap; gap: 8px 20px; padding-top: 2px; }
+  .ui-checkline { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: var(--fs-sm); color: var(--ink); cursor: pointer; }
+  .ui-checkline:has(> input:disabled) { color: var(--ink-3); cursor: not-allowed; }
+  .ui-sources { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); }
+  .ui-source { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 16px; }
+  .ui-source + .ui-source { border-top: 1px solid var(--line); }
+  .ui-source__main { display: grid; gap: 2px; flex: 1 1 18rem; min-width: 0; }
+  .ui-source__name { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--ink); }
+  .ui-preflight { display: grid; gap: 8px; min-width: 0; }
+  .ui-preflight__gap { margin: 0; font-size: var(--fs-sm); color: var(--ink); }
+  .ui-preflight__list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); font-size: var(--fs-sm); }
+  .ui-preflight__item { display: grid; grid-template-columns: 10.5rem 4.5rem minmax(0, 1fr) auto; align-items: baseline; gap: 2px 12px; padding: 8px 16px; }
+  .ui-preflight__item + .ui-preflight__item { border-top: 1px solid var(--line); }
+  .ui-preflight__source { color: var(--ink); }
+  .ui-preflight__reason { display: grid; gap: 2px; color: var(--ink-2); }
+  @media (max-width: 639px) {
+    .ui-preflight__item { grid-template-columns: minmax(0, 1fr) auto; padding: 8px 12px; }
+    .ui-preflight__reason { grid-column: 1 / -1; }
+  }
+
   /* ---------- AI 可见度：提问格、详情、图例、堆叠条 ---------- */
   .ui-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; }
   @media (max-width: 899px) { .ui-split { grid-template-columns: minmax(0, 1fr); } }

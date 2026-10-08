@@ -238,7 +238,8 @@
     "targetKeywordsInvalid": "每行一个英文关键词（2–80 个字符），最多 20 行。",
     "competitorsLabel": "竞品（可选，手动填写）",
     "competitorsPlaceholder": "如 竞品 A, 竞品 B, 竞品 C（逗号分隔）",
-    "enginesLabel": "探测引擎（GEO 可见度代理指标来源 · 基于开发者 API 采样）",
+    "enginesLabel": "探测引擎",
+    "enginesHint": "GEO 可见度的代理指标来源：通过各家开发者 API 采样，不等于用户在产品界面里看到的结果。",
     "dataSourceLabel": "真实数据源",
     "gscTitle": "连接 Google Search Console（只读）",
     "gscDesc": "接入后可看到你的真实排名、展示、点击——诊断最准的地面实况",
@@ -255,7 +256,9 @@
     "stepSite": "你的网站",
     "stepConnect": "连接数据",
     "stepConfirm": "确认与预估",
-    "step1Sub": "填入域名，其余智能预填——随时可改。",
+    "step1Sub": "填好网址后，会按域名选好目标市场，并从首页给出品类候选；都可以再改。",
+    "stepOf": "第 {step} 步，共 {total} 步",
+    "urlInvalid": "网址格式不对，例如 example.com 或 https://example.com",
     "step2Sub": "接入越多真实数据源，诊断覆盖越全；也可先跳过。",
     "step3Sub": "确认诊断边界，即可开始采集。",
     "next": "下一步",
@@ -264,10 +267,9 @@
     "competitorsOptionalHint": "留空即可——AI 会自动发现候选，稍后在竞品页确认。",
     "gscImpact": "未连接：看不到真实排名 / 点击 / 展示（L4 实测地面实况）",
     "gscRecommendationTitle": "建议连接 GSC，补齐实测搜索数据",
-    "gscRecommendationDetail": "连接后可获取点击、曝光、CTR 和平均排名；这些数据会只读地绑定到当前项目，让诊断结论更完整。",
-    "gscRecommendationScope": "项目级",
-    "stateConnected": "已连接 ✓",
-    "stateConfigured": "已配置 ✓",
+    "gscRecommendationDetail": "连接后可获取点击、曝光、CTR 和平均排名（只读，只绑定到这个项目）。下一步就能连接。",
+    "stateConnected": "已连接",
+    "stateConfigured": "已配置",
     "gscConnectCta": "连接 GSC",
     "gscSelectPropertyCta": "选择 GSC 资源",
     "gscPropertyRequired": "Google 账号已授权；还需在项目详情页选择一个已授权 GSC 资源，当前诊断不会采集 GSC 数据。",
@@ -291,14 +293,14 @@
     "estimateCostValue": "约 ${low}–${high}",
     "estimateProbeCallsValue": "约 {calls} 次",
     "estimateDisclaimer": "预估值，实际以采集用量为准；采集后可见真实协议。",
-    "run": "开始诊断 →",
+    "run": "开始诊断",
     "starting": "创建中…",
     "submitError": "创建分析失败，请重试。",
     "errorInvalidDomain": "站点地址无效，请检查后重试。",
     "errorDispatchFailed": "采集任务派发失败：后台任务服务（Inngest）不可用，请启动后重试。",
     "errorCategoryRequired": "请先填写英文的产品/服务品类，再开始诊断。",
     "errorMarketRequired": "请先选择目标市场，再开始诊断。",
-    "note": "诊断为异步过程：只有真实采集到的 evidence 会进入下一屏；未配置的数据源保持待接入。"
+    "note": "诊断在后台进行：只有真实采集到的证据会进入结果；没接入的数据源会标成「待接入」。"
   },
   "screen2": {
     "currentTitle": "现状（客观真实数据）",
@@ -1459,10 +1461,30 @@
   "routeFallback": {
     "loading": "正在加载诊断数据…"
   },
+  "newAnalysis": {
+    "title": "新建分析",
+    "description": "填一个网址开始诊断；还没想清楚要查什么，可以先说你想解决的问题。",
+    "modeLabel": "开始方式",
+    "modeSite": "诊断一个网站",
+    "modeGoal": "从一个问题开始"
+  },
+  "goalLauncher": {
+    "intro": "说清楚你想解决什么，系统会判断这是新站规划、问题诊断、增长优化还是学习，再排好检查顺序。",
+    "goalLabel": "你想解决什么问题？",
+    "goalPlaceholder": "例如：最近自然流量突然下降，核心产品页排名也在掉，帮我找原因。",
+    "domainLabel": "域名（可选）",
+    "domainHint": "新站规划或学习类问题可以不填。",
+    "submit": "生成诊断路线",
+    "submitting": "正在生成…",
+    "errorInvalidDomain": "域名格式不对，例如 example.com。",
+    "errorWorkflow": "诊断工作流还没有就绪，请稍后重试。",
+    "errorDispatchFailed": "分析会话已创建，但采集任务没能派发：后台任务服务（Inngest）不可用，请启动后重试。",
+    "errorGeneric": "没能生成诊断路线，请稍后重试。"
+  },
   "notFound": {
     "title": "页面不存在",
-    "description": "你访问的项目、诊断或页面不存在，可能已被删除，或链接有误。",
-    "backToProjects": "返回项目列表"
+    "description": "链接可能已失效，或项目已被删除。",
+    "backToProjects": "返回项目"
   },
   "runError": {
     "title": "这个页面没能加载",

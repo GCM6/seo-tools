@@ -1,12 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { RULES_VERSION } from '@/lib/diagnosis/types'
+import { useTranslations } from 'next-intl'
+import { Button } from './Button'
+import { Notice } from './Notice'
+
+// 「从一个问题开始」（ux-blueprint §4）：一句话目标 + 可选域名 → POST /api/analysis-sessions，
+// 有 run 就进诊断工作区，否则进分析会话页。错误码映射成可读文案，不把原始码露给用户。
+const ERROR_KEYS: Record<string, string> = {
+  invalid_domain: 'errorInvalidDomain',
+  workflow_not_published: 'errorWorkflow',
+  dispatch_failed: 'errorDispatchFailed',
+}
 
 export function GoalAnalysisLauncher({ locale }: { locale: string }) {
-  const isZh = locale === 'zh'
+  const t = useTranslations('goalLauncher')
   const router = useRouter()
+  const id = useId()
   const [goal, setGoal] = useState('')
   const [domain, setDomain] = useState('')
   const [pending, setPending] = useState(false)
@@ -14,41 +25,73 @@ export function GoalAnalysisLauncher({ locale }: { locale: string }) {
 
   async function submit() {
     if (!goal.trim()) return
-    setPending(true); setError(null)
+    setPending(true)
+    setError(null)
     try {
       const response = await fetch('/api/analysis-sessions', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ goal: goal.trim(), domain: domain.trim() || undefined }),
       })
-      const body = await response.json() as { id?: string; runId?: string; error?: string }
-      if (!response.ok || !body.id) throw new Error(body.error || `HTTP ${response.status}`)
+      const body = (await response.json().catch(() => ({}))) as { id?: string; runId?: string; error?: string }
+      if (!response.ok || !body.id) {
+        setError(t(ERROR_KEYS[body.error ?? ''] ?? 'errorGeneric'))
+        return
+      }
       router.push(body.runId ? `/${locale}/runs/${body.runId}` : `/${locale}/sessions/${body.id}`)
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught))
+    } catch {
+      setError(t('errorGeneric'))
     } finally {
       setPending(false)
     }
   }
 
   return (
-    <section className="goal-launcher">
-      <div className="goal-launcher-copy">
-        <span>INTELLIGENT INTAKE / W0</span>
-        <h1>{isZh ? '先说目标，系统决定从哪里开始' : 'State the goal. The system chooses where to start.'}</h1>
-        <p>{isZh ? '无需先选择症状。我们会识别新站建设、问题诊断、增长优化或知识学习，并自动编排检查顺序。' : 'No symptom checklist. We classify build, diagnosis, optimization, or learning and route the workflow automatically.'}</p>
-      </div>
-      <div className="goal-launcher-form">
-        <label>
-          {isZh ? '你现在希望解决什么？' : 'What do you want to solve?'}
-          <textarea value={goal} onChange={(event) => setGoal(event.target.value)} rows={4} placeholder={isZh ? '例如：最近自然流量突然下降，核心产品页排名也在掉，请帮我找原因。' : 'Example: Organic traffic dropped suddenly and key product pages are losing rankings. Diagnose why.'} />
-        </label>
-        <div className="goal-domain-row">
-          <label>{isZh ? '域名（新站规划或学习可不填）' : 'Domain (optional for planning or learning)'}<input value={domain} onChange={(event) => setDomain(event.target.value)} placeholder="example.com" /></label>
-          <button type="button" onClick={submit} disabled={pending || !goal.trim()}>{pending ? (isZh ? '正在分类…' : 'Classifying…') : (isZh ? '生成诊断路线 →' : 'Build route →')}</button>
+    <section className="ui-panel ui-goal">
+      <form
+        className="ui-panel__body"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void submit()
+        }}
+      >
+        <p className="ui-hint">{t('intro')}</p>
+        <div className="ui-field">
+          <label className="ui-label" htmlFor={`${id}-goal`}>
+            {t('goalLabel')}
+          </label>
+          <textarea
+            id={`${id}-goal`}
+            className="ui-textarea"
+            rows={4}
+            value={goal}
+            placeholder={t('goalPlaceholder')}
+            onChange={(e) => setGoal(e.target.value)}
+          />
         </div>
-        {error ? <p className="goal-error">{error}</p> : null}
-      </div>
-      <div className="goal-launcher-foot"><span>知识 {`knowledge_vN`}</span><span>流程 {`workflow_vN`}</span><span>规则 {RULES_VERSION}</span><span>{isZh ? '版本在创建时冻结' : 'Versions freeze at creation'}</span></div>
+        <div className="ui-field ui-field--narrow">
+          <label className="ui-label" htmlFor={`${id}-domain`}>
+            {t('domainLabel')}
+          </label>
+          <input
+            id={`${id}-domain`}
+            className="ui-input"
+            value={domain}
+            placeholder="example.com"
+            aria-describedby={`${id}-domain-hint`}
+            onChange={(e) => setDomain(e.target.value)}
+          />
+          <p className="ui-hint" id={`${id}-domain-hint`}>
+            {t('domainHint')}
+          </p>
+        </div>
+        {error ? <Notice tone="error">{error}</Notice> : null}
+        <div className="ui-inline-actions">
+          <Button type="submit" variant="primary" loading={pending} disabled={!goal.trim()}>
+            {pending ? t('submitting') : t('submit')}
+          </Button>
+        </div>
+      </form>
     </section>
   )
 }
