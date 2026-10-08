@@ -3,9 +3,13 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { Button } from './Button'
+import { Panel } from './Panel'
+import { StatusText } from './StatusText'
 import type { GscConnectError } from '@/lib/gsc/oauth'
 
-// 项目级 GSC 连接卡（SP-G1b）：连接/重连按钮 + 已连接后已授权 property 选择。
+// 项目级 GSC 连接卡（SP-G1b；ux-blueprint §2.2）：连接/重连按钮 + 已连接后已授权 property 选择。
+// 四种状态各只说一句话：未连接 / 正在读取资源 / 已连接（选择或已保存资源）/ 授权失效。
 // GSC 令牌数据层本就 per-project；授权走既有 /api/gsc/auth，returnTo 回到本项目详情页闭环。
 // reauth：refresh_token 已失效（invalid_grant），只能重新授权。
 type SiteLoadState = 'idle' | 'loading' | 'ready' | 'empty' | 'error' | 'reauth'
@@ -101,94 +105,72 @@ export function GscConnectCard({
   const statusDesc = hasDivider ? statusRaw.split('——')[1] : null
 
   return (
-    <div className="card p-6 bg-surface-1 border border-border-subtle rounded-2xl shadow-sm hover:shadow-md transition-all duration-200">
-      <div className="flex items-center justify-between gap-4 mb-5 pb-4 border-b border-border-subtle">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-base text-ink">{t('gscTitle')}</span>
-          {gscConnected ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success border border-success/15">
-              <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-              {badgeText}
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning border border-warning/15">
-              <span className="w-1.5 h-1.5 rounded-full bg-warning" />
-              {badgeText}
-            </span>
-          )}
-        </div>
-        {gscConnected && (
-          <button
-            type="button"
-            className="px-2.5 py-1 text-xs text-body hover:text-ink hover:bg-surface-2 border border-border rounded-md transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
-            onClick={connectGsc}
-            disabled={busy || !gscAppConfigured}
-          >
+    <Panel
+      title={t('gscTitle')}
+      actions={
+        gscConnected ? (
+          <Button size="sm" variant="quiet" onClick={connectGsc} disabled={busy || !gscAppConfigured}>
             {t('reconnectGsc')}
-          </button>
-        )}
-      </div>
-
-      {/* 文案都以「GSC 未连接」为前提；已连接时（如取消了一次重连）旧令牌仍有效，不提示。 */}
-      {connectError && !gscConnected && (
-        <p role="alert" className="mb-4 p-3.5 rounded-xl bg-error/5 border border-error/10 text-error text-xs leading-relaxed">
-          {tg(`error.${connectError}`, { expected: redirectOrigin ?? 'GOOGLE_OAUTH_REDIRECT_URI' })}
-        </p>
-      )}
-
-      {!gscConnected && (
-        <div className="flex flex-col gap-4">
-          {statusDesc && (
-            <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-warning/5 border border-warning/10 text-warning text-xs leading-relaxed">
-              <svg className="w-4 h-4 mt-0.5 text-warning shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>{statusDesc}</span>
-            </div>
+          </Button>
+        ) : null
+      }
+    >
+      <div className="grid grid-cols-1 gap-3">
+        {/* 状态只说一句：未连接 / 已连接 / 授权已失效（读取资源时发现令牌失效，不能再显示「已连接」） */}
+        <p className="ui-gsc__status">
+          {!gscConnected ? (
+            <StatusText status="draft" label={badgeText} />
+          ) : siteLoadState === 'reauth' ? (
+            <StatusText status="rejected" label={t('gscReauthStatus')} />
+          ) : (
+            <StatusText status="accepted" label={badgeText} />
           )}
-          <div>
-            <button
-              type="button"
-              className="px-4 py-2 bg-primary text-on-primary hover:bg-primary-hover font-medium rounded-lg text-sm transition-all duration-150 inline-flex items-center gap-2 shadow-sm hover:shadow active:scale-[0.98] disabled:opacity-50"
-              onClick={connectGsc}
-              disabled={busy || !gscAppConfigured}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-              </svg>
-              {t('connectGsc')}
-            </button>
-          </div>
-        </div>
-      )}
+        </p>
 
-      {!gscAppConfigured && (
-        <div className="flex items-start gap-3 p-4 rounded-xl border border-error/10 bg-error/5 text-error text-sm leading-relaxed">
-          <svg className="w-5 h-5 mt-0.5 text-error shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <div>
-            <span className="font-semibold block mb-0.5 text-error">{t('gscPlatformNotReadyTitle')}</span>
-            <span className="text-xs text-error/90 leading-relaxed font-mono break-all">{t('gscNotConfiguredHint')}</span>
-          </div>
-        </div>
-      )}
+        {/* 文案都以「GSC 未连接」为前提；已连接时（如取消了一次重连）旧令牌仍有效，不提示。 */}
+        {connectError && !gscConnected ? (
+          <p role="alert" className="ui-alert-line">
+            {tg(`error.${connectError}`, { expected: redirectOrigin ?? 'GOOGLE_OAUTH_REDIRECT_URI' })}
+          </p>
+        ) : null}
 
-      {gscConnected && gscAppConfigured && (
-        <div className="flex flex-col gap-4 mt-3">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted">{t('siteUrlPick')}</span>
-            {siteLoadState === 'loading' ? (
-              <p className="text-xs text-muted">{t('siteSelectionLoading')}</p>
-            ) : siteLoadState === 'empty' ? (
-              <p className="text-xs text-warning leading-relaxed">{t('siteSelectionEmpty')}</p>
-            ) : siteLoadState === 'error' ? (
-              <p className="text-xs text-error leading-relaxed">{t('siteSelectionError')}</p>
-            ) : siteLoadState === 'reauth' ? (
-              <p role="alert" className="text-xs text-error leading-relaxed">{tg('reauth')}</p>
-            ) : (
+        {!gscAppConfigured ? (
+          <div className="ui-alert-line">
+            <b>{t('gscPlatformNotReadyTitle')}</b>
+            <span className="ui-mono"> {t('gscNotConfiguredHint')}</span>
+          </div>
+        ) : null}
+
+        {!gscConnected ? (
+          <>
+            {statusDesc ? <p className="ui-result__note">{statusDesc}</p> : null}
+            <div>
+              <Button variant="primary" size="sm" onClick={connectGsc} disabled={busy || !gscAppConfigured}>
+                {t('connectGsc')}
+              </Button>
+            </div>
+          </>
+        ) : null}
+
+        {gscConnected && gscAppConfigured ? (
+          siteLoadState === 'loading' ? (
+            <p className="ui-result__note">{t('siteSelectionLoading')}</p>
+          ) : siteLoadState === 'reauth' ? (
+            <p role="alert" className="ui-alert-line">
+              {tg('reauth')}
+            </p>
+          ) : siteLoadState === 'empty' ? (
+            <p className="ui-result__note">{t('siteSelectionEmpty')}</p>
+          ) : siteLoadState === 'error' ? (
+            <p className="ui-alert-line">{t('siteSelectionError')}</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-2">
+              <label className="ui-label" htmlFor={`gsc-site-${projectId}`}>
+                {t('siteUrlPick')}
+              </label>
               <select
-                className="w-full px-3 py-2 rounded-lg border border-border bg-surface-1 text-ink focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm transition-all duration-150"
+                id={`gsc-site-${projectId}`}
+                className="ui-select"
                 aria-label={t('siteUrlPick')}
                 value={sites.includes(siteUrl) ? siteUrl : ''}
                 onChange={(e) => {
@@ -203,32 +185,27 @@ export function GscConnectCard({
                   </option>
                 ))}
               </select>
-            )}
-          </div>
-          {siteLoadState === 'ready' && <p className="text-xs text-muted leading-relaxed font-sans">{t('siteSelectionHint')}</p>}
-          <div className="flex items-center gap-3">
-            {siteUrl && siteUrl !== savedSiteUrl ? (
-              <button
-                type="button"
-                className="px-4 py-2 bg-primary text-on-primary hover:bg-primary-hover font-medium rounded-lg text-sm transition-all duration-150 inline-flex items-center gap-2 shadow-sm hover:shadow active:scale-[0.98] disabled:opacity-50"
-                onClick={saveSiteUrl}
-                disabled={busy || siteLoadState !== 'ready'}
-              >
-                {t('saveSiteUrl')}
-              </button>
-            ) : savedSiteUrl ? (
-              <span role="status" className="text-xs font-medium text-primary">
-                {msg ?? t('siteSaved')}
-              </span>
-            ) : null}
-            {msg && siteUrl !== savedSiteUrl && (
-              <span role="status" className="text-xs font-medium text-primary">
-                {msg}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+              <p className="ui-hint">{t('siteSelectionHint')}</p>
+              <div className="ui-inline-actions">
+                {siteUrl && siteUrl !== savedSiteUrl ? (
+                  <Button variant="primary" size="sm" onClick={saveSiteUrl} loading={busy}>
+                    {t('saveSiteUrl')}
+                  </Button>
+                ) : savedSiteUrl ? (
+                  <span role="status" className="ui-status ui-status--accepted">
+                    {msg ?? t('siteSaved')}
+                  </span>
+                ) : null}
+                {msg && siteUrl !== savedSiteUrl ? (
+                  <span role="status" className="ui-alert-line">
+                    {msg}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          )
+        ) : null}
+      </div>
+    </Panel>
   )
 }

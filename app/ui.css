@@ -556,6 +556,34 @@
   .ui-error-page { display: grid; justify-items: start; gap: 10px; padding: 24px; }
   .ui-error-page__title { margin: 0; font-size: var(--fs-lg); font-weight: 600; color: var(--ink); }
 
+  /* ---------- 工作台首页、项目列表、项目详情（ux-blueprint §1 / §2） ---------- */
+  .ui-page { display: block; min-width: 0; }
+  .ui-todos { list-style: none; margin: 0; padding: 0; }
+  .ui-todo { display: grid; grid-template-columns: 4.5em minmax(0, 1fr) auto; align-items: baseline; gap: 4px 16px; padding: 12px 20px; border-top: 1px solid var(--line); }
+  .ui-todos > .ui-todo:first-child { border-top: 0; }
+  .ui-todo__what { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; min-width: 0; color: var(--ink); }
+  .ui-todo__what .ui-mono { overflow-wrap: anywhere; }
+  .ui-todo__go { white-space: nowrap; font-size: var(--fs-sm); }
+  .ui-todo__go::after { content: " →"; }
+  @media (max-width: 639px) { .ui-todo { grid-template-columns: 4.5em minmax(0, 1fr); padding: 12px 16px; } .ui-todo__go { grid-column: 2; } }
+  .ui-list-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+  .ui-list-toolbar__search { width: min(100%, 320px); }
+  .ui-project-cell { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+  .ui-favicon { flex: none; width: 16px; height: 16px; border-radius: var(--radius); }
+  /* 全是短值（日期、状态、数字、域名）的表：单元格不换行，窄屏在表格容器内横向滚动，不把「待复核」压成一字一行 */
+  .ui-table--nowrap th, .ui-table--nowrap td { white-space: nowrap; }
+  .ui-stack-xs { display: grid; gap: 2px; }
+  .ui-cell-danger { color: var(--sev-high); }
+  .ui-alert-line { margin: 0; font-size: var(--fs-sm); color: var(--sev-high); overflow-wrap: anywhere; }
+  .ui-gsc__status { margin: 0; }
+  .ui-input-row { display: flex; gap: 8px; }
+  .ui-input-row > .ui-input { flex: 1 1 auto; min-width: 0; }
+  .ui-alias-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  .ui-alias { display: inline-flex; align-items: center; gap: 4px; height: var(--ctl-h-sm); padding: 0 4px 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface-2); font-size: var(--fs-sm); color: var(--ink); }
+  .ui-alias__remove { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--radius); background: none; color: var(--ink-3); font: inherit; font-size: var(--fs-md); line-height: 1; cursor: pointer; }
+  .ui-alias__remove:hover { color: var(--sev-high); background: var(--sev-high-soft); }
+  .ui-alias__remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
   /* ---------- AI 可见度：提问格、详情、图例、堆叠条 ---------- */
   .ui-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; }
   @media (max-width: 899px) { .ui-split { grid-template-columns: minmax(0, 1fr); } }

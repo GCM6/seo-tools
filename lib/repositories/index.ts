@@ -381,6 +381,16 @@ export const listProjectsWithSummary = async () => {
       const findingCount = latest
         ? (await db.select({ id: findings.id }).from(findings).where(eq(findings.runId, latest.id))).length
         : 0
+      // 首页「待处理」：最近一次诊断停在确认建议阶段时，还有几条建议没处理（ux-blueprint §1，只读现有数据）。
+      const draftRecCount =
+        latest && latest.status === 'reviewing'
+          ? (
+              await db
+                .select({ id: recommendations.id })
+                .from(recommendations)
+                .where(and(eq(recommendations.runId, latest.id), eq(recommendations.status, 'draft')))
+            ).length
+          : 0
       return {
         id: p.id,
         domain: p.domain,
@@ -388,7 +398,15 @@ export const listProjectsWithSummary = async () => {
         gscReady: Boolean(settings?.gscConnected && settings.gscSiteUrl),
         nextRetestDueAt: p.nextRetestDueAt,
         latestRun: latest
-          ? { id: latest.id, runType: latest.runType, status: latest.status, startedAt: latest.startedAt, findingCount }
+          ? {
+              id: latest.id,
+              runType: latest.runType,
+              status: latest.status,
+              startedAt: latest.startedAt,
+              finishedAt: latest.finishedAt,
+              findingCount,
+              draftRecCount,
+            }
           : null,
         activeRun: activeRun ? { id: activeRun.id, status: activeRun.status } : null,
         retestAnchor: retestAnchor ? { id: retestAnchor.id } : null,

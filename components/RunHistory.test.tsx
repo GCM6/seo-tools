@@ -45,7 +45,8 @@ function renderHistory(props: Partial<Parameters<typeof RunHistory>[0]> = {}) {
 describe('RunHistory', () => {
   it('渲染 run 行的时间/类型/状态', () => {
     renderHistory()
-    expect(screen.getByText('2026-07-01')).toBeInTheDocument()
+    // 时间按浏览器本地时区显示到分钟（LocalTime），这里只断言日期部分。
+    expect(screen.getByText(/^2026-07-01/)).toBeInTheDocument()
     expect(screen.getByText('基线')).toBeInTheDocument()
     expect(screen.getByText('已完成')).toBeInTheDocument()
     expect(screen.getAllByText('回测').length).toBeGreaterThan(0)
@@ -98,3 +99,23 @@ describe('RunHistory', () => {
     })
   })
 })
+
+describe('RunHistory 时间回退（ux-blueprint §2.2）', () => {
+  it('没有开始时间时用完成时间；两者都没有写「时间未记录」', () => {
+    render(
+      <RunHistory
+        locale="zh"
+        runs={[
+          { id: 'r1', runType: 'baseline', status: 'output', startedAt: null, finishedAt: '2026-07-03', findingCount: 1 },
+          { id: 'r2', runType: 'retest', status: 'failed', startedAt: null, finishedAt: null, findingCount: 0 },
+        ]}
+        labels={{ ...labels, timeUnknown: '时间未记录' }}
+        statusLabels={{ output: '已完成', failed: '失败' }}
+        runTypeLabels={{ baseline: '基线', retest: '回测' }}
+      />,
+    )
+    expect(screen.getByText(/^2026-07-03/)).toBeInTheDocument()
+    expect(screen.getByText('时间未记录')).toBeInTheDocument()
+  })
+})
+

@@ -129,10 +129,16 @@
     "provider": { "label": "Service", "openai": "OpenAI", "perplexity": "Perplexity", "gemini": "Gemini", "deepseek": "DeepSeek", "googleCse": "Google CSE", "dataforseo": "DataForSEO", "cloudflare": "Cloudflare", "browserless": "Browserless" }
   },
   "projects": {
+    "colMarket": "Market",
+    "colGsc": "GSC",
+    "emptyHint": "Enter a URL to run your first diagnosis.",
+    "searchLabel": "Search projects",
+    "searchEmpty": "No projects match “{query}”",
+    "clearSearch": "Clear search",
     "title": "Projects",
     "subtitle": "Manage each client site you own and revisit past diagnostic reports.",
     "newAnalysis": "New analysis",
-    "empty": "No projects yet — start a new analysis.",
+    "empty": "No projects yet",
     "colDomain": "Domain",
     "colLatest": "Latest run",
     "colFindings": "Findings",
@@ -169,6 +175,10 @@
     "gscPending": "GSC not connected"
   },
   "projectDetail": {
+    "timeUnknown": "Time not recorded",
+    "gscReauthStatus": "Authorization expired",
+    "retestDueLine": "Next retest:",
+    "brandAliasPlaceholder": "e.g. local-language name, short name, former name",
     "dataAccessTitle": "Project data access",
     "runHistoryTitle": "Run history",
     "colTime": "Time",
@@ -182,10 +192,10 @@
     "confirmRecs": "Confirm recs",
     "noRuns": "This project has no runs yet.",
     "newRun": "New analysis",
-    "retestThis": "Retest from here",
+    "retestThis": "Retest against this baseline",
     "retestDue": "Next retest due: {date}",
     "gscTitle": "Google Search Console",
-    "gscConnected": "Connected ✓",
+    "gscConnected": "Connected",
     "gscNotConnected": "Not connected — without GSC there's no L4 measured clicks/impressions/position.",
     "connectGsc": "Connect GSC",
     "reconnectGsc": "Reconnect GSC",
@@ -1407,6 +1417,26 @@
     "changeLabels": { "new_rule": "New rule", "modify_threshold": "Modify threshold", "deprecate": "Deprecate", "update_artifact": "Update artifact" }
   },
   "dashboard": {
+    "title": "Workbench",
+    "subtitle": "What needs your attention today, and your projects.",
+    "todosTitle": "To do",
+    "todosMore": "Showing {shown} of {total}",
+    "todosEmpty": "Nothing needs your attention.",
+    "todo": {
+      "failed": "Diagnosis failed",
+      "review": "{count} recommendations to review",
+      "retest": "Due for a retest",
+      "unstarted": "Not diagnosed yet"
+    },
+    "todoAction": {
+      "failed": "See why",
+      "review": "Review",
+      "retest": "Retest",
+      "unstarted": "Start"
+    },
+    "projectsTitle": "Projects",
+    "sourcesLine": "Shared data sources {up} / {total} connected · missing: {missing}",
+    "sourcesAction": "Settings",
     "welcomeSub": "Evidence-Based Diagnostic Workbench",
     "welcomeTitle": "Navigate SEO + GEO with Hard Evidence",
     "welcomeDesc": "Veris diagnoses website visibility across traditional search engines and AI engines, delivering recommendations backed by multi-level verification.",

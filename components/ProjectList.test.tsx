@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { ProjectList, type ProjectSummaryItem } from './ProjectList'
 
@@ -7,11 +7,14 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 const labels = {
   newAnalysis: '新建分析',
   colDomain: '域名',
+  colMarket: '市场',
   colLatest: '最近诊断',
   colFindings: '发现数',
+  colGsc: 'GSC',
   colRetest: '下次回测',
   colAction: '操作',
   empty: '还没有项目',
+  emptyHint: '输入一个网址，先跑一次诊断。',
   noRun: '尚未诊断',
   retestNone: '—',
   findingsUnit: '{count} 条',
@@ -22,12 +25,10 @@ const labels = {
   retestStarting: '发起中…',
   retestError: '发起失败',
   retestInProgress: '已有诊断进行中，查看',
-  projectManagement: '项目管理',
+  searchLabel: '搜索项目',
   searchPlaceholder: '输入域名进行搜索…',
-  marketLabel: '市场',
-  retestLabel: '回测:',
-  latestStatusLabel: '最近诊断状态',
-  findingsDetectedLabel: '已检测缺陷',
+  searchEmpty: '没有找到包含“{query}”的项目',
+  clearSearch: '清除搜索',
   gscConnected: 'GSC 已接入',
   gscPending: '待接入 GSC',
 }
@@ -57,7 +58,7 @@ const projects: ProjectSummaryItem[] = [
   },
 ]
 
-function renderList(items = projects) {
+function renderList(items = projects, variant: 'full' | 'compact' = 'full') {
   return render(
     <ProjectList
       locale="zh"
@@ -65,6 +66,7 @@ function renderList(items = projects) {
       labels={labels}
       statusLabels={statusLabels}
       runTypeLabels={runTypeLabels}
+      variant={variant}
     />,
   )
 }
@@ -163,3 +165,39 @@ describe('ProjectList', () => {
     })
   })
 })
+
+describe('ProjectList 搜索与首页精简版（ux-blueprint §2.1 / §1）', () => {
+  it('按域名搜索；搜不到时说明搜了什么，并可一键清除', () => {
+    renderList()
+    const search = screen.getByRole('searchbox', { name: '搜索项目' })
+    fireEvent.change(search, { target: { value: 'b.c' } })
+    expect(screen.queryByText('a.com')).not.toBeInTheDocument()
+    expect(screen.getByText('b.com')).toBeInTheDocument()
+
+    fireEvent.change(search, { target: { value: 'zzz' } })
+    expect(screen.getByText('没有找到包含“zzz”的项目')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '清除搜索' }))
+    expect(screen.getByText('a.com')).toBeInTheDocument()
+    expect(screen.getByText('b.com')).toBeInTheDocument()
+  })
+
+  it('首页精简版：没有搜索框和操作列，只列前 10 个项目', () => {
+    const many: ProjectSummaryItem[] = Array.from({ length: 12 }, (_, i) => ({
+      ...projects[1],
+      id: `p${i}`,
+      domain: `site${i}.com`,
+    }))
+    renderList(many, 'compact')
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '配置并分析' })).not.toBeInTheDocument()
+    const body = screen.getAllByRole('rowgroup')[1]
+    expect(within(body).getAllByRole('row')).toHaveLength(10)
+  })
+
+  it('空列表：空状态带「新建分析」入口', () => {
+    renderList([])
+    expect(screen.getByText('输入一个网址，先跑一次诊断。')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '新建分析' })).toHaveAttribute('href', '/zh/new')
+  })
+})
+

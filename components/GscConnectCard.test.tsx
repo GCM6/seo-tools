@@ -39,6 +39,9 @@ describe('GscConnectCard', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Google 授权已失效')
     expect(screen.queryByText('无法读取已授权资源，请重新连接 GSC 后再试。')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '重新连接 GSC' })).toBeInTheDocument()
+    // 状态与提示一致：不再同时写「已连接」
+    expect(screen.getByText('授权已失效')).toBeInTheDocument()
+    expect(screen.queryByText('已连接')).not.toBeInTheDocument()
   })
 
   it('授权往返失败（端口不一致）：展示原因与期望回调地址', () => {
@@ -101,6 +104,14 @@ describe('GscConnectCard', () => {
 
     fireEvent.change(select, { target: { value: 'https://b.com/' } })
     expect(screen.getByRole('button', { name: '确认使用此资源' })).toBeInTheDocument()
+  })
+
+  it('读取已授权资源期间只显示「正在读取」，不同时显示「已保存」（ux-blueprint §2.2）', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    renderCard({ gscConnected: true, gscSiteUrl: 'https://a.com/' })
+    expect(screen.getByText(zhMessages.projectDetail.siteSelectionLoading)).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText('GSC 资源已保存。')).not.toBeInTheDocument()
   })
 
   it('未连接时不请求站点发现', () => {

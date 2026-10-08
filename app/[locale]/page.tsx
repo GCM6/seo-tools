@@ -1,278 +1,125 @@
 import { setRequestLocale, getTranslations } from 'next-intl/server'
-import { marketLabel } from '@/lib/markets'
 import Link from 'next/link'
+import { PageHeader } from '@/components/PageHeader'
+import { SectionHeader } from '@/components/SectionHeader'
+import { Notice } from '@/components/Notice'
+import { EmptyState } from '@/components/EmptyState'
+import { ButtonLink } from '@/components/Button'
+import { SeverityMark, type SeverityLevel } from '@/components/SeverityMark'
+import { ProjectList } from '@/components/ProjectList'
 import { listProjectsWithSummary } from '@/lib/repositories'
 import { loadDataSourceStatuses } from '@/lib/settings/load-statuses'
 import { summarizeDataSourceHealth } from '@/lib/settings/data-source-health'
-import { getDataSourceConnectHref, isExternalConnectHref } from '@/lib/settings/connect-links'
-import { FaviconImage } from '@/components/FaviconImage'
+import { marketLabel } from '@/lib/markets'
+import { buildTodos, type TodoKind } from '@/lib/projects/todos'
+import { projectListLabels } from '@/lib/projects/list-labels'
+import { displayDomain } from '@/lib/runs/workspace'
 
 export const dynamic = 'force-dynamic'
 
+// 待处理条目的紧急程度：失败的诊断最急；待确认建议与到期复查次之；还没诊断过的项目只是提示。
+const TODO_LEVEL: Record<TodoKind, SeverityLevel> = { failed: 'high', review: 'mid', retest: 'mid', unstarted: 'low' }
+const TODO_SEV_KEY: Record<SeverityLevel, string> = { high: 'high', mid: 'mid', low: 'ok', pass: 'ok' }
+const MAX_TODOS = 5
+
+// 首页 = 工作台（ux-blueprint §1）：打开就知道今天要处理什么。待处理 → 项目 → 数据源一行状态。
+// 不再是营销式欢迎横幅；新建分析的主按钮在顶栏里，页面内不再重复放第二个主按钮。
 export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params
   setRequestLocale(locale)
 
-  const [tSettings, tProjects, tDashboard, projects, dataHealth] = await Promise.all([
-    getTranslations('settings'),
-    getTranslations('projects'),
+  const [t, tp, tr, tw, tSettings, rawProjects, dataHealth] = await Promise.all([
     getTranslations('dashboard'),
+    getTranslations('projects'),
+    getTranslations('retest'),
+    getTranslations('workspace'),
+    getTranslations('settings'),
     listProjectsWithSummary(),
     loadDataSourceStatuses().then(summarizeDataSourceHealth),
   ])
-
-  const recentProjects = projects.slice(0, 3)
-
-  // 数据源多语言对应字典
+  const projects = rawProjects.map((p) => ({ ...p, market: marketLabel(p.market, locale) ?? tp('marketUnset') }))
+  const todos = buildTodos(projects, locale, new Date())
   const sourceNames: Record<string, string> = {
     googleCse: tSettings('source.googleCse'),
     aiProbe: tSettings('source.aiProbe'),
     dataforseo: tSettings('source.dataforseo'),
     render: tSettings('source.render'),
   }
-
-  // 补齐多语言翻译字典，防止 ReferenceError 崩溃
-  const statusLabels = tProjects.raw('status') as Record<string, string>
-  const runTypeLabels = tProjects.raw('runType') as Record<string, string>
+  const missingSources = dataHealth.items.filter((i) => !i.up).map((i) => sourceNames[i.key] ?? i.key)
 
   return (
-    <div className="dashboard-hub animate-slide-up">
-      {/* 1. 顶端欢迎 Banner */}
-      <div className="welcome-banner">
-        {/* 顺时针自旋流光束 */}
-        <div className="welcome-banner-trail" />
+    <section className="ui-page">
+      <PageHeader title={t('title')} description={t('subtitle')} />
 
-        {/* 内容内胆层 */}
-        <div className="welcome-banner-inner">
-          {/* 科技精密网格层 */}
-          <div className="welcome-banner-grid-overlay" />
-
-          <div className="welcome-banner-content">
-            <span className="welcome-banner-sub">
-              <span className="ai-pulse-dot" />
-              {tDashboard('welcomeSub')}
-            </span>
-            <h1 className="welcome-banner-title">
-              {tDashboard('welcomeTitle')}
-            </h1>
-            <p className="welcome-banner-desc">
-              {tDashboard('welcomeDesc')}
-            </p>
-            <div>
-              <Link
-                href={`/${locale}/new`}
-                className="welcome-banner-cta"
-              >
-                <span className="arrow">➔</span>
-                {tDashboard('welcomeCta').replace('➔', '').trim()}
-              </Link>
-            </div>
-          </div>
-          {/* 背景虚化装饰元素 */}
-          <div className="welcome-banner-decor" />
+      {projects.length === 0 ? (
+        <div className="ui-panel">
+          <EmptyState
+            title={tp('empty')}
+            description={tp('emptyHint')}
+            action={
+              <ButtonLink href={`/${locale}/new`} variant="primary">
+                {tp('newAnalysis')}
+              </ButtonLink>
+            }
+          />
         </div>
-      </div>
-
-      {/* 2. 主区域两栏布局 */}
-      <div className="dashboard-main">
-
-        {/* 左栏：项目管理 / Onboarding 引导 */}
-        <div className="dashboard-column">
-          <div className="dashboard-section-header">
-            <h2 className="dashboard-section-title">
-              {tDashboard('recentProjects')}
-            </h2>
-            {projects.length > 0 && (
-              <Link
-                href={`/${locale}/projects`}
-                className="dashboard-section-link"
-              >
-                {tDashboard('viewAllProjects')}
-              </Link>
-            )}
-          </div>
-
-          {projects.length === 0 ? (
-            /* Onboarding 空态引导卡片 */
-            <div className="card onboarding-card">
-              <div className="onboarding-icon-container">
-                <svg style={{ width: '24px', height: '24px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 600, margin: '0 0 8px 0' }}>
-                  {tDashboard('onboardingTitle')}
-                </h3>
-                <p style={{ fontSize: '12px', color: 'var(--ds-muted)', lineHeight: 1.6, margin: '0 auto', maxWidth: '420px' }}>
-                  {tDashboard('onboardingDesc')}
-                </p>
-              </div>
-
-              {/* 三步卡片 */}
-              <div className="onboarding-steps-grid">
-                <div className="onboarding-step-card">
-                  <div className="onboarding-step-number">01</div>
-                  <h4 className="onboarding-step-title">{tDashboard('step1Title')}</h4>
-                  <p className="onboarding-step-desc">
-                    {tDashboard('step1Desc')}
-                  </p>
-                </div>
-                <div className="onboarding-step-card">
-                  <div className="onboarding-step-number">02</div>
-                  <h4 className="onboarding-step-title">{tDashboard('step2Title')}</h4>
-                  <p className="onboarding-step-desc">
-                    {tDashboard('step2Desc')}
-                  </p>
-                </div>
-                <div className="onboarding-step-card">
-                  <div className="onboarding-step-number">03</div>
-                  <h4 className="onboarding-step-title">{tDashboard('step3Title')}</h4>
-                  <p className="onboarding-step-desc">
-                    {tDashboard('step3Desc')}
-                  </p>
-                </div>
-              </div>
-
-              <Link href={`/${locale}/new`} className="run-btn">
-                {tProjects('newAnalysis')}
-              </Link>
-            </div>
-          ) : (
-            /* 最近项目卡片列表 */
-            <div className="projects-list-grid">
-              {recentProjects.map((p) => {
-                const run = p.latestRun
-                const hasFindings = run && run.findingCount > 0
-
-                return (
-                  <Link
-                    key={p.id}
-                    href={`/${locale}/projects/${p.id}`}
-                    className="card project-card interactive"
-                  >
-                    <div>
-                      <div className="project-card-header">
-                        <FaviconImage domain={p.domain} />
-                        <span className="project-card-title">
-                          {p.domain}
-                        </span>
-                      </div>
-                      <div className="project-card-market-row">
-                        <span className="project-card-market-tag">
-                          {marketLabel(p.market, locale) ?? tProjects('marketUnset')}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="project-stats-bay">
-                      <div className="project-stat-cell">
-                        <span className="project-stat-label">{tDashboard('recentRunLabel')}</span>
-                        <span className="project-stat-value">
-                          <span className={`status-indicator-dot ${run ? 'active' : 'inactive'}`} />
-                          {run ? `${runTypeLabels[run.runType] ?? run.runType} · ${statusLabels[run.status] ?? run.status}` : tProjects('noRun')}
-                        </span>
-                      </div>
-                      <div className="project-stat-cell">
-                        <span className="project-stat-label">{tDashboard('findingsLabel')}</span>
-                        <span className={`project-stat-value findings ${hasFindings ? 'gap' : 'good'}`}>
-                          {run ? (
-                            <>
-                              <span className="findings-indicator-dot" />
-                              {tProjects('findingsUnit', { count: run.findingCount })}
-                            </>
-                          ) : (
-                            <span style={{ color: 'var(--ds-muted)', fontWeight: 'normal' }}>—</span>
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* 右栏：全局系统健康度概览 */}
-        <div className="dashboard-column">
-          <h2 className="dashboard-section-title">
-            {tSettings('matrixTitle')}
-          </h2>
-          <div className="card health-overview-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>
-                {tDashboard('readinessLabel')}
-              </span>
-              <span
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontWeight: 'bold',
-                  fontSize: '11px',
-                  background: 'var(--ds-primary-muted)',
-                  color: 'var(--ds-primary)',
-                  padding: '2px 8px',
-                  borderRadius: '12px'
-                }}
-              >
-                {dataHealth.up} / {dataHealth.total}
-              </span>
-            </div>
-
-            {/* 健康度进度条 */}
-            <div className="health-overview-bar-container">
-              <div
-                className="health-overview-bar"
-                style={{
-                  width: `${(dataHealth.up / dataHealth.total) * 100}%`
-                }}
-              />
-            </div>
-
-            {/* 数据源列表明细 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '4px' }}>
-              {dataHealth.items.map((item) => {
-                const name = sourceNames[item.key] ?? item.key
-                const connectHref = getDataSourceConnectHref(item.key, locale)
-                const opensExternal = isExternalConnectHref(connectHref)
-
-                return (
-                  <div key={item.key} className="source-item">
-                    <span className="source-name">{name}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span
-                        className={`source-status-badge ${item.up ? 'connected' : 'disconnected'}`}
-                      >
-                        {item.up
-                          ? (item.key === 'gsc' ? tSettings('statusConnected') : tSettings('statusConfigured'))
-                          : (item.key === 'gsc' ? tSettings('statusNotConnected') : tSettings('statusNotConfigured'))}
+      ) : (
+        <div className="grid grid-cols-1 gap-8">
+          {/* 待处理：对象 + 数量 + 动作 */}
+          <section className="ui-section" aria-labelledby="home-todos">
+            <SectionHeader
+              id="home-todos"
+              title={t('todosTitle')}
+              note={todos.length > MAX_TODOS ? t('todosMore', { shown: MAX_TODOS, total: todos.length }) : undefined}
+            />
+            {todos.length ? (
+              <ul className="ui-panel ui-todos">
+                {todos.slice(0, MAX_TODOS).map((todo) => {
+                  const level = TODO_LEVEL[todo.kind]
+                  return (
+                    <li key={todo.key} className="ui-todo">
+                      <SeverityMark level={level} label={tw(`sev.${TODO_SEV_KEY[level]}`)} />
+                      <span className="ui-todo__what">
+                        <span className="ui-mono">{displayDomain(todo.domain)}</span>
+                        <span>{t(`todo.${todo.kind}`, { count: todo.count ?? 0 })}</span>
                       </span>
-                      {!item.up && (opensExternal ? (
-                        <a
-                          href={connectHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ fontSize: '11px', textDecoration: 'none', color: 'var(--ds-primary)' }}
-                        >
-                          {tDashboard('setupAction')}
-                        </a>
-                      ) : (
-                        <Link
-                          href={connectHref}
-                          style={{ fontSize: '11px', textDecoration: 'none', color: 'var(--ds-primary)' }}
-                        >
-                          {tDashboard('setupAction')}
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
+                      <Link href={todo.href} className="ui-todo__go">
+                        {t(`todoAction.${todo.kind}`)}
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p className="ui-result__note">{t('todosEmpty')}</p>
+            )}
+          </section>
 
-      </div>
-    </div>
+          {/* 项目（前 10 个） */}
+          <section className="ui-section" aria-labelledby="home-projects">
+            <SectionHeader
+              id="home-projects"
+              title={t('projectsTitle')}
+              action={<Link href={`/${locale}/projects`}>{t('viewAllProjects')}</Link>}
+            />
+            <ProjectList
+              locale={locale}
+              projects={projects}
+              labels={projectListLabels(tp, tr)}
+              statusLabels={tp.raw('status') as Record<string, string>}
+              runTypeLabels={tp.raw('runType') as Record<string, string>}
+              variant="compact"
+            />
+          </section>
+
+          {/* 数据源：全部接入时不显示 */}
+          {missingSources.length ? (
+            <Notice action={<Link href={`/${locale}/settings`}>{t('sourcesAction')}</Link>}>
+              {t('sourcesLine', { up: dataHealth.up, total: dataHealth.total, missing: missingSources.join('、') })}
+            </Notice>
+          ) : null}
+        </div>
+      )}
+    </section>
   )
 }

@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { EmptyState } from './EmptyState'
+import { LocalTime } from './LocalTime'
 import { RetestButton } from './RetestButton'
 import { isCompletedRunStatus } from '@/lib/runs/status'
 
@@ -7,12 +9,14 @@ export interface RunHistoryItem {
   runType: string
   status: string
   startedAt: string | null
+  finishedAt?: string | null
   findingCount: number
 }
 
-// 项目详情的诊断历史表（i18n-free 纯展示，SP-G1b）。
-// 每行 → 该 run 总览页；status=output 时另给报告直达；baseline 且完成态另给「以此回测」
-// （spec §2.2），项目处于进行中状态时（hasActiveRun）这些按钮统一禁用（并发保护）。
+// 项目详情的诊断历史表（ux-blueprint §2.2，i18n-free 纯展示）。
+// 时间优先 started_at，回落 finished_at，两者都没有写「时间未记录」。
+// 每行 → 该 run 总览页；output 另给报告 / 执行清单直达；reviewing 给「确认建议」；
+// baseline 且完成态给「以这次为基线回测」，项目有进行中的诊断（hasActiveRun）时禁用（并发保护）。
 export function RunHistory({
   locale,
   runs,
@@ -31,11 +35,12 @@ export function RunHistory({
     colAction: string
     viewRun: string
     viewReport: string
-    // 可选：调用方尚未接入时（如仅接收本次改动的 caller 未同步 labels），
-    // 新增的「输出」「确认建议」链接直接不渲染，而不是编译期报错或显示英文/占位符。
+    // 可选：调用方尚未接入时，这两个链接直接不渲染，而不是显示占位符。
     viewOutput?: string
     confirmRecs?: string
     noRuns: string
+    /** 开始、完成时间都没有时显示；缺省为「—」。 */
+    timeUnknown?: string
     retestThis: string
     retestStarting: string
     retestError: string
@@ -47,68 +52,69 @@ export function RunHistory({
   runTypeLabels: Record<string, string>
   hasActiveRun?: boolean
 }) {
-  if (runs.length === 0) return <p className="note">{labels.noRuns}</p>
+  if (runs.length === 0) {
+    return (
+      <div className="ui-panel">
+        <EmptyState title={labels.noRuns} />
+      </div>
+    )
+  }
 
   return (
-    <div className="report-table-wrap">
-      <table className="report-table">
+    <div className="ui-panel ui-table-wrap">
+      <table className="ui-table ui-table--nowrap">
         <thead>
           <tr>
             <th>{labels.colTime}</th>
             <th>{labels.colType}</th>
             <th>{labels.colStatus}</th>
-            <th>{labels.colFindings}</th>
-            <th>{labels.colAction}</th>
+            <th className="ui-num">{labels.colFindings}</th>
+            <th>
+              <span className="sr-only">{labels.colAction}</span>
+            </th>
           </tr>
         </thead>
         <tbody>
-          {runs.map((r) => (
-            <tr key={r.id}>
-              <td className="mono">{r.startedAt ?? '—'}</td>
-              <td>{runTypeLabels[r.runType] ?? r.runType}</td>
-              <td>{statusLabels[r.status] ?? r.status}</td>
-              <td>{r.findingCount}</td>
-              <td>
-                <Link href={`/${locale}/runs/${r.id}`}>{labels.viewRun}</Link>
-                {r.status === 'output' ? (
-                  <>
-                    {' · '}
-                    <Link href={`/${locale}/runs/${r.id}/report`}>{labels.viewReport}</Link>
-                    {labels.viewOutput ? (
+          {runs.map((r) => {
+            const time = r.startedAt ?? r.finishedAt ?? null
+            return (
+              <tr key={r.id}>
+                <td>{time ? <LocalTime iso={time} /> : <span className="ui-muted">{labels.timeUnknown ?? '—'}</span>}</td>
+                <td>{runTypeLabels[r.runType] ?? r.runType}</td>
+                <td className={r.status === 'failed' ? 'ui-cell-danger' : undefined}>{statusLabels[r.status] ?? r.status}</td>
+                <td className="ui-num">{r.findingCount}</td>
+                <td>
+                  <span className="ui-row-actions">
+                    <Link href={`/${locale}/runs/${r.id}`}>{labels.viewRun}</Link>
+                    {r.status === 'output' ? (
                       <>
-                        {' · '}
-                        <Link href={`/${locale}/runs/${r.id}/output`}>{labels.viewOutput}</Link>
+                        <Link href={`/${locale}/runs/${r.id}/report`}>{labels.viewReport}</Link>
+                        {labels.viewOutput ? <Link href={`/${locale}/runs/${r.id}/output`}>{labels.viewOutput}</Link> : null}
                       </>
                     ) : null}
-                  </>
-                ) : null}
-                {r.status === 'reviewing' && labels.confirmRecs ? (
-                  <>
-                    {' · '}
-                    <Link href={`/${locale}/runs/${r.id}/recommendations`}>{labels.confirmRecs}</Link>
-                  </>
-                ) : null}
-                {r.runType === 'baseline' && isCompletedRunStatus(r.status) ? (
-                  <>
-                    {' · '}
-                    <RetestButton
-                      locale={locale}
-                      baselineRunId={r.id}
-                      labels={{
-                        cta: labels.retestThis,
-                        starting: labels.retestStarting,
-                        error: labels.retestError,
-                        inProgress: labels.retestInProgress,
-                        needsSetup: labels.retestNeedsSetup,
-                      }}
-                      className="ghost-btn run-btn-sm"
-                      disabled={hasActiveRun}
-                    />
-                  </>
-                ) : null}
-              </td>
-            </tr>
-          ))}
+                    {r.status === 'reviewing' && labels.confirmRecs ? (
+                      <Link href={`/${locale}/runs/${r.id}/recommendations`}>{labels.confirmRecs}</Link>
+                    ) : null}
+                    {r.runType === 'baseline' && isCompletedRunStatus(r.status) ? (
+                      <RetestButton
+                        locale={locale}
+                        baselineRunId={r.id}
+                        labels={{
+                          cta: labels.retestThis,
+                          starting: labels.retestStarting,
+                          error: labels.retestError,
+                          inProgress: labels.retestInProgress,
+                          needsSetup: labels.retestNeedsSetup,
+                        }}
+                        className="ui-btn ui-btn--sm"
+                        disabled={hasActiveRun}
+                      />
+                    ) : null}
+                  </span>
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
