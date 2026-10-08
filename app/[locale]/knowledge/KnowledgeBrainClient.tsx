@@ -1,7 +1,16 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
+import { Button } from '@/components/Button'
+import { CodeBlock } from '@/components/CodeBlock'
+import { EmptyState } from '@/components/EmptyState'
+import { Facts } from '@/components/Facts'
+import { Notice, type NoticeTone } from '@/components/Notice'
+import { PageHeader } from '@/components/PageHeader'
+import { StatusText, type StatusKind } from '@/components/StatusText'
+import { ViewTabs, viewPanelId, viewTabId } from '@/components/ViewTabs'
 
 type Source = {
   id: string; sourceType: string; name: string; canonicalUrl: string; authorityLevel: string; enabled: boolean;
@@ -9,7 +18,7 @@ type Source = {
 }
 type IngestRun = {
   id: string; sourceId: string | null; status: string; fetchedCount: number; changedCount: number; errorCount: number;
-  startedAt: string; coverage: unknown
+  startedAt: string; coverage: unknown; errorSummary?: string | null
 }
 type ReviewClaim = {
   claim: { id: string; documentVersionId: string; claimType: string; topic: string; statementZh: string; statementEn: string; confidence: string; officialConflict: boolean; createdAt: string }
@@ -19,80 +28,106 @@ type Entry = { id: string; stableKey: string; knowledgeType: string; topic: stri
 type Proposal = { id: string; title: string; rationale: string; status: string; knowledgeReleaseVersion: string; evidenceRefs: string[]; diff: unknown }
 type SearchResult = { score: number; entry: Entry; version: { id: string; titleZh: string; titleEn: string; bodyZh: string; bodyEn: string; sourceUrls: string[] } }
 
-const zh = {
-  title: 'SEO 知识脑', subtitle: '把外部变化转化为可审计、可发布、可回滚的诊断能力。',
-  ingest: '来源雷达', claims: '论点审核', library: '正式知识', workflow: '工作流闸门',
-  run: '采集', backfill: '回填一年', releaseKnowledge: '发布知识版本', releaseWorkflow: '发布工作流版本',
-  approve: '批准', editApprove: '编辑后批准', reject: '驳回', pending: '待审核', source: '来源', quote: '原文证据',
-  emptyClaims: '暂无待审核论点。采集完成后，模型蒸馏结果会出现在这里。', emptyProposals: '暂无工作流变更提案。',
-  firstGate: '第一道人审', secondGate: '第二道人审', refresh: '刷新',
-}
-const en = {
-  title: 'SEO Knowledge Brain', subtitle: 'Turn external change into auditable, releasable, and reversible diagnostic capability.',
-  ingest: 'Source radar', claims: 'Claim review', library: 'Published knowledge', workflow: 'Workflow gate',
-  run: 'Ingest', backfill: 'Backfill one year', releaseKnowledge: 'Release knowledge', releaseWorkflow: 'Release workflow',
-  approve: 'Approve', editApprove: 'Edit & approve', reject: 'Reject', pending: 'Pending', source: 'Source', quote: 'Exact evidence',
-  emptyClaims: 'No claims await review. Distilled results will appear here after ingestion.', emptyProposals: 'No workflow proposals yet.',
-  firstGate: 'First human gate', secondGate: 'Second human gate', refresh: 'Refresh',
+type View = 'ingest' | 'claims' | 'library' | 'workflow'
+type Editing = { id: string; mode: 'edit' | 'reject' }
+
+const RUN_STATUS: Record<string, StatusKind> = { completed: 'accepted', running: 'draft', partial: 'draft', failed: 'rejected', idle: 'draft' }
+const ENTRY_STATUS: Record<string, StatusKind> = { published: 'accepted', draft: 'draft', retired: 'rejected' }
+const PROPOSAL_STATUS: Record<string, StatusKind> = { pending_review: 'draft', approved: 'accepted', released: 'applied', rejected: 'rejected' }
+const shortUrl = (url: string) => url.replace(/^https?:\/\/(www\.)?/, '')
+
+/** 每个来源最近一次采集：runs 按开始时间倒序，只取每个来源第一次出现的那条（不能让旧记录覆盖新记录）。 */
+export function latestRunsBySource<T extends { sourceId: string | null }>(runs: T[]): Map<string | null, T> {
+  const map = new Map<string | null, T>()
+  for (const run of runs) if (!map.has(run.sourceId)) map.set(run.sourceId, run)
+  return map
 }
 
+// 知识库（ux-blueprint §6）：页头 + 版本事实栏 + 视图标签（来源 / 论点审核 / 正式知识 / 工作流闸门，各带计数）。
+// 来源是表格，状态用状态文字，失败行内写原因；论点的编辑 / 驳回在该条下方就地展开，不再弹窗。
 export function KnowledgeBrainClient({ locale, sources, runs, claims, entries, proposals, releases }: {
   locale: string; sources: Source[]; runs: IngestRun[]; claims: ReviewClaim[]; entries: Entry[]; proposals: Proposal[];
   releases: { knowledge: string; workflow: string; ruleConfig: string }
 }) {
-  const t = locale === 'zh' ? zh : en
+  const t = useTranslations('knowledge')
+  const tc = useTranslations('common')
   const router = useRouter()
-  const [tab, setTab] = useState<'ingest' | 'claims' | 'library' | 'workflow'>('ingest')
+  const uid = useId()
+  const isZh = locale === 'zh'
+  const [view, setView] = useState<View>('ingest')
   const [busy, setBusy] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-  const [editing, setEditing] = useState<ReviewClaim | null>(null)
+  const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null)
+  const [editing, setEditing] = useState<Editing | null>(null)
   const [editZh, setEditZh] = useState('')
   const [editEn, setEditEn] = useState('')
   const [reason, setReason] = useState('')
   const [provider, setProvider] = useState<'openai' | 'gemini' | 'deepseek'>('deepseek')
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null)
   const [customSourceType, setCustomSourceType] = useState<'reddit_community' | 'reddit_search'>('reddit_community')
   const [customSourceValue, setCustomSourceValue] = useState('')
-  const latestRunBySource = useMemo(() => new Map(runs.map((run) => [run.sourceId, run])), [runs])
+  const latestRunBySource = useMemo(() => latestRunsBySource(runs), [runs])
+  const label = (group: string, key: string) => (t.has(`${group}.${key}`) ? t(`${group}.${key}`) : key)
 
   async function action(id: string, fn: () => Promise<Response>) {
-    setBusy(id); setMessage(null)
+    setBusy(id)
+    setNotice(null)
     try {
       const response = await fn()
-      const body = await response.json().catch(() => ({})) as { error?: string; version?: string }
-      if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
-      setMessage(body.version ? `✓ ${body.version}` : '✓')
-      setEditing(null); setReason(''); router.refresh()
+      const body = (await response.json().catch(() => ({}))) as { error?: string; version?: string }
+      if (!response.ok) {
+        setNotice({ tone: 'error', text: t('errorAction', { code: body.error || `HTTP ${response.status}` }) })
+        return
+      }
+      setNotice({ tone: 'success', text: body.version ? t('released', { version: body.version }) : t('done') })
+      setEditing(null)
+      setReason('')
+      router.refresh()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error))
+      setNotice({ tone: 'error', text: t('errorAction', { code: error instanceof Error ? error.message : String(error) }) })
     } finally {
       setBusy(null)
     }
   }
 
+  const post = (url: string, body?: unknown, method = 'POST') =>
+    fetch(url, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) })
+
   function reviewClaim(claim: ReviewClaim, reviewAction: 'approve' | 'edit' | 'reject') {
-    return action(claim.claim.id, () => fetch(`/api/knowledge/claims/${claim.claim.id}`, {
-      method: 'PATCH', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        action: reviewAction, reason,
-        edited: reviewAction === 'edit' ? { statementZh: editZh, statementEn: editEn } : undefined,
-      }),
-    }))
+    return action(claim.claim.id, () =>
+      post(
+        `/api/knowledge/claims/${claim.claim.id}`,
+        { action: reviewAction, reason, edited: reviewAction === 'edit' ? { statementZh: editZh, statementEn: editEn } : undefined },
+        'PATCH',
+      ),
+    )
+  }
+
+  function openEditor(item: ReviewClaim, mode: Editing['mode']) {
+    setEditing({ id: item.claim.id, mode })
+    setEditZh(mode === 'edit' ? item.claim.statementZh : '')
+    setEditEn(mode === 'edit' ? item.claim.statementEn : '')
+    setReason('')
   }
 
   async function searchKnowledge(event: React.FormEvent) {
     event.preventDefault()
     if (!searchQuery.trim()) return
-    setBusy('search'); setMessage(null)
+    setBusy('search')
+    setNotice(null)
     try {
       const response = await fetch(`/api/knowledge?q=${encodeURIComponent(searchQuery.trim())}`)
-      const body = await response.json() as { results?: SearchResult[]; error?: string }
-      if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
+      const body = (await response.json().catch(() => ({}))) as { results?: SearchResult[]; error?: string }
+      if (!response.ok) {
+        setNotice({ tone: 'error', text: t('errorAction', { code: body.error || `HTTP ${response.status}` }) })
+        return
+      }
       setSearchResults(body.results ?? [])
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error))
-    } finally { setBusy(null) }
+      setNotice({ tone: 'error', text: t('errorAction', { code: error instanceof Error ? error.message : String(error) }) })
+    } finally {
+      setBusy(null)
+    }
   }
 
   function addSource(event: React.FormEvent) {
@@ -101,112 +136,471 @@ export function KnowledgeBrainClient({ locale, sources, runs, claims, entries, p
     if (!value) return
     const community = customSourceType === 'reddit_community'
     const canonicalUrl = community ? `https://www.reddit.com/r/${encodeURIComponent(value)}/` : `https://www.reddit.com/search/?q=${encodeURIComponent(value)}`
-    void action('add-source', () => fetch('/api/knowledge/sources', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
+    void action('add-source', () =>
+      post('/api/knowledge/sources', {
         sourceType: customSourceType,
         name: community ? `r/${value}` : `Reddit search: ${value}`,
         canonicalUrl,
         config: community ? { community: value, cadence: 'daily', backfillDays: 365, includeComments: true } : { query: value, cadence: 'daily', backfillDays: 365, includeComments: true },
       }),
-    }))
+    )
     setCustomSourceValue('')
   }
 
+  const publishedCount = entries.filter((e) => e.status === 'published').length
+  const pendingProposals = proposals.filter((p) => p.status === 'pending_review').length
+  const tabs = [
+    { id: 'ingest', label: t('tab.ingest'), count: sources.length },
+    { id: 'claims', label: t('tab.claims'), count: claims.length },
+    { id: 'library', label: t('tab.library'), count: publishedCount },
+    { id: 'workflow', label: t('tab.workflow'), count: pendingProposals },
+  ]
+
   return (
-    <div className="kb-page">
-      <header className="kb-hero">
-        <div>
-          <span className="kb-eyebrow">VERIS / KNOWLEDGE OPERATIONS</span>
-          <h1>{t.title}</h1>
-          <p>{t.subtitle}</p>
-        </div>
-        <div className="kb-release-stack" aria-label="Release versions">
-          <Version label="KNOWLEDGE" value={releases.knowledge} />
-          <Version label="WORKFLOW" value={releases.workflow} />
-          <Version label="RULE CONFIG" value={releases.ruleConfig} />
-        </div>
-      </header>
+    <section className="ui-page">
+      <PageHeader title={t('title')} description={t('subtitle')} />
 
-      <div className="kb-pipeline" aria-label="Knowledge pipeline">
-        {[
-          ['01', t.ingest, sources.length], ['02', t.claims, claims.length], ['03', t.library, entries.filter((e) => e.status === 'published').length],
-          ['04', t.workflow, proposals.filter((p) => p.status === 'pending_review').length],
-        ].map(([number, label, count], index) => (
-          <button key={String(number)} className={`kb-pipe-stage ${tab === ['ingest', 'claims', 'library', 'workflow'][index] ? 'active' : ''}`} onClick={() => setTab(['ingest', 'claims', 'library', 'workflow'][index] as typeof tab)}>
-            <span>{number}</span><strong>{label}</strong><em>{count}</em>
-          </button>
-        ))}
-      </div>
+      <div className="ui-page-body">
+        <Facts
+          items={[
+            { label: t('fact.knowledge'), value: releases.knowledge, mono: true },
+            { label: t('fact.workflow'), value: releases.workflow, mono: true },
+            { label: t('fact.ruleConfig'), value: releases.ruleConfig, mono: true },
+          ]}
+        />
 
-      {message ? <div className="kb-message" role="status">{message}</div> : null}
+        {notice ? <Notice tone={notice.tone}>{notice.text}</Notice> : null}
 
-      {tab === 'ingest' ? (
-        <section className="kb-panel">
-          <div className="kb-panel-head"><div><span>INGESTION MATRIX</span><h2>{t.ingest}</h2></div><div className="kb-source-actions"><label>AI
-            <select value={provider} onChange={(event) => setProvider(event.target.value as typeof provider)}><option value="deepseek">DeepSeek</option><option value="openai">OpenAI</option><option value="gemini">Gemini</option></select>
-          </label><button className="kb-button" disabled={Boolean(busy)} onClick={() => action('backfill-all', () => fetch('/api/knowledge/ingest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sourceId: 'all', backfill: true, provider }) }))}>{locale === 'zh' ? '全源回填一年' : 'Backfill all sources'}</button><button className="kb-button ghost" onClick={() => router.refresh()}>{t.refresh}</button></div></div>
-          <form className="kb-add-source" onSubmit={addSource}><select value={customSourceType} onChange={(event) => setCustomSourceType(event.target.value as typeof customSourceType)}><option value="reddit_community">Reddit community</option><option value="reddit_search">Reddit search query</option></select><input value={customSourceValue} onChange={(event) => setCustomSourceValue(event.target.value)} placeholder={customSourceType === 'reddit_community' ? 'TechSEO' : 'international SEO'} /><button disabled={!customSourceValue.trim() || busy === 'add-source'}>{locale === 'zh' ? '添加订阅' : 'Add source'}</button></form>
-          <div className="kb-source-grid">
-            {sources.map((source) => {
-              const run = latestRunBySource.get(source.id)
-              return <article className="kb-source" key={source.id}>
-                <div className="kb-source-top"><span className={`kb-source-mark ${source.authorityLevel}`}>{source.authorityLevel === 'official' ? 'G' : 'r/'}</span><span className={`kb-status ${run?.status ?? 'idle'}`}>{run?.status ?? 'idle'}</span></div>
-                <h3>{source.name}</h3>
-                <a href={source.canonicalUrl} target="_blank" rel="noreferrer">{source.canonicalUrl.replace(/^https?:\/\//, '').slice(0, 58)}</a>
-                <dl><div><dt>FETCHED</dt><dd>{run?.fetchedCount ?? 0}</dd></div><div><dt>CHANGED</dt><dd>{run?.changedCount ?? 0}</dd></div><div><dt>ERRORS</dt><dd>{run?.errorCount ?? 0}</dd></div></dl>
-                <div className="kb-source-actions">
-                  <button className="ghost" disabled={busy === source.id} onClick={() => action(source.id, () => fetch(`/api/knowledge/sources/${source.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: !source.enabled }) }))}>{source.enabled ? (locale === 'zh' ? '暂停' : 'Pause') : (locale === 'zh' ? '启用' : 'Enable')}</button>
-                  <button disabled={busy === source.id || !source.enabled} onClick={() => action(source.id, () => fetch('/api/knowledge/ingest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sourceId: source.id, provider }) }))}>{t.run}</button>
-                  <button disabled={busy === source.id || !source.enabled} onClick={() => action(source.id, () => fetch('/api/knowledge/ingest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sourceId: source.id, backfill: true, provider }) }))}>{t.backfill}</button>
+        <div className="ui-view">
+          <ViewTabs
+            idBase={uid}
+            label={t('tabsLabel')}
+            tabs={tabs}
+            value={view}
+            onChange={(next) => {
+              setView(next as View)
+              setNotice(null)
+            }}
+          />
+
+          <div role="tabpanel" id={viewPanelId(uid, view)} aria-labelledby={viewTabId(uid, view)} className="ui-view">
+            {view === 'ingest' ? (
+              <>
+                <div className="ui-viewbar">
+                  <form className="ui-viewbar__form" onSubmit={addSource}>
+                    <label className="sr-only" htmlFor={`${uid}-src-type`}>
+                      {t('addSourceType')}
+                    </label>
+                    <select
+                      id={`${uid}-src-type`}
+                      className="ui-select"
+                      value={customSourceType}
+                      onChange={(event) => setCustomSourceType(event.target.value as typeof customSourceType)}
+                    >
+                      <option value="reddit_community">{t('sourceType.reddit_community')}</option>
+                      <option value="reddit_search">{t('sourceType.reddit_search')}</option>
+                    </select>
+                    <label className="sr-only" htmlFor={`${uid}-src-value`}>
+                      {t('addSourceValue')}
+                    </label>
+                    <input
+                      id={`${uid}-src-value`}
+                      className="ui-input"
+                      value={customSourceValue}
+                      onChange={(event) => setCustomSourceValue(event.target.value)}
+                      placeholder={customSourceType === 'reddit_community' ? 'TechSEO' : 'international SEO'}
+                    />
+                    <Button type="submit" disabled={!customSourceValue.trim() || busy !== null} loading={busy === 'add-source'}>
+                      {t('addSource')}
+                    </Button>
+                  </form>
+                  <div className="ui-viewbar__actions">
+                    <label className="ui-inline-field">
+                      <span className="ui-hint">{t('model')}</span>
+                      <select className="ui-select" value={provider} onChange={(event) => setProvider(event.target.value as typeof provider)}>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="gemini">Gemini</option>
+                      </select>
+                    </label>
+                    <Button
+                      disabled={busy !== null}
+                      loading={busy === 'backfill-all'}
+                      onClick={() => action('backfill-all', () => post('/api/knowledge/ingest', { sourceId: 'all', backfill: true, provider }))}
+                    >
+                      {t('backfillAll')}
+                    </Button>
+                    <Button variant="quiet" onClick={() => router.refresh()}>
+                      {t('refresh')}
+                    </Button>
+                  </div>
                 </div>
-              </article>
-            })}
+
+                <div className="ui-panel ui-table-wrap">
+                  <table className="ui-table">
+                    <thead>
+                      <tr>
+                        <th>{t('col.source')}</th>
+                        <th>{t('col.authority')}</th>
+                        <th>{t('col.status')}</th>
+                        <th className="ui-num">{t('col.fetched')}</th>
+                        <th className="ui-num">{t('col.changed')}</th>
+                        <th className="ui-num">{t('col.errors')}</th>
+                        <th>
+                          <span className="sr-only">{t('col.action')}</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sources.map((source) => {
+                        const run = latestRunBySource.get(source.id)
+                        const status = run?.status ?? 'idle'
+                        const reasons = status === 'failed' && run?.errorSummary ? run.errorSummary.split('\n').filter(Boolean) : []
+                        return (
+                          <tr key={source.id}>
+                            <td>
+                              <span className="ui-stack-xs">
+                                <span className="ui-kb-source">
+                                  {source.name}
+                                  {!source.enabled ? <span className="ui-tag">{t('paused')}</span> : null}
+                                </span>
+                                <a className="ui-cell-url ui-footnote" href={source.canonicalUrl} target="_blank" rel="noreferrer" title={source.canonicalUrl}>
+                                  {shortUrl(source.canonicalUrl)}
+                                </a>
+                              </span>
+                            </td>
+                            <td className="ui-nowrap">{label('authority', source.authorityLevel)}</td>
+                            <td>
+                              <span className="ui-stack-xs">
+                                <StatusText status={RUN_STATUS[status] ?? 'draft'} label={label('runStatus', status)} />
+                                {reasons.map((code) => (
+                                  <span key={code} className="ui-error">
+                                    {label('errorReason', code)}
+                                  </span>
+                                ))}
+                              </span>
+                            </td>
+                            <td className="ui-num">{run?.fetchedCount ?? 0}</td>
+                            <td className="ui-num">{run?.changedCount ?? 0}</td>
+                            <td className="ui-num">{run?.errorCount ?? 0}</td>
+                            <td>
+                              <span className="ui-row-actions">
+                                <Button
+                                  size="sm"
+                                  disabled={busy !== null || !source.enabled}
+                                  loading={busy === `${source.id}:ingest`}
+                                  onClick={() => action(`${source.id}:ingest`, () => post('/api/knowledge/ingest', { sourceId: source.id, provider }))}
+                                >
+                                  {t('ingest')}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="quiet"
+                                  disabled={busy !== null || !source.enabled}
+                                  loading={busy === `${source.id}:backfill`}
+                                  onClick={() => action(`${source.id}:backfill`, () => post('/api/knowledge/ingest', { sourceId: source.id, backfill: true, provider }))}
+                                >
+                                  {t('backfill')}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="quiet"
+                                  disabled={busy !== null}
+                                  loading={busy === `${source.id}:toggle`}
+                                  onClick={() => action(`${source.id}:toggle`, () => post(`/api/knowledge/sources/${source.id}`, { enabled: !source.enabled }, 'PATCH'))}
+                                >
+                                  {source.enabled ? t('pause') : t('enable')}
+                                </Button>
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : null}
+
+            {view === 'claims' ? (
+              <>
+                <div className="ui-viewbar">
+                  <p className="ui-hint">{t('gate1')}</p>
+                  <Button disabled={busy !== null} loading={busy === 'release-knowledge'} onClick={() => action('release-knowledge', () => post('/api/knowledge/release', {}))}>
+                    {t('releaseKnowledge')}
+                  </Button>
+                </div>
+                {claims.length === 0 ? (
+                  <div className="ui-panel">
+                    <EmptyState title={t('claimsEmpty')} description={t('claimsEmptyHint')} />
+                  </div>
+                ) : (
+                  <ul className="ui-panel ui-kb-list">
+                    {claims.map((item) => {
+                      const open = editing?.id === item.claim.id ? editing : null
+                      return (
+                        <li key={item.claim.id} className="ui-kb-item">
+                          <p className="ui-kb-item__meta">
+                            <span>{item.claim.topic}</span>
+                            <span>{label('claimType', item.claim.claimType)}</span>
+                            <span>{label('confidence', item.claim.confidence)}</span>
+                          </p>
+                          <p className="ui-kb-item__title">{item.claim.statementZh}</p>
+                          <p className="ui-hint">{item.claim.statementEn}</p>
+                          {item.claim.officialConflict ? <p className="ui-error">{t('officialConflict')}</p> : null}
+                          <blockquote className="ui-kb-quote">
+                            <span className="ui-footnote">{t('quote')}</span>
+                            {item.exactQuote}
+                          </blockquote>
+                          <p className="ui-kb-item__source">
+                            <span>
+                              {t('sourceLabel')}：{item.sourceName}
+                              {item.community ? ` / r/${item.community}` : ''}
+                            </span>
+                            <a href={item.sourceUrl} target="_blank" rel="noreferrer">
+                              {item.documentTitle || shortUrl(item.sourceUrl)}
+                            </a>
+                            <a href={`/api/knowledge/source-versions/${item.claim.documentVersionId}`} target="_blank" rel="noreferrer">
+                              {t('rawSnapshot')}
+                            </a>
+                          </p>
+
+                          {open ? (
+                            <form
+                              className="ui-kb-editor"
+                              aria-label={open.mode === 'edit' ? t('dialogEdit') : t('dialogReject')}
+                              onSubmit={(event) => {
+                                event.preventDefault()
+                                void reviewClaim(item, open.mode === 'edit' ? 'edit' : 'reject')
+                              }}
+                            >
+                              {open.mode === 'edit' ? (
+                                <>
+                                  <div className="ui-field">
+                                    <label className="ui-label" htmlFor={`${uid}-zh-${item.claim.id}`}>
+                                      {t('editZh')}
+                                    </label>
+                                    <textarea id={`${uid}-zh-${item.claim.id}`} className="ui-textarea" rows={3} value={editZh} onChange={(event) => setEditZh(event.target.value)} />
+                                  </div>
+                                  <div className="ui-field">
+                                    <label className="ui-label" htmlFor={`${uid}-en-${item.claim.id}`}>
+                                      {t('editEn')}
+                                    </label>
+                                    <textarea id={`${uid}-en-${item.claim.id}`} className="ui-textarea" rows={3} value={editEn} onChange={(event) => setEditEn(event.target.value)} />
+                                  </div>
+                                </>
+                              ) : null}
+                              <div className="ui-field">
+                                <label className="ui-label" htmlFor={`${uid}-reason-${item.claim.id}`}>
+                                  {t('reason')}
+                                </label>
+                                <textarea
+                                  id={`${uid}-reason-${item.claim.id}`}
+                                  className="ui-textarea"
+                                  rows={2}
+                                  value={reason}
+                                  placeholder={t('reasonPlaceholder')}
+                                  onChange={(event) => setReason(event.target.value)}
+                                />
+                              </div>
+                              <div className="ui-inline-actions">
+                                <Button variant="quiet" onClick={() => setEditing(null)}>
+                                  {t('cancel')}
+                                </Button>
+                                {open.mode === 'edit' ? (
+                                  <Button type="submit" variant="primary" loading={busy === item.claim.id} disabled={busy !== null || !editZh.trim()}>
+                                    {t('editApprove')}
+                                  </Button>
+                                ) : (
+                                  <Button type="submit" variant="danger" loading={busy === item.claim.id} disabled={busy !== null || !reason.trim()}>
+                                    {t('reject')}
+                                  </Button>
+                                )}
+                              </div>
+                            </form>
+                          ) : (
+                            <div className="ui-inline-actions">
+                              <Button size="sm" disabled={busy !== null} onClick={() => openEditor(item, 'reject')}>
+                                {t('reject')}
+                              </Button>
+                              <Button size="sm" disabled={busy !== null} onClick={() => openEditor(item, 'edit')}>
+                                {t('editApprove')}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="primary"
+                                disabled={busy !== null}
+                                loading={busy === item.claim.id}
+                                // 与官方说法冲突的论点不能直接批准：先打开编辑区，改完再批。
+                                onClick={() => (item.claim.officialConflict ? openEditor(item, 'edit') : void reviewClaim(item, 'approve'))}
+                              >
+                                {t('approve')}
+                              </Button>
+                            </div>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </>
+            ) : null}
+
+            {view === 'library' ? (
+              <>
+                <form className="ui-viewbar__form" onSubmit={searchKnowledge} role="search">
+                  <label className="sr-only" htmlFor={`${uid}-search`}>
+                    {t('searchLabel')}
+                  </label>
+                  <input
+                    id={`${uid}-search`}
+                    type="search"
+                    className="ui-input"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder={t('searchPlaceholder')}
+                  />
+                  <Button type="submit" disabled={!searchQuery.trim() || busy !== null} loading={busy === 'search'}>
+                    {t('search')}
+                  </Button>
+                  {searchResults !== null ? (
+                    <Button
+                      variant="quiet"
+                      onClick={() => {
+                        setSearchResults(null)
+                        setSearchQuery('')
+                      }}
+                    >
+                      {t('clearSearch')}
+                    </Button>
+                  ) : null}
+                </form>
+
+                {searchResults !== null ? (
+                  searchResults.length === 0 ? (
+                    <div className="ui-panel">
+                      <EmptyState title={t('searchEmpty')} />
+                    </div>
+                  ) : (
+                    <ul className="ui-panel ui-kb-list">
+                      {searchResults.map((result) => (
+                        <li key={result.version.id} className="ui-kb-item">
+                          <p className="ui-kb-item__meta">
+                            <span>{result.entry.topic}</span>
+                            <span>{t('score', { score: result.score })}</span>
+                          </p>
+                          <p className="ui-kb-item__title">{isZh ? result.version.titleZh : result.version.titleEn}</p>
+                          <p className="ui-hint">{isZh ? result.version.bodyZh : result.version.bodyEn}</p>
+                          {result.version.sourceUrls.length ? (
+                            <ul className="ui-kv__list">
+                              {result.version.sourceUrls.map((url) => (
+                                <li key={url}>
+                                  {url.startsWith('http') ? (
+                                    <a className="ui-cell-url" href={url} target="_blank" rel="noreferrer" title={url}>
+                                      {shortUrl(url)}
+                                    </a>
+                                  ) : (
+                                    <span className="ui-mono ui-cell-url" title={url}>
+                                      {url}
+                                    </span>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                ) : (
+                  <div className="ui-panel ui-table-wrap">
+                    <table className="ui-table">
+                      <thead>
+                        <tr>
+                          <th>{t('libCol.key')}</th>
+                          <th>{t('libCol.topic')}</th>
+                          <th>{t('libCol.type')}</th>
+                          <th>{t('libCol.version')}</th>
+                          <th>{t('libCol.status')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entries.map((entry) => (
+                          <tr key={entry.id}>
+                            <td className="ui-mono">{entry.stableKey}</td>
+                            <td>{entry.topic}</td>
+                            <td>{label('claimType', entry.knowledgeType)}</td>
+                            <td className="ui-mono ui-cell-muted">{entry.currentVersionId ?? '—'}</td>
+                            <td>
+                              <StatusText status={ENTRY_STATUS[entry.status] ?? 'draft'} label={label('entryStatus', entry.status)} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            ) : null}
+
+            {view === 'workflow' ? (
+              <>
+                <div className="ui-viewbar">
+                  <p className="ui-hint">{t('gate2')}</p>
+                  <Button disabled={busy !== null} loading={busy === 'release-workflow'} onClick={() => action('release-workflow', () => post('/api/knowledge/workflows/release'))}>
+                    {t('releaseWorkflow')}
+                  </Button>
+                </div>
+                {proposals.length === 0 ? (
+                  <div className="ui-panel">
+                    <EmptyState title={t('proposalsEmpty')} />
+                  </div>
+                ) : (
+                  <ul className="ui-panel ui-kb-list">
+                    {proposals.map((proposal) => (
+                      <li key={proposal.id} className="ui-kb-item">
+                        <p className="ui-kb-item__meta">
+                          <span className="ui-mono">{proposal.knowledgeReleaseVersion}</span>
+                          <StatusText status={PROPOSAL_STATUS[proposal.status] ?? 'draft'} label={label('proposalStatus', proposal.status)} />
+                        </p>
+                        <p className="ui-kb-item__title">{proposal.title}</p>
+                        <p className="ui-hint">{proposal.rationale}</p>
+                        <details className="ui-disclosure">
+                          <summary>{t('proposalDiff')}</summary>
+                          <CodeBlock code={JSON.stringify(proposal.diff, null, 2)} copyLabel={tc('actions.copyCode')} copiedLabel={tc('actions.copied')} />
+                        </details>
+                        {proposal.status === 'pending_review' ? (
+                          <div className="ui-inline-actions">
+                            <Button
+                              size="sm"
+                              disabled={busy !== null}
+                              loading={busy === `${proposal.id}:reject`}
+                              onClick={() =>
+                                action(`${proposal.id}:reject`, () => post(`/api/knowledge/workflows/${proposal.id}`, { action: 'reject', reason: t('rejectReasonDefault') }, 'PATCH'))
+                              }
+                            >
+                              {t('reject')}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              disabled={busy !== null}
+                              loading={busy === `${proposal.id}:approve`}
+                              onClick={() => action(`${proposal.id}:approve`, () => post(`/api/knowledge/workflows/${proposal.id}`, { action: 'approve' }, 'PATCH'))}
+                            >
+                              {t('approve')}
+                            </Button>
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            ) : null}
           </div>
-        </section>
-      ) : null}
-
-      {tab === 'claims' ? (
-        <section className="kb-panel">
-          <div className="kb-panel-head"><div><span>{t.firstGate}</span><h2>{t.claims}</h2></div><button className="kb-button" disabled={Boolean(busy)} onClick={() => action('release-knowledge', () => fetch('/api/knowledge/release', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }))}>{t.releaseKnowledge}</button></div>
-          {claims.length === 0 ? <div className="kb-empty">{t.emptyClaims}</div> : <div className="kb-claim-list">{claims.map((item) => (
-            <article className="kb-claim" key={item.claim.id}>
-              <div className="kb-claim-meta"><span>{item.claim.topic}</span><span>{item.claim.claimType}</span><span className={item.claim.officialConflict ? 'danger' : ''}>{item.claim.confidence}</span></div>
-              <h3>{item.claim.statementZh}</h3><p>{item.claim.statementEn}</p>
-              <blockquote><small>{t.quote}</small>{item.exactQuote}</blockquote>
-              <div className="kb-claim-source"><span>{t.source}: {item.sourceName}{item.community ? ` / r/${item.community}` : ''}</span><a href={item.sourceUrl} target="_blank" rel="noreferrer">↗ {item.documentTitle || item.sourceUrl}</a><a href={`/api/knowledge/source-versions/${item.claim.documentVersionId}`} target="_blank" rel="noreferrer">RAW SNAPSHOT ↗</a></div>
-              <div className="kb-review-actions">
-                <button disabled={Boolean(busy)} onClick={() => item.claim.officialConflict ? (setEditing(item), setEditZh(item.claim.statementZh), setEditEn(item.claim.statementEn), setReason('')) : reviewClaim(item, 'approve')}>{t.approve}</button>
-                <button disabled={Boolean(busy)} onClick={() => { setEditing(item); setEditZh(item.claim.statementZh); setEditEn(item.claim.statementEn); setReason('') }}>{t.editApprove}</button>
-                <button className="danger" disabled={Boolean(busy)} onClick={() => { setEditing(item); setEditZh(''); setEditEn(''); setReason('') }}>{t.reject}</button>
-              </div>
-            </article>
-          ))}</div>}
-        </section>
-      ) : null}
-
-      {tab === 'library' ? <section className="kb-panel"><div className="kb-panel-head"><div><span>RELEASED ATOMS</span><h2>{t.library}</h2></div><form className="kb-search" onSubmit={searchKnowledge}><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={locale === 'zh' ? '搜索已发布知识…' : 'Search published knowledge…'} /><button disabled={busy === 'search'}>{locale === 'zh' ? '检索' : 'Search'}</button></form></div>{searchResults.length ? <div className="kb-search-results">{searchResults.map((result) => <article key={result.version.id}><span>{result.entry.topic} · SCORE {result.score}</span><h3>{locale === 'zh' ? result.version.titleZh : result.version.titleEn}</h3><p>{locale === 'zh' ? result.version.bodyZh : result.version.bodyEn}</p>{result.version.sourceUrls.map((url) => url.startsWith('http') ? <a key={url} href={url} target="_blank" rel="noreferrer">{url} ↗</a> : <small key={url}>{url}</small>)}</article>)}</div> : <div className="kb-library-grid">{entries.map((entry) => <article key={entry.id}><span>{entry.topic}</span><h3>{entry.stableKey}</h3><p>{entry.knowledgeType}</p><code>{entry.currentVersionId}</code><em>{entry.status}</em></article>)}</div>}</section> : null}
-
-      {tab === 'workflow' ? (
-        <section className="kb-panel">
-          <div className="kb-panel-head"><div><span>{t.secondGate}</span><h2>{t.workflow}</h2></div><button className="kb-button" disabled={Boolean(busy)} onClick={() => action('release-workflow', () => fetch('/api/knowledge/workflows/release', { method: 'POST' }))}>{t.releaseWorkflow}</button></div>
-          {proposals.length === 0 ? <div className="kb-empty">{t.emptyProposals}</div> : <div className="kb-proposal-list">{proposals.map((proposal) => <article key={proposal.id}>
-            <div><span>{proposal.knowledgeReleaseVersion}</span><em>{proposal.status}</em></div><h3>{proposal.title}</h3><p>{proposal.rationale}</p><pre>{JSON.stringify(proposal.diff, null, 2)}</pre>
-            {proposal.status === 'pending_review' ? <div className="kb-review-actions"><button onClick={() => action(proposal.id, () => fetch(`/api/knowledge/workflows/${proposal.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'approve' }) }))}>{t.approve}</button><button className="danger" onClick={() => action(proposal.id, () => fetch(`/api/knowledge/workflows/${proposal.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'reject', reason: '人工驳回工作流变更' }) }))}>{t.reject}</button></div> : null}
-          </article>)}</div>}
-        </section>
-      ) : null}
-
-      {editing ? <div className="kb-modal-backdrop" role="presentation" onMouseDown={() => setEditing(null)}><div className="kb-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
-        <span>{editing.claim.id}</span><h2>{t.firstGate}</h2>
-        {editZh || editEn ? <><label>中文知识表述<textarea rows={4} value={editZh} onChange={(event) => setEditZh(event.target.value)} /></label><label>English knowledge statement<textarea rows={4} value={editEn} onChange={(event) => setEditEn(event.target.value)} /></label></> : null}
-        <label>审核理由<textarea rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="必须记录驳回原因；编辑批准时建议说明修改依据" /></label>
-        <div className="kb-review-actions"><button className="ghost" onClick={() => setEditing(null)}>取消</button>{editZh || editEn ? <button onClick={() => reviewClaim(editing, 'edit')}>{t.editApprove}</button> : <button className="danger" disabled={!reason.trim()} onClick={() => reviewClaim(editing, 'reject')}>{t.reject}</button>}</div>
-      </div></div> : null}
-    </div>
+        </div>
+      </div>
+    </section>
   )
-}
-
-function Version({ label, value }: { label: string; value: string }) {
-  return <div><span>{label}</span><strong>{value}</strong></div>
 }

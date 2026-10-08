@@ -120,12 +120,102 @@
     "testConn": "Test",
     "saveKey": "Save",
     "clearKey": "Clear",
-    "testOk": "Connected ✓",
+    "testOk": "Connected",
     "testFail": "Failed: ",
-    "keySaved": "Saved ✓",
+    "keySaved": "Saved",
     "keyCleared": "Cleared",
-    "credSource": { "db": "Set · DB", "env": "Set · env", "none": "Not set" },
+    "credSource": { "db": "Saved", "env": "Environment", "none": "Not set" },
     "importJsonFail": "Failed to parse JSON file",
+    "sourcesCount": "{count} sources",
+    "state": {
+      "off": "Not connected",
+      "on": "Connected",
+      "env": "From environment",
+      "builtin": "Built in"
+    },
+    "guide": {
+      "googleCseOn": "Connected to the Google Custom Search (CSE) API.",
+      "googleCseOff": "Enter the CSE API key and search engine ID (CX) below.",
+      "aiProbeOn": "{count} AI engines are configured; diagnoses use them to sample real answers.",
+      "aiProbeOff": "Configure at least one AI engine API key (DeepSeek or OpenAI recommended).",
+      "dataforseoOn": "DataForSEO is connected: real search volume, competitor share and keyword gaps are available.",
+      "dataforseoOff": "Enter your DataForSEO login and password below.",
+      "renderOn": "{renderer} browser rendering is on, so initial HTML can be compared with JS-rendered content.",
+      "renderOff": "Configure a real browser renderer: Cloudflare or Browserless.",
+      "psi": "Google PageSpeed Insights is ready; no credentials needed.",
+      "publicCorpora": "Public corpus search is ready and runs automatically during diagnoses."
+    },
+    "field": {
+      "GOOGLE_CSE_API_KEY": "API key",
+      "GOOGLE_CSE_CX": "Search engine ID (CX)",
+      "DATAFORSEO_LOGIN": "Login (email)",
+      "DATAFORSEO_PASSWORD": "API password",
+      "CLOUDFLARE_ACCOUNT_ID": "Cloudflare account ID",
+      "CLOUDFLARE_API_TOKEN": "Cloudflare API token",
+      "BROWSERLESS_API_TOKEN": "Browserless API token",
+      "OPENAI_API_KEY": "OpenAI API key",
+      "PERPLEXITY_API_KEY": "Perplexity API key",
+      "GEMINI_API_KEY": "Gemini API key",
+      "DEEPSEEK_API_KEY": "DeepSeek API key"
+    },
+    "show": "Show",
+    "hide": "Hide",
+    "showField": "Show {field}",
+    "hideField": "Hide {field}",
+    "clearConfirm": "Confirm clear",
+    "clearCancel": "Cancel",
+    "clearHint": "After clearing, the value from environment variables (if any) is used.",
+    "errorSave": "{field} wasn't saved ({reason}).",
+    "errorClear": "Couldn't clear. Try again.",
+    "errorTest": "Connection failed: {reason}",
+    "guideTitle": "Setup guide",
+    "sopWhy": "Why configure it",
+    "sopBenefit": "What you get",
+    "sopSteps": "Steps",
+    "sopLinks": "Go to setup",
+    "sop": {
+      "googleCse": {
+        "why": "Uses a Google Custom Search Engine (CSE) to fetch live Google web results and verify indexing.",
+        "benefit": "Verify organic indexing and see real snapshots and positions of your keywords in Google results.",
+        "s1": "Open the Google CSE console (https://cse.google.com/cse/) and create a custom search engine.",
+        "s2": "New CSEs can only target specific sites; if the account already has a whole-web engine, keep using it.",
+        "s3": "Copy the search engine ID (CX) into the CX field below.",
+        "s4": "Create an API key on the Google Cloud credentials page and enter it in the API key field below, then save.",
+        "s5": "If Google won't enable the Custom Search JSON API for this account, use DataForSEO for SERP data instead of retrying here.",
+        "linkCse": "Open the CSE console (get the CX if you have API access)",
+        "linkCloud": "Open Google Cloud credentials (create an API key)"
+      },
+      "aiProbe": {
+        "why": "Measures how AI answer engines index, answer about and cite your site.",
+        "benefit": "Sample ChatGPT / Perplexity / Gemini / DeepSeek answers and compute your visibility (GEO share) and citation rank.",
+        "s1": "Paste the provider's API key below and save.",
+        "s2": "Keys saved here take priority over environment variables; click Clear to fall back to them."
+      },
+      "dataforseo": {
+        "why": "Connects DataForSEO, a third-party SEO data provider, for keyword, competitor and backlink data.",
+        "benefit": "Adds backlink metrics, search volume, competitor share and keyword gaps beyond your own traffic data.",
+        "s1": "Sign up and sign in to the DataForSEO dashboard.",
+        "s2": "Enter the Login and API password from API Access below and save.",
+        "linkAccess": "Open DataForSEO API Access (copy login / password)"
+      },
+      "render": {
+        "why": "Browser rendering doesn't depend on the target site's CDN: Cloudflare is used first, otherwise Browserless Chromium; both return the HTML after JavaScript runs.",
+        "benefit": "Both renderers compare initial HTML with JS-rendered content, so SPA crawlability, content share and render evidence use one standard.",
+        "s1": "Option A: enter the Cloudflare account ID and API token to use Cloudflare Browser Rendering.",
+        "s2": "Option B: without Cloudflare, enter a Browserless API token to use Browserless Chromium.",
+        "linkBrowserless": "Open Browserless to get an API token"
+      },
+      "psi": {
+        "why": "Assesses page load performance, responsiveness and Core Web Vitals (LCP, INP, CLS).",
+        "benefit": "Shows real-user experience as Google measures it, an important input for SEO and usability.",
+        "s1": "Works out of the box; no credentials needed."
+      },
+      "publicCorpora": {
+        "why": "During diagnoses, compares your content with major public corpora and datasets.",
+        "benefit": "Shows how much your content overlaps with common LLM training data, improving the chance AI engines retrieve it.",
+        "s1": "Works out of the box; nothing to configure."
+      }
+    },
     "provider": { "label": "Service", "openai": "OpenAI", "perplexity": "Perplexity", "gemini": "Gemini", "deepseek": "DeepSeek", "googleCse": "Google CSE", "dataforseo": "DataForSEO", "cloudflare": "Cloudflare", "browserless": "Browserless" }
   },
   "projects": {
@@ -1415,6 +1505,19 @@
     "manualSubmit": "Submit proposal",
     "errorEvidence": "At least one first-party source URL is required",
     "errorTarget": "Target is required",
+    "emptyHint": "Every proposal has been handled; diagnoses run on the current rules version.",
+    "tabsLabel": "Rules library views",
+    "releasePending": "{count} approved proposals are waiting to be released.",
+    "colAction": "Actions",
+    "manualTargetPlaceholder": "e.g. rule_canonical_canonical_link or refart_gsc_docs",
+    "manualEvidencePlaceholder": "https://developers.google.com/search/…",
+    "manualEvidenceHint": "Add first-party source URLs as evidence, one per line.",
+    "manualSubmitted": "Proposal submitted. You can find it under Pending proposals.",
+    "changelogEmpty": "No rules version has been released yet.",
+    "changelogCount": "{count} changes",
+    "errorAction": "That didn’t work. Try again.",
+    "errorRelease": "The release didn’t go through. Try again.",
+    "errorSubmit": "The proposal wasn’t submitted. Try again.",
     "sourceLabels": { "scheduled_research": "Scheduled scan", "effectiveness_stats": "Effectiveness stats", "dismissal_stats": "Dismissal stats", "manual": "Manual" },
     "changeLabels": { "new_rule": "New rule", "modify_threshold": "Modify threshold", "deprecate": "Deprecate", "update_artifact": "Update artifact" }
   },
@@ -1480,6 +1583,207 @@
     "errorWorkflow": "The diagnosis workflow isn't ready yet. Try again later.",
     "errorDispatchFailed": "The session was created, but the collection job couldn't be dispatched: the background job service (Inngest) is unavailable. Start it and try again.",
     "errorGeneric": "Couldn't build the diagnosis route. Try again later."
+  },
+  "knowledge": {
+    "title": "Knowledge base",
+    "subtitle": "Turn outside changes into diagnostic capability you can audit, release and roll back.",
+    "fact": {
+      "knowledge": "Knowledge",
+      "workflow": "Workflow",
+      "ruleConfig": "Rule config"
+    },
+    "tabsLabel": "Knowledge base views",
+    "tab": {
+      "ingest": "Sources",
+      "claims": "Claim review",
+      "library": "Published knowledge",
+      "workflow": "Workflow gate"
+    },
+    "model": "Distillation model",
+    "backfillAll": "Backfill all sources (1 year)",
+    "refresh": "Refresh",
+    "addSourceType": "Source type",
+    "addSourceValue": "Community or search query",
+    "addSource": "Add source",
+    "sourceType": {
+      "reddit_community": "Reddit community",
+      "reddit_search": "Reddit search"
+    },
+    "col": {
+      "source": "Source",
+      "authority": "Type",
+      "status": "Last run",
+      "fetched": "Fetched",
+      "changed": "Changed",
+      "errors": "Errors",
+      "action": "Actions"
+    },
+    "authority": {
+      "official": "Official",
+      "measured": "Measured",
+      "community": "Community",
+      "legacy": "Legacy"
+    },
+    "runStatus": {
+      "idle": "Not run yet",
+      "running": "Running",
+      "completed": "Completed",
+      "partial": "Partial",
+      "failed": "Failed"
+    },
+    "errorReason": {
+      "reddit_oauth_not_configured": "Reddit authorization isn't configured, so community sources can't be collected.",
+      "reddit_oauth_protocol_mismatch": "The Reddit callback protocol doesn't match. Check the callback URL.",
+      "knowledge_source_collector_not_supported": "There's no collector for this source type yet.",
+      "knowledge_source_not_found_or_disabled": "The source doesn't exist or is paused."
+    },
+    "pause": "Pause",
+    "paused": "Paused",
+    "enable": "Enable",
+    "ingest": "Collect",
+    "backfill": "Backfill 1 year",
+    "gate1": "First human gate: someone reviews each claim before it becomes published knowledge",
+    "gate2": "Second human gate: someone reviews each workflow change before release",
+    "releaseKnowledge": "Release knowledge version",
+    "claimsEmpty": "No claims to review",
+    "claimsEmptyHint": "Claims distilled by the model appear here after collection.",
+    "claimType": {
+      "principle": "Principle",
+      "diagnostic_check": "Check",
+      "decision_rule": "Decision rule",
+      "remediation": "Fix",
+      "blocker": "Blocker",
+      "validation": "Validation",
+      "explanation": "Explanation",
+      "hypothesis": "Hypothesis"
+    },
+    "confidence": {
+      "observation": "Observation",
+      "hypothesis": "Hypothesis",
+      "community_practice_candidate": "Community practice (unverified)",
+      "inferred": "Inferred",
+      "measured": "Measured",
+      "official": "Official"
+    },
+    "officialConflict": "Conflicts with official guidance; edit it before approving",
+    "quote": "Source quote",
+    "sourceLabel": "Source",
+    "rawSnapshot": "Raw snapshot",
+    "approve": "Approve",
+    "editApprove": "Edit and approve",
+    "reject": "Reject",
+    "searchLabel": "Search published knowledge",
+    "searchPlaceholder": "e.g. canonical, crawl budget",
+    "search": "Search",
+    "searchEmpty": "No matching knowledge.",
+    "clearSearch": "Clear search",
+    "score": "Relevance {score}",
+    "libCol": {
+      "key": "Knowledge",
+      "topic": "Topic",
+      "type": "Type",
+      "version": "Current version",
+      "status": "Status"
+    },
+    "entryStatus": {
+      "draft": "Draft",
+      "published": "Published",
+      "retired": "Retired"
+    },
+    "releaseWorkflow": "Release workflow version",
+    "proposalsEmpty": "No workflow change proposals yet.",
+    "proposalStatus": {
+      "pending_review": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "released": "Released"
+    },
+    "proposalDiff": "Change",
+    "rejectReasonDefault": "Workflow change rejected by reviewer",
+    "dialogEdit": "Edit and approve",
+    "dialogReject": "Reject claim",
+    "editZh": "Chinese statement",
+    "editEn": "English statement",
+    "reason": "Review note",
+    "reasonPlaceholder": "A reason is required to reject; when editing, note what you changed and why.",
+    "cancel": "Cancel",
+    "done": "Done.",
+    "released": "Released {version}.",
+    "errorAction": "That didn't work ({code}). Try again."
+  },
+  "sessions": {
+    "crumb": "Analysis session",
+    "noDomain": "No domain",
+    "fact": {
+      "scenario": "Scenario",
+      "status": "Status",
+      "knowledge": "Knowledge",
+      "workflow": "Workflow",
+      "rules": "Rules",
+      "ruleConfig": "Rule config"
+    },
+    "scenario": {
+      "new_build": "New site planning",
+      "diagnose": "Diagnosis",
+      "optimize": "Growth",
+      "learn": "Learning"
+    },
+    "status": {
+      "classifying": "Classifying",
+      "waiting_input": "Needs input",
+      "ready": "Ready",
+      "running": "Running",
+      "reviewing": "In review",
+      "completed": "Completed",
+      "failed": "Failed"
+    },
+    "stepStatus": {
+      "pending": "Pending",
+      "running": "Running",
+      "waiting_input": "Needs input",
+      "completed": "Completed",
+      "skipped": "Skipped",
+      "failed": "Failed"
+    },
+    "reason": {
+      "classification": "Goal classification",
+      "symptom_priority": "Symptom first",
+      "background_coverage": "Standard coverage"
+    },
+    "source": {
+      "gsc": "GSC",
+      "dataforseo": "DataForSEO",
+      "crawl": "Page crawl",
+      "render": "Render check",
+      "ai_probe": "AI probes",
+      "serp_aio": "SERP · AI Overviews",
+      "third_party": "Third-party platforms"
+    },
+    "needInput": "More information is needed to continue",
+    "needInputFields": "Please provide: {fields}",
+    "routeTitle": "Execution route",
+    "openKnowledge": "Open the knowledge base",
+    "noSources": "No external data needed",
+    "knowledgeRefs": "{count} knowledge items",
+    "knowledgeTitle": "Published knowledge used",
+    "colKnowledge": "Knowledge",
+    "colVersion": "Version",
+    "colSources": "Sources",
+    "showAll": "Show all {count}",
+    "showLess": "Show less",
+    "artifactsTitle": "Output of each step",
+    "artifactsNote": "Raw structured output for auditing",
+    "field": {
+      "domain": "Domain",
+      "product": "Product or industry",
+      "industry": "Product / service category (English)",
+      "market": "Target market"
+    },
+    "industryInvalid": "Describe your product or service category in English (3–80 characters), e.g. document metadata removal tool.",
+    "submit": "Continue",
+    "submitting": "Continuing…",
+    "errorInvalidDomain": "That domain doesn't look right. Try example.com.",
+    "errorGeneric": "Couldn't continue. Check your input and try again."
   },
   "notFound": {
     "title": "Page not found",

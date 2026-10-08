@@ -120,12 +120,102 @@
     "testConn": "测试连接",
     "saveKey": "保存",
     "clearKey": "清除",
-    "testOk": "连接成功 ✓",
+    "testOk": "连接成功",
     "testFail": "失败：",
-    "keySaved": "已保存 ✓",
+    "keySaved": "已保存",
     "keyCleared": "已清除",
-    "credSource": { "db": "已配置·DB", "env": "已配置·环境变量", "none": "未配置" },
+    "credSource": { "db": "已保存", "env": "环境变量", "none": "未配置" },
     "importJsonFail": "JSON 文件解析失败，请确认格式",
+    "sourcesCount": "{count} 个数据源",
+    "state": {
+      "off": "未接入",
+      "on": "已接入",
+      "env": "读取环境变量",
+      "builtin": "开箱即用"
+    },
+    "guide": {
+      "googleCseOn": "已接入 Google 自定义搜索（CSE）检索 API。",
+      "googleCseOff": "在下方填入 CSE 的 API Key 和搜索引擎 ID（CX）。",
+      "aiProbeOn": "已配置 {count} 个 AI 引擎，诊断时会用它们实测回答。",
+      "aiProbeOff": "至少配置一个 AI 引擎的 API Key（推荐 DeepSeek 或 OpenAI）。",
+      "dataforseoOn": "已接入 DataForSEO，可以拉取真实搜索量、竞品占比和关键词缺口。",
+      "dataforseoOff": "在下方填入 DataForSEO 的 Login 和 Password。",
+      "renderOn": "已启用 {renderer} 浏览器渲染，可以实测初始 HTML 与 JS 渲染后正文的差异。",
+      "renderOff": "配置 Cloudflare 或 Browserless 任一真实浏览器渲染器。",
+      "psi": "Google PageSpeed Insights 已就绪，不需要额外凭据。",
+      "publicCorpora": "公开语料检索已就绪，诊断时会自动与主流公开数据源比对。"
+    },
+    "field": {
+      "GOOGLE_CSE_API_KEY": "API Key",
+      "GOOGLE_CSE_CX": "搜索引擎 ID（CX）",
+      "DATAFORSEO_LOGIN": "Login（邮箱）",
+      "DATAFORSEO_PASSWORD": "API Password",
+      "CLOUDFLARE_ACCOUNT_ID": "Cloudflare Account ID",
+      "CLOUDFLARE_API_TOKEN": "Cloudflare API Token",
+      "BROWSERLESS_API_TOKEN": "Browserless API Token",
+      "OPENAI_API_KEY": "OpenAI API Key",
+      "PERPLEXITY_API_KEY": "Perplexity API Key",
+      "GEMINI_API_KEY": "Gemini API Key",
+      "DEEPSEEK_API_KEY": "DeepSeek API Key"
+    },
+    "show": "显示",
+    "hide": "隐藏",
+    "showField": "显示 {field}",
+    "hideField": "隐藏 {field}",
+    "clearConfirm": "确认清除",
+    "clearCancel": "取消",
+    "clearHint": "清除后改用环境变量里的值（如果有）。",
+    "errorSave": "{field} 没有保存成功（{reason}）。",
+    "errorClear": "清除没有成功，请重试。",
+    "errorTest": "连接失败：{reason}",
+    "guideTitle": "配置指南",
+    "sopWhy": "为什么要配置",
+    "sopBenefit": "配置后能得到什么",
+    "sopSteps": "步骤",
+    "sopLinks": "直接去配置",
+    "sop": {
+      "googleCse": {
+        "why": "通过 Google 自定义搜索引擎（CSE）实时抓取 Google 网页搜索结果，用来验证收录。",
+        "benefit": "验证网站的自然收录状态，查看关键词在 Google 搜索结果里的真实快照和排名位置。",
+        "s1": "访问 Google CSE 控制台（https://cse.google.com/cse/）创建自定义搜索引擎。",
+        "s2": "新建的 CSE 只能指定站点；如果账户已有全网搜索引擎，可以在设置里继续使用它。",
+        "s3": "拿到搜索引擎 ID（CX）后，填进下方 CX 字段。",
+        "s4": "在 Google Cloud 凭据页创建 API Key，同样填进下方 API Key 字段并保存。",
+        "s5": "如果 Google 不允许这个账户新开 Custom Search JSON API，请改用 DataForSEO 获取 SERP 数据，不要在这里反复尝试。",
+        "linkCse": "打开 CSE 控制台（已有 API 资格时获取 CX）",
+        "linkCloud": "打开 Google Cloud 凭据页（创建 API Key）"
+      },
+      "aiProbe": {
+        "why": "实测各家 AI 答案引擎对你网站的收录、回答和引用情况。",
+        "benefit": "实测 ChatGPT / Perplexity / Gemini / DeepSeek 的回答，算出网站在 AI 答案里的可见度（GEO 占比）和引用排名。",
+        "s1": "在下方粘贴对应服务商的 API Key 并保存。",
+        "s2": "这里保存的 key 优先于环境变量；想改回环境变量，点「清除」即可。"
+      },
+      "dataforseo": {
+        "why": "接入第三方 SEO 数据服务商 DataForSEO，获取关键词、竞品和外链数据。",
+        "benefit": "补上外链指标、关键词搜索量、竞品占比和关键词缺口，这些是自有流量数据之外的市场数据。",
+        "s1": "注册并登录 DataForSEO 控制台。",
+        "s2": "把 API Access 里的 Login 和 API password 分别填进下方并保存。",
+        "linkAccess": "打开 DataForSEO API Access（复制 Login / Password）"
+      },
+      "render": {
+        "why": "浏览器级渲染不依赖目标网站的 CDN：优先用 Cloudflare，没有时改用 Browserless Chromium，二者都拿 JavaScript 执行后的真实 HTML。",
+        "benefit": "两种渲染器都会对比初始 HTML 和 JS 渲染后的正文，单页应用的可抓取性、正文占比和渲染检测证据用同一套口径。",
+        "s1": "方案 A：填入 Cloudflare Account ID 和 API Token，使用 Cloudflare Browser Rendering。",
+        "s2": "方案 B：没有 Cloudflare 时，填入 Browserless API Token，改用 Browserless Chromium。",
+        "linkBrowserless": "打开 Browserless 获取 API Token"
+      },
+      "psi": {
+        "why": "评估网页加载性能、响应速度和核心 Web 指标（LCP、INP、CLS）。",
+        "benefit": "了解 Google 衡量的真实用户体验，是 SEO 评级和可用性评估的重要依据。",
+        "s1": "开箱即用，不需要任何凭据。"
+      },
+      "publicCorpora": {
+        "why": "诊断时把网站内容和主流公开语料、公开数据做关联比对。",
+        "benefit": "了解网站内容与通用大模型训练语料的重合度，提高内容被 AI 引擎检索到的机会。",
+        "s1": "开箱即用，不需要配置。"
+      }
+    },
     "provider": { "label": "服务", "openai": "OpenAI", "perplexity": "Perplexity", "gemini": "Gemini", "deepseek": "DeepSeek", "googleCse": "Google CSE", "dataforseo": "DataForSEO", "cloudflare": "Cloudflare", "browserless": "Browserless" }
   },
   "projects": {
@@ -1415,6 +1505,19 @@
     "manualSubmit": "提交提案",
     "errorEvidence": "至少需要一个一手来源 URL",
     "errorTarget": "目标不能为空",
+    "emptyHint": "所有提案都处理完了，诊断按当前规则版本运行。",
+    "tabsLabel": "规则库视图",
+    "releasePending": "有 {count} 条提案已批准、尚未发版。",
+    "colAction": "操作",
+    "manualTargetPlaceholder": "例如 rule_canonical_canonical_link 或 refart_gsc_docs",
+    "manualEvidencePlaceholder": "https://developers.google.com/search/…",
+    "manualEvidenceHint": "填一手来源的网址作为证据，每行一个。",
+    "manualSubmitted": "提案已提交，可以在「待审提案」里看到。",
+    "changelogEmpty": "还没有发布过规则版本。",
+    "changelogCount": "{count} 条变更",
+    "errorAction": "操作没有成功，请重试。",
+    "errorRelease": "发版没有成功，请重试。",
+    "errorSubmit": "提交没有成功，请重试。",
     "sourceLabels": { "scheduled_research": "定期巡检", "effectiveness_stats": "效果统计", "dismissal_stats": "误报统计", "manual": "手动" },
     "changeLabels": { "new_rule": "新增规则", "modify_threshold": "调整阈值", "deprecate": "弃用", "update_artifact": "更新资产" }
   },
@@ -1480,6 +1583,207 @@
     "errorWorkflow": "诊断工作流还没有就绪，请稍后重试。",
     "errorDispatchFailed": "分析会话已创建，但采集任务没能派发：后台任务服务（Inngest）不可用，请启动后重试。",
     "errorGeneric": "没能生成诊断路线，请稍后重试。"
+  },
+  "knowledge": {
+    "title": "知识库",
+    "subtitle": "把外部变化变成可审计、可发布、可回滚的诊断能力。",
+    "fact": {
+      "knowledge": "知识版本",
+      "workflow": "工作流版本",
+      "ruleConfig": "规则配置"
+    },
+    "tabsLabel": "知识库视图",
+    "tab": {
+      "ingest": "来源",
+      "claims": "论点审核",
+      "library": "正式知识",
+      "workflow": "工作流闸门"
+    },
+    "model": "提炼模型",
+    "backfillAll": "全部来源回填一年",
+    "refresh": "刷新",
+    "addSourceType": "订阅类型",
+    "addSourceValue": "社区名或搜索词",
+    "addSource": "添加订阅",
+    "sourceType": {
+      "reddit_community": "Reddit 社区",
+      "reddit_search": "Reddit 搜索"
+    },
+    "col": {
+      "source": "来源",
+      "authority": "类型",
+      "status": "最近一次",
+      "fetched": "抓取",
+      "changed": "变化",
+      "errors": "错误",
+      "action": "操作"
+    },
+    "authority": {
+      "official": "官方",
+      "measured": "实测",
+      "community": "社区",
+      "legacy": "存量"
+    },
+    "runStatus": {
+      "idle": "还没采集",
+      "running": "采集中",
+      "completed": "已完成",
+      "partial": "部分完成",
+      "failed": "失败"
+    },
+    "errorReason": {
+      "reddit_oauth_not_configured": "还没配置 Reddit 授权，社区来源采集不了。",
+      "reddit_oauth_protocol_mismatch": "Reddit 授权回调的协议不一致，请检查回调地址。",
+      "knowledge_source_collector_not_supported": "这种来源还没有采集器。",
+      "knowledge_source_not_found_or_disabled": "来源不存在或已暂停。"
+    },
+    "pause": "暂停",
+    "paused": "已暂停",
+    "enable": "启用",
+    "ingest": "采集",
+    "backfill": "回填一年",
+    "gate1": "第一道人审：论点进正式知识前必须有人看过",
+    "gate2": "第二道人审：工作流变更发布前必须有人看过",
+    "releaseKnowledge": "发布知识版本",
+    "claimsEmpty": "没有待审核的论点",
+    "claimsEmptyHint": "采集完成后，模型提炼的论点会出现在这里。",
+    "claimType": {
+      "principle": "原则",
+      "diagnostic_check": "检查项",
+      "decision_rule": "判定规则",
+      "remediation": "修复方法",
+      "blocker": "阻断项",
+      "validation": "验证方法",
+      "explanation": "解释",
+      "hypothesis": "假设"
+    },
+    "confidence": {
+      "observation": "观察",
+      "hypothesis": "假设",
+      "community_practice_candidate": "社区做法（待验证）",
+      "inferred": "推断",
+      "measured": "实测",
+      "official": "官方"
+    },
+    "officialConflict": "与官方说法冲突，需要编辑后才能批准",
+    "quote": "原文证据",
+    "sourceLabel": "来源",
+    "rawSnapshot": "原始快照",
+    "approve": "批准",
+    "editApprove": "编辑后批准",
+    "reject": "驳回",
+    "searchLabel": "检索已发布知识",
+    "searchPlaceholder": "例如 canonical、抓取预算",
+    "search": "检索",
+    "searchEmpty": "没有找到相关知识。",
+    "clearSearch": "清除检索",
+    "score": "相关度 {score}",
+    "libCol": {
+      "key": "知识",
+      "topic": "主题",
+      "type": "类型",
+      "version": "当前版本",
+      "status": "状态"
+    },
+    "entryStatus": {
+      "draft": "草稿",
+      "published": "已发布",
+      "retired": "已停用"
+    },
+    "releaseWorkflow": "发布工作流版本",
+    "proposalsEmpty": "还没有工作流变更提案。",
+    "proposalStatus": {
+      "pending_review": "待审",
+      "approved": "已批准",
+      "rejected": "已驳回",
+      "released": "已发布"
+    },
+    "proposalDiff": "变更内容",
+    "rejectReasonDefault": "人工驳回工作流变更",
+    "dialogEdit": "编辑后批准",
+    "dialogReject": "驳回论点",
+    "editZh": "中文知识表述",
+    "editEn": "英文知识表述",
+    "reason": "审核理由",
+    "reasonPlaceholder": "驳回必须写原因；编辑后批准建议说明修改依据。",
+    "cancel": "取消",
+    "done": "已完成。",
+    "released": "已发布 {version}。",
+    "errorAction": "操作没有成功（{code}），请重试。"
+  },
+  "sessions": {
+    "crumb": "分析会话",
+    "noDomain": "无域名场景",
+    "fact": {
+      "scenario": "场景",
+      "status": "状态",
+      "knowledge": "知识版本",
+      "workflow": "工作流版本",
+      "rules": "规则版本",
+      "ruleConfig": "规则配置"
+    },
+    "scenario": {
+      "new_build": "新站规划",
+      "diagnose": "问题诊断",
+      "optimize": "增长优化",
+      "learn": "学习"
+    },
+    "status": {
+      "classifying": "分类中",
+      "waiting_input": "待补充信息",
+      "ready": "就绪",
+      "running": "进行中",
+      "reviewing": "待复核",
+      "completed": "已完成",
+      "failed": "失败"
+    },
+    "stepStatus": {
+      "pending": "等待中",
+      "running": "进行中",
+      "waiting_input": "待补充",
+      "completed": "已完成",
+      "skipped": "已跳过",
+      "failed": "失败"
+    },
+    "reason": {
+      "classification": "目标分类",
+      "symptom_priority": "按症状优先",
+      "background_coverage": "常规覆盖"
+    },
+    "source": {
+      "gsc": "GSC",
+      "dataforseo": "DataForSEO",
+      "crawl": "页面抓取",
+      "render": "渲染检测",
+      "ai_probe": "AI 探针",
+      "serp_aio": "SERP · AI 概览",
+      "third_party": "第三方平台"
+    },
+    "needInput": "需要补充信息才能继续",
+    "needInputFields": "请补充：{fields}",
+    "routeTitle": "执行路线",
+    "openKnowledge": "查看知识库",
+    "noSources": "无需外部数据",
+    "knowledgeRefs": "{count} 条知识",
+    "knowledgeTitle": "调用的正式知识",
+    "colKnowledge": "知识",
+    "colVersion": "版本",
+    "colSources": "来源",
+    "showAll": "显示全部 {count} 条",
+    "showLess": "收起",
+    "artifactsTitle": "每一步的产物",
+    "artifactsNote": "原始结构化输出，供审计",
+    "field": {
+      "domain": "域名",
+      "product": "产品或行业",
+      "industry": "产品/服务品类（英文）",
+      "market": "目标市场"
+    },
+    "industryInvalid": "请用英文描述你的产品或服务品类（3–80 个字符），例如 document metadata removal tool。",
+    "submit": "补充并继续",
+    "submitting": "继续处理中…",
+    "errorInvalidDomain": "域名格式不对，例如 example.com。",
+    "errorGeneric": "没能继续，请检查后重试。"
   },
   "notFound": {
     "title": "页面不存在",

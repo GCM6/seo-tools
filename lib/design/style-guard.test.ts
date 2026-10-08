@@ -5,11 +5,8 @@ import { scanSource, type StyleRule } from './style-guard'
 
 // 改版期间尚未迁移的文件（design-system §9）。只许删、不许加：
 // 迁完一个就从这里删掉；某个文件已经干净却还留在名单里，本测试也会失败，逼名单只减不增。
-// 第 5 波（清理）结束时必须为空。
-const PENDING_MIGRATION = new Set([
-  'app/[locale]/rules/RulesAdminClient.tsx',
-  'app/[locale]/settings/SettingsClient.tsx',
-])
+// 第 3c 批起已清零：新代码不得再往这里加文件，违规写法直接让测试失败。
+const PENDING_MIGRATION = new Set<string>([])
 
 const ROOT = process.cwd()
 
