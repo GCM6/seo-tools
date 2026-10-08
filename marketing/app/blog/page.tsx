@@ -1,35 +1,28 @@
 import type { Metadata } from 'next'
+import { CONTACT_EMAIL } from '@/lib/site'
 
 export const metadata: Metadata = {
   title: 'Blog',
-  description:
-    'Research and guides on SEO and GEO (Generative Engine Optimization) diagnostics from Veris — coming soon.',
+  description: 'Research and guides on SEO and GEO (Generative Engine Optimization) diagnostics from Veris.',
 }
 
+// 博客列表（ux-blueprint §7）：还没有文章时明确写「No posts yet」+ 一句说明，不留空白页。
+// 选词完成前不发文章（方案红线「先词后页」），文章页路由 [slug] 目前不产出任何页面。
 export default function BlogIndexPage() {
   return (
-    <main>
-      <section className="hero shell">
+    <main className="mk-wrap mk-page">
+      <header className="mk-page__head">
         <h1>Research &amp; guides</h1>
-        <p>
-          Original, evidence-backed writing on SEO and AI-answer-engine visibility — coming soon.
-        </p>
-      </section>
+        <p className="mk-page__lead">Evidence-backed writing on SEO and AI answer-engine visibility.</p>
+      </header>
 
-      <section className="section">
-        <div className="shell">
-          <div className="empty-state">
-            <p>
-              <strong>Research &amp; guides coming soon.</strong>
-            </p>
-            <p>
-              We publish once we have keyword research to back it — no content goes up without a
-              validated topic behind it. Check back, or reach out at{' '}
-              <a href="mailto:mingicelucky@gmail.com">mingicelucky@gmail.com</a> to be notified.
-            </p>
-          </div>
-        </div>
-      </section>
+      <div className="mk-empty">
+        <p className="mk-empty__title">No posts yet</p>
+        <p>
+          We publish only when a topic is backed by keyword research. Write to{' '}
+          <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a> to hear when the first one is out.
+        </p>
+      </div>
     </main>
   )
 }
