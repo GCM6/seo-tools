@@ -28,7 +28,8 @@ const VALUE_PROPS = [
   },
 ]
 
-// 首屏右侧的真实诊断摘录：metadocu.com 2026-07-18 的诊断（run_05face85，已完成）。
+// 首屏右侧的匿名案例：来自一次真实诊断（run_05face85，2026-07-18），对外不展示域名、日期等任何可识别信息
+// （用户 2026-10-08 拍板：首屏不公开任何具体站点，最多以匿名案例出现）。
 // 四条数字逐条对过库和该次报告（2026-10-08）：noindex 2 页（measured_hard）、无品牌提问 0/23（measured_sample）、
 // AI 概览 19/21 出现、其中 2 次引用本站（Google SERP 实测）、健康分 74.6（P4 未评分，inferred）。
 // 换摘录时必须换成另一次真实运行的数字，不能手写。
@@ -84,8 +85,8 @@ export default function HomePage() {
 
         <figure className="proof">
           <div className="proof__head">
-            <span>metadocu.com · diagnostic run</span>
-            <time dateTime="2026-07-18">Jul 18, 2026</time>
+            <span>Case · B2B document-tools site</span>
+            <span>Anonymized</span>
           </div>
           <ul>
             {PROOF.map((item) => (
@@ -97,7 +98,7 @@ export default function HomePage() {
               </li>
             ))}
           </ul>
-          <figcaption>Excerpt from a real run. Every line links back to stored evidence.</figcaption>
+          <figcaption>Anonymized excerpt from a real diagnostic run. Site details removed; every line links back to stored evidence.</figcaption>
         </figure>
       </section>
 
