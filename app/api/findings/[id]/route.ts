@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { findings } from '@/db/schema'
 import { dismissFinding } from '@/lib/repositories'
+import { mirrorFindingStatus } from '@/lib/issues/bridge'
 
 // findings.status 状态机（与 schema findings_status check 一致）。
 const VALID_STATUS = ['open', 'dismissed', 'converted'] as const
@@ -25,6 +26,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const reason = typeof body.dismissReason === 'string' ? body.dismissReason.trim() : ''
     if (!reason) return NextResponse.json({ error: 'dismiss_reason_required' }, { status: 422 })
     await dismissFinding(id, reason)
+    await mirrorFindingStatus(id, 'dismissed', reason)
     const updated = await db.query.findings.findFirst({ where: eq(findings.id, id) })
     return NextResponse.json(updated)
   }
@@ -34,6 +36,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .set({ status })
     .where(eq(findings.id, id))
     .returning()
+  await mirrorFindingStatus(id, status as 'open' | 'dismissed' | 'converted')
 
   return NextResponse.json(updated)
 }

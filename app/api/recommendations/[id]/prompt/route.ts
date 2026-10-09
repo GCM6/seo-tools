@@ -10,6 +10,7 @@ import {
   getGeneratedPromptsForRec,
   assertCanGeneratePrompt,
 } from '@/lib/repositories'
+import { issueForRecommendation } from '@/lib/issues/bridge'
 import type { RecommendationStatus } from '@/lib/types'
 import { assemblePrompt, assembleContentBrief } from '@/lib/diagnosis/prompt-assembler'
 import { GLOBAL_CONTENT_BLOCKERS } from '@/lib/diagnosis/templates'
@@ -90,10 +91,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       negativeConstraints: promptType === 'content' ? GLOBAL_CONTENT_BLOCKERS : undefined,
     })
 
+    // 提示词归属到对应问题（spec 2026-10-09 §6.4 问题闸门）；找不到对应问题（未回填的旧体检）时为空。
+    const issue = await issueForRecommendation(id)
+
     const primaryId = `gp_${crypto.randomUUID()}`
     await createGeneratedPrompt({
       id: primaryId,
       recommendationId: id,
+      issueId: issue?.id ?? null,
       promptType: assembled.promptType,
       promptText: assembled.promptText,
       inputFactRefs: assembled.inputFactRefs,
@@ -131,6 +136,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await createGeneratedPrompt({
         id: briefId,
         recommendationId: id,
+        issueId: issue?.id ?? null,
         promptType: brief.promptType,
         promptText: brief.promptText,
         inputFactRefs: brief.inputFactRefs,

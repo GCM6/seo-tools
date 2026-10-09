@@ -7,6 +7,8 @@ const store = {
   run: { id: 'run_1', projectId: 'prj_1' } as null | Record<string, unknown>,
   project: { id: 'prj_1', domain: 'https://example.com/' } as null | Record<string, unknown>,
   facts: [] as { id: string; factText: string; status: string }[],
+  // 旧界面桥接：建议对应的问题（找不到时为 undefined → issueId 落 null）。
+  issue: { id: 'iss_1' } as undefined | { id: string },
 }
 const created: Record<string, unknown>[] = []
 let seq = 0
@@ -32,6 +34,8 @@ vi.mock('@/lib/repositories', () => ({
   },
 }))
 
+vi.mock('@/lib/issues/bridge', () => ({ issueForRecommendation: async () => store.issue }))
+
 import { POST } from './route'
 
 const call = (id: string, qs = '') => POST(new Request(`http://x${qs}`), { params: Promise.resolve({ id }) })
@@ -40,6 +44,7 @@ beforeEach(() => {
   store.rec = null
   store.finding = { id: 'f_1', side: 'technical', evidenceRefs: ['ev_9'] }
   store.facts = []
+  store.issue = { id: 'iss_1' }
   created.length = 0
   seq = 0
 })
@@ -72,6 +77,16 @@ describe('POST /recommendations/:id/prompt', () => {
     expect(created[0].promptText).toBe(p.promptText)
     expect(created[0].evidenceRefs).toEqual(['ev_9']) // 取自 finding
     expect(created[0].inputFactRefs).toEqual([]) // technical 不注入事实
+    expect(created[0]).toEqual(expect.objectContaining({ issueId: 'iss_1' })) // 提示词归属到对应问题
+  })
+
+  it('writes issueId null when the recommendation has no matching issue (un-backfilled old run)', async () => {
+    store.rec = baseRec({ status: 'accepted' })
+    store.issue = undefined
+    const res = await call('r_1')
+    expect(res.status).toBe(200)
+    expect(created).toHaveLength(1)
+    expect(created[0].issueId).toBeNull()
   })
 
   it('content finding injects verified facts and returns both content + brief prompts', async () => {
@@ -91,6 +106,8 @@ describe('POST /recommendations/:id/prompt', () => {
     expect(created).toHaveLength(2)
     const contentRow = created.find((r) => r.promptType === 'content')
     expect(contentRow?.inputFactRefs).toEqual(['bf_1']) // 仅 verified 注入
+    // 主提示词与写作简报都归属到同一个问题
+    expect(created.map((r) => r.issueId)).toEqual(['iss_1', 'iss_1'])
   })
 
   it('second call is idempotent: returns the same generated_prompts ids without re-creating rows', async () => {
