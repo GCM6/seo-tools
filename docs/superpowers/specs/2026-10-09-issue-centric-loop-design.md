@@ -51,9 +51,9 @@
 | 体检 | 一次完整检测（即现在的 run）。不再区分基线 / 回测 |
 | 问题 | 一条规则在一个范围内的命中，由「项目 + 问题指纹」唯一确定 |
 | 问题指纹 | 现有 `findings.fingerprint` = hash(规则编号 + 归一化范围) |
-| 检测协议 | 体检用的「考题」：市场、品类、目标关键词、已确认竞品、提问模板版本、探针引擎列表 |
+| 检测协议 | 体检用的「考题」：市场、品类、语言、项目手填竞品、品牌别名、目标关键词、已确认竞品、提问模板版本、探针引擎列表（计划阶段细化：按 `PromptSetInput` 实况补齐语言、手填竞品、别名） |
 | 协议指纹 | 上述输入的哈希。指纹相同的两次体检，抽样指标才可比 |
-| 抽样类规则 | 结论依赖 AI 探针或 Google AI 概览抽样的规则（由规则声明的数据源判定：`ai_probe`、`serp_aio`） |
+| 抽样类规则 | 结论随检测协议变化的规则：必需数据源含 `ai_probe`、`confirmed_competitors`、`dataforseo:seed_serp` 或 `dataforseo:labs`（计划阶段细化：AI 概览数据源键实为 `aio`，且没有规则读取它；共 12 条规则，见 `lib/diagnosis/rules/rule-meta.ts`） |
 | 检查台账 | 每次体检每条规则的检查结果：查出 / 没查出 / 没查（原因）/ 出错 |
 
 ## 4. 问题的状态与流转
@@ -159,12 +159,14 @@
 | `decision_reason` | text | |
 | `decided_at` / `decided_by` | text | `decided_by` CHECK in (`operator`,`owner`)，现在只写 `operator` |
 | `executed_at` / `executed_note` / `executed_by` | text | `executed_by` 同上 |
-| `detection` | text not null | CHECK in (`present`,`gone`,`unverified`) |
+| `detection` | text not null | CHECK in (`present`,`gone`)。计划阶段细化：「未复查」用 `flags` 的 `unverified` + `unverified_reason` 表达，对账时检测值与检查时间都不动，从而满足 4.4-3「状态不变」 |
 | `status` | text not null | CHECK in 4.2 的 8 个代码；由对账与动作统一重算后写入，便于筛选 |
 | `flags` | text json not null default `[]` | 4.3 的标记 |
 | `unverified_reason` | text | `data_gap` / `site_condition` / `unsupported` / `error` / `history_no_ledger` |
 | `protocol_hash` | text | 最近一次观测时的协议指纹 |
 | `first_seen_run_id` / `last_seen_run_id` / `last_checked_run_id` | text | → runs，ON DELETE SET NULL |
+| `last_checked_at` | text | 计划阶段细化：最近一次真正查过本问题的体检的开始时间，推导「执行之后开始的体检」用 |
+| `retired_reason` | text | 计划阶段细化：`protocol_changed` / `rule_changed`，非空即已关闭 |
 | `created_at` / `updated_at` | text | |
 
 约束：UNIQUE(`project_id`,`fingerprint`)；CHECK(`decision` in (`deferred`,`false_positive`) → `decision_reason` 非空)；CHECK(`executed_at` 非空 → `decision` = `included`)。
@@ -181,9 +183,9 @@
 
 | 对象 | 改动 |
 |---|---|
-| `findings` | 加 `detail`（json，可空）：`{ scale: { affected, total? }, rows: [{ url, field, current, expected }]（≤20）, truncated, raw? }`。集中整理函数从规则命中生成，不改规则本身的判定 |
+| `findings` | 加 `detail`（json，可空）：`{ scale: { affected, total? }, rows: [{ url, field, current, expected }]（≤20）, truncated }`。集中整理函数从规则命中生成，不改规则本身的判定。计划阶段细化：规则没给的值为 null（关键词、平台类没有页面；多数规则没给「应该」）；87 条规则中 70 条有明细、17 条（站级 / 抽样 / 对比类）没有。补齐「现在 / 应该」需要改规则的 detail 产出，归子项目 2 |
 | `runs` | 加 `protocol_hash`（text，可空）。`run_type` 约束不改，含义改为「新协议 / 沿用协议」；`baseline_run_id` 指协议起点 |
-| `generated_prompts` | 加 `issue_id`（→ issues，CASCADE）。生成条件改为 `issues.decision = 'included'`（`validators.ts` 新增断言）；旧记录的 `recommendation_id` 保留 |
+| `generated_prompts` | 加 `issue_id`（→ issues，CASCADE）。生成条件改为 `issues.decision = 'included'`（`validators.ts` 新增断言）；旧记录的 `recommendation_id` 保留。计划阶段细化：本子项目写入 `issue_id` 并新增断言；旧界面仍按建议状态把关，由桥接保证「建议已接受」与「问题已纳入」同步，闸门整体切换在子项目 2 |
 | `recommendations` | 保留为每次体检的「怎么改」文字快照；`status` / `applied_at` / `outcome` 不再作为依据，旧数据保留 |
 | `findings.status`（dismissed） | 由 `issues.decision = 'false_positive'` 取代，旧数据保留 |
 | 规则定义 `Rule` | 加 `version: number`（默认 1）；之后改哪条规则只升那一条 |
