@@ -641,6 +641,76 @@ describe('collectEvidenceHandler', () => {
     expect(stageArgs.seeds).toContainEqual({ text: 'strip exif data online', source: 'site_phrase' })
   })
 
+  // 同协议体检沿用起点体检的种子词样本（spec 2026-10-09 §5.3，终审 F3）：种子类规则（K03/K04/K07/Q01/Q03）
+  // 的「没了 / 已修复 / 部分改善」不能只因为这次 GSC / 历史 / 页面标题换了一批词。
+  describe('种子词：同协议沿用起点体检的样本', () => {
+    // 起点体检 seed_serp 证据的 request，形状同 lib/dataforseo/collect-stage.ts 写入的那条。
+    const anchorSeeds = [
+      { text: 'remove pdf metadata', source: 'manual' },
+      { text: 'remove author from word', source: 'gsc_history', lastSeenAt: '2026-07-13T07:05:02.556Z' },
+      { text: 'clean document metadata', source: 'site_phrase' },
+    ]
+    const seedSerpRequest = (seeds: unknown) => ({ kind: 'seed_serp', locationCode: 2826, languageCode: 'en', seedCount: Array.isArray(seeds) ? seeds.length : 0, seeds })
+    // 本次重新采样会得到的种子（与起点不同）：手填词变了、历史 GSC 也多了一个词。
+    const freshSeeds = [
+      { text: 'strip exif data', source: 'manual' },
+      { text: 'delete docx properties', source: 'gsc_history', lastSeenAt: '2026-10-01T00:00:00.000Z' },
+    ]
+    const setup = (opts: { hashes: Record<string, string | null>; baselineRunId?: string; requests?: unknown[] }) => {
+      const runDataforseo = vi.fn(async (args: unknown) => { void args; return [] })
+      const deps = makeDeps({
+        resolveDataforseo: vi.fn(async () => dfsResolved()),
+        runDataforseo,
+        getRun: vi.fn(async (id: string) => ({ id, status: 'collecting', failureReason: null, protocolHash: opts.hashes[id] ?? null })),
+        getRunSeedSerpRequests: vi.fn(async (runId: string) => (runId === 'run_base' ? (opts.requests ?? []) : [])),
+        getTargetKeywords: vi.fn(async () => ['strip exif data']),
+        getGscKeywordHistory: vi.fn(async () => [{ keyText: 'delete docx properties', lastSeenAt: '2026-10-01T00:00:00.000Z' }]),
+        getRunSitePages: vi.fn(async () => []),
+        getProject: vi.fn(async () => ({ id: 'proj_1', domain: 'example.com', industry: 'saas tool', market: 'gb', language: 'en', competitors: [] })),
+      })
+      const { args } = makeArgs()
+      if (opts.baselineRunId) args.event.data = { ...args.event.data, baselineRunId: opts.baselineRunId } as typeof args.event.data
+      return { deps, args, runDataforseo }
+    }
+    const seedsPassed = (runDataforseo: ReturnType<typeof vi.fn>) => {
+      expect(runDataforseo).toHaveBeenCalledTimes(1)
+      return (runDataforseo.mock.calls[0][0] as { seeds: unknown[]; market: string })
+    }
+
+    it('起点与本次协议指纹相同且起点记了种子 → 原样沿用起点的种子（同顺序），不再读手填词 / 历史 GSC', async () => {
+      const { deps, args, runDataforseo } = setup({ hashes: { run_1: 'P1', run_base: 'P1' }, baselineRunId: 'run_base', requests: [seedSerpRequest(anchorSeeds)] })
+      await collectEvidenceHandler(args, asCollectDeps(deps))
+      const passed = seedsPassed(runDataforseo)
+      expect(passed.seeds).toEqual(anchorSeeds)
+      expect(passed.market).toBe('gb')
+      expect(deps.getRunSeedSerpRequests).toHaveBeenCalledWith('run_base')
+      expect(deps.getTargetKeywords).not.toHaveBeenCalled()
+      expect(deps.getGscKeywordHistory).not.toHaveBeenCalled()
+    })
+
+    it.each<[string, { hashes: Record<string, string | null>; baselineRunId?: string }]>([
+      ['协议指纹不同', { hashes: { run_1: 'P2', run_base: 'P1' }, baselineRunId: 'run_base' }],
+      ['本次协议指纹为空', { hashes: { run_1: null, run_base: 'P1' }, baselineRunId: 'run_base' }],
+      ['两边协议指纹都为空', { hashes: { run_1: null, run_base: null }, baselineRunId: 'run_base' }],
+      ['没有起点体检', { hashes: { run_1: 'P1', run_base: 'P1' } }],
+    ])('%s → 重新采样，不用起点的种子', async (_label, opts) => {
+      const { deps, args, runDataforseo } = setup({ ...opts, requests: [seedSerpRequest(anchorSeeds)] })
+      await collectEvidenceHandler(args, asCollectDeps(deps))
+      expect(seedsPassed(runDataforseo).seeds).toEqual(freshSeeds)
+    })
+
+    it.each<[string, unknown[]]>([
+      ['起点没有种子 SERP 证据', []],
+      ['起点记的种子为空数组', [seedSerpRequest([])]],
+      ['起点的请求里没记种子（旧证据）', [{ kind: 'seed_serp', locationCode: 2826, languageCode: 'en', seedCount: 3 }]],
+      ['起点记的种子形状不对', [seedSerpRequest([{ source: 'manual' }])]],
+    ])('协议相同但%s → 重新采样', async (_label, requests) => {
+      const { deps, args, runDataforseo } = setup({ hashes: { run_1: 'P1', run_base: 'P1' }, baselineRunId: 'run_base', requests })
+      await collectEvidenceHandler(args, asCollectDeps(deps))
+      expect(seedsPassed(runDataforseo).seeds).toEqual(freshSeeds)
+    })
+  })
+
   it('UA 探测每个请求都失败（status 全为 null）→ 记 failed，不写 ua_probe 证据（第二波审查 I2）', async () => {
     const deps = makeDeps({
       collectUaProbe: vi.fn(async () => ({

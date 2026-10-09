@@ -23,7 +23,7 @@ import { createDataforseoProvider } from '@/lib/dataforseo'
 import { collectDataforseoStage, type DataforseoStageArgs, type SubStageOutcome } from '@/lib/dataforseo/collect-stage'
 import { resolveDataforseoCredentials } from '@/lib/credentials/dataforseo'
 import type { DataforseoProvider } from '@/lib/dataforseo/types'
-import { gatherSeedKeywords } from '@/lib/diagnosis/seed-keywords'
+import { gatherSeedKeywords, type Seed } from '@/lib/diagnosis/seed-keywords'
 import { sitePhrases } from '@/lib/diagnosis/site-phrases'
 import { extractSitePreviewFacts } from '@/lib/analysis/category-candidates'
 import { isUtilityPage } from '@/lib/crawl/link-integrity'
@@ -71,6 +71,7 @@ import {
   getRunProbeResults,
   getRunPrompts,
   getRunSerpAioResults,
+  getRunSeedSerpRequests,
   upsertKeyword,
   createKeywordMetrics,
   upsertCompetitor,
@@ -130,6 +131,8 @@ interface CollectDeps {
   createSerpAioResult: typeof createSerpAioResult
   getRunPrompts: typeof getRunPrompts
   getRunSerpAioResults: typeof getRunSerpAioResults
+  // 起点体检的种子词 SERP 请求：同协议体检沿用起点的种子词样本（spec 2026-10-09 §5.3）。
+  getRunSeedSerpRequests: typeof getRunSeedSerpRequests
   getProject: typeof getProject
   createEvidenceArtifact: typeof createEvidenceArtifact
   // 原始响应存档（SP-A §4.3）
@@ -173,6 +176,21 @@ function errorReason(err: unknown, fallback = 'collection_failed'): string {
   if (typeof err === 'object' && err && 'message' in err && typeof err.message === 'string' && err.message) return err.message
   if (typeof err === 'string' && err) return err
   return fallback
+}
+
+// 起点体检记下的种子词样本：seed_serp 证据 request.seeds（collect-stage 写入，顺序即当时的采样顺序）。
+// 没有这条证据、没记种子、为空或形状不对 → null（调用方重新采样）。
+function recordedSeeds(requests: unknown[]): Seed[] | null {
+  for (const req of requests) {
+    const seeds = (req as { seeds?: unknown } | null)?.seeds
+    if (!Array.isArray(seeds) || seeds.length === 0) continue
+    const valid = seeds.every((s) => {
+      const x = s as Partial<Seed> | null
+      return !!x && typeof x.text === 'string' && x.text.trim() !== '' && typeof x.source === 'string'
+    })
+    if (valid) return seeds as Seed[]
+  }
+  return null
 }
 
 // 本 run 页面 → 图谱输入（spec S1 §6）：内容类型与截断标志在 light_check_extra 里，决定「出链是否完整已知」。
@@ -228,6 +246,7 @@ function defaultDeps(): CollectDeps {
     createSerpAioResult,
     getRunPrompts,
     getRunSerpAioResults,
+    getRunSeedSerpRequests,
     getProject,
     createEvidenceArtifact,
     createEvidenceRaw,
@@ -885,8 +904,19 @@ export async function collectEvidenceHandler(
     const brand = brandFromDomain(domain)
     // 种子词（SP-A §3.3）：用户目标词 → 本期 GSC → 历史 GSC → 站点关键短语；探针问句不再作为种子。
     const { seeds, market } = await step.run('dfs-gather-seeds', async () => {
-      const [project, manual, history, runPages] = await Promise.all([
-        deps.getProject(projectId),
+      const project = await deps.getProject(projectId)
+      const market = project?.market ?? ''
+      // 同协议的体检沿用起点体检的种子词样本（spec 2026-10-09 §5.3，与探针问句、AI 概览关键词同一原则）：
+      // 否则 GSC / 历史词 / 页面标题一变就换一批词，种子类规则（K03、K04、K07、Q01、Q03）的「没了 / 已修复 /
+      // 部分改善」可能只是样本变了。两边协议指纹都有且相同才沿用；起点没记种子 → 照常重新采样。
+      if (baselineRunId) {
+        const [self, anchor] = await Promise.all([deps.getRun(runId), deps.getRun(baselineRunId)])
+        if (self?.protocolHash && anchor?.protocolHash && self.protocolHash === anchor.protocolHash) {
+          const reused = recordedSeeds(await deps.getRunSeedSerpRequests(baselineRunId))
+          if (reused) return { seeds: reused, market }
+        }
+      }
+      const [manual, history, runPages] = await Promise.all([
         deps.getTargetKeywords(projectId),
         deps.getGscKeywordHistory(projectId),
         deps.getRunSitePages(projectId, runId),
@@ -906,7 +936,7 @@ export async function collectEvidenceHandler(
         aliases,
         limit: settings?.seedKeywordLimit ?? 100,
       })
-      return { seeds, market: project?.market ?? '' }
+      return { seeds, market }
     })
     const outcomes = await deps.runDataforseo({
       step,

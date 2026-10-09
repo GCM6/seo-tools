@@ -111,6 +111,8 @@ export function makeDeps(overrides: Record<string, unknown> = {}) {
     createSerpAioResult: vi.fn(async () => undefined),
     getRunPrompts: vi.fn(async () => []),
     getRunSerpAioResults: vi.fn(async () => []),
+    // 起点体检的种子词 SERP 请求：默认没有（重新采样）；同协议沿用的用例里按起点 runId 返回。
+    getRunSeedSerpRequests: vi.fn(async () => [] as unknown[]),
     getProject: vi.fn(async () => ({ id: 'proj_1', domain: 'example.com', industry: '', market: 'US', language: 'en', competitors: [] })),
     sendDiagnose: vi.fn(async () => undefined),
     writeDataSourceStatus: vi.fn(async () => undefined),

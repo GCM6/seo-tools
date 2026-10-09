@@ -90,6 +90,15 @@ export const getRunProbeResults = (runId: string) =>
 export const createSerpAioResult = (row: typeof serpAioResults.$inferInsert) => db.insert(serpAioResults).values(row)
 export const getRunSerpAioResults = (runId: string) =>
   db.select().from(serpAioResults).where(eq(serpAioResults.runId, runId))
+// 体检的种子词 SERP 证据请求（lib/dataforseo/collect-stage.ts 写入，request.seeds = 当时的种子词样本与顺序）。
+// 同协议体检沿用起点体检的种子词样本时读它（spec 2026-10-09 §5.3）；只取 request 列，不读证据载荷。
+export const getRunSeedSerpRequests = async (runId: string): Promise<unknown[]> => {
+  const rows = await db
+    .select({ request: evidenceArtifacts.request })
+    .from(evidenceArtifacts)
+    .where(and(eq(evidenceArtifacts.runId, runId), eq(evidenceArtifacts.type, 'dataforseo_serp')))
+  return rows.map((r) => r.request).filter((q) => typeof q === 'object' && q !== null && (q as { kind?: unknown }).kind === 'seed_serp')
+}
 // retest_snapshots 以 baseline run 为锚点：屏4 之后回测同协议时按此拉 delta。
 export const getRetestSnapshots = (baselineRunId: string) =>
   db.select().from(retestSnapshots).where(eq(retestSnapshots.baselineRunId, baselineRunId))
