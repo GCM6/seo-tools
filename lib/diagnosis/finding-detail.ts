@@ -124,7 +124,7 @@ const EXTRACTORS: Record<string, Extractor> = {
   C09: (d) => ({ affected: num(d.missing), total: num(d.imgs), rows: strs(d.examples).map((u) => row(u, 'img alt', '缺失')) }),
   C10: (d) => ({
     affected: num(d.duplicatePageCount),
-    rows: list(d.examples).flatMap((g) => strs(obj(g).urls).map((u) => row(u, '正文', `与同组 ${strs(obj(g).urls).length - 1} 页重复`))),
+    rows: list(d.examples).flatMap((g) => strs(obj(g).urls).map((u) => row(u, '正文', '与同组其他页正文完全相同'))),
   }),
   C11: (d) => ({ affected: num(d.count), rows: strs(d.examples).map((u) => row(u, '平均段落长度', null, num(d.threshold) === null ? null : `≤ ${num(d.threshold)} 词`)) }),
   TA01: (d) => ({

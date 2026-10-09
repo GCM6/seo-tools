@@ -57,6 +57,15 @@ describe('toFindingDetail', () => {
     })
   })
 
+  it('C10：规则每组最多带 5 个 URL，现在列不写推算出来的重复页数', () => {
+    // 规则（content.ts）对每组做 urls.slice(0, 5)，12 页的重复组也只带 5 个 URL；duplicatePageCount 是全量。
+    const urls = Array.from({ length: 5 }, (_, i) => `https://a.com/dup${i}`)
+    const d = toFindingDetail(hit('C10', { duplicateGroups: 1, duplicatePageCount: 12, examples: [{ hash: 'h1', urls }] }, 'content:duplicate'))
+    expect(d?.scale).toEqual({ affected: 12 })
+    expect(d?.rows).toEqual(urls.map((url) => ({ url, field: '正文', current: '与同组其他页正文完全相同', expected: null })))
+    expect(d?.truncated).toBe(false)
+  })
+
   it('没有明细的规则 → null；detail 缺失或形状不符 → 不抛错', () => {
     expect(toFindingDetail(hit('G05', { present: 0, total: 23 }))).toBeNull()
     expect(toFindingDetail({ ruleId: 'T04', scope: 'site', detail: undefined })).toEqual({ scale: { affected: null }, rows: [], truncated: false })
