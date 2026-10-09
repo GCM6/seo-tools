@@ -1,7 +1,9 @@
+import type { FindingDetailJson } from '@/db/schema'
 import type { ClaimType } from '@/lib/types'
 import { severityToFinding, type RuleHit, type Pillar } from './types'
 import type { ValidationSpec } from './validation-spec'
 import { extractMetricTarget, type MetricTarget } from './retest-metrics'
+import { toFindingDetail } from './finding-detail'
 
 // findings / recommendations 落库行的共享构造器。generate-findings（首轮）与
 // reevaluate-competitors（竞品确认后增量）两处同源使用，保证两条链落库形状一致。
@@ -52,6 +54,8 @@ export interface FindingRow {
   fingerprint: string
   // 回测标量聚合目标（GSC 类存关键词集，其余 null）。
   metricTarget: MetricTarget | null
+  // 统一明细（spec 2026-10-09 §6.4），对账取 affected 作受影响数。
+  detail: FindingDetailJson | null
   status: 'open'
 }
 
@@ -72,6 +76,7 @@ export function buildFindingRows(runId: string, hits: RuleHit[]): FindingRow[] {
     // 跨 run 身份锚：retest delta 按 fingerprint 对齐 resolved/persistent/new/regressed。
     fingerprint: hit.fingerprint,
     metricTarget: extractMetricTarget(hit.detail),
+    detail: toFindingDetail(hit),
     status: 'open' as const,
   }))
 }
