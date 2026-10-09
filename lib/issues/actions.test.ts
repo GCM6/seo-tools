@@ -49,4 +49,39 @@ describe('applyIssueAction', () => {
     expect(applyIssueAction(ex, { kind: 'undo_execute' }, ctx).issue).toMatchObject({ executedAt: null, executedNote: null, executedBy: null, status: 'to_execute' })
     expect(() => applyIssueAction(issue({ decision: 'included' }), { kind: 'undo_execute' }, ctx)).toThrow('not_executed')
   })
+
+  it('状态检查：撤销执行只在 executed_awaiting 允许，其他状态报 action_not_allowed', () => {
+    const fixed = issue({ decision: 'included', executedAt: '2026-10-01T00:00:00.000Z', detection: 'gone', lastCheckedAt: '2026-10-05T00:00:00.000Z', status: 'fixed' })
+    const notEffective = issue({ decision: 'included', executedAt: '2026-10-01T00:00:00.000Z', detection: 'present', lastCheckedAt: '2026-10-05T00:00:00.000Z', status: 'not_effective' })
+    expect(() => applyIssueAction(fixed, { kind: 'undo_execute' }, ctx)).toThrow('action_not_allowed')
+    expect(() => applyIssueAction(notEffective, { kind: 'undo_execute' }, ctx)).toThrow('action_not_allowed')
+  })
+
+  it('状态检查：执行、暂不处理、误报在 fixed 状态报 action_not_allowed', () => {
+    const fixed = issue({ decision: 'included', executedAt: '2026-10-01T00:00:00.000Z', detection: 'gone', lastCheckedAt: '2026-10-05T00:00:00.000Z', status: 'fixed' })
+    expect(() => applyIssueAction(fixed, { kind: 'execute' }, ctx)).toThrow('action_not_allowed')
+    expect(() => applyIssueAction(fixed, { kind: 'defer', reason: '稍后' }, ctx)).toThrow('action_not_allowed')
+    expect(() => applyIssueAction(fixed, { kind: 'false_positive', reason: '误报' }, ctx)).toThrow('action_not_allowed')
+  })
+
+  it('not_effective 可以改为暂不处理（spec 允许）', () => {
+    const notEffective = issue({ decision: 'included', executedAt: '2026-10-01T00:00:00.000Z', detection: 'present', lastCheckedAt: '2026-10-05T00:00:00.000Z', status: 'not_effective' })
+    const { issue: i } = applyIssueAction(notEffective, { kind: 'defer', reason: '稍后再看' }, ctx)
+    expect(i).toMatchObject({ decision: 'deferred', decisionReason: '稍后再看', status: 'excluded' })
+  })
+
+  it('excluded 问题可以纳入（撤销排除后直接纳入）', () => {
+    const excluded = issue({ decision: 'deferred', decisionReason: 'x', status: 'excluded' })
+    const { issue: i } = applyIssueAction(excluded, { kind: 'include' }, ctx)
+    expect(i).toMatchObject({ decision: 'included', status: 'to_execute' })
+  })
+
+  it('未知动作类型抛 unknown_action', () => {
+    expect(() => applyIssueAction(issue(), { kind: 'nope' } as never, ctx)).toThrow('unknown_action')
+  })
+
+  it('缺理由时，defer 和 false_positive 抛 reason_required（不是 TypeError）', () => {
+    expect(() => applyIssueAction(issue(), { kind: 'defer' } as never, ctx)).toThrow('reason_required')
+    expect(() => applyIssueAction(issue(), { kind: 'false_positive' } as never, ctx)).toThrow('reason_required')
+  })
 })

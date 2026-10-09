@@ -26,7 +26,8 @@ export function applyIssueAction(
       break
     case 'defer':
     case 'false_positive': {
-      const reason = action.reason.trim()
+      if (issue.status === 'fixed') throw new Error('action_not_allowed')
+      const reason = (action.reason ?? '').trim()
       if (!reason) throw new Error('reason_required')
       next = {
         ...next,
@@ -45,6 +46,7 @@ export function applyIssueAction(
       break
     case 'execute': {
       if (issue.decision !== 'included') throw new Error('not_included')
+      if (issue.status === 'fixed') throw new Error('action_not_allowed')
       const executedNote = action.note?.trim() || null
       next = { ...next, executedAt: ctx.now, executedNote, executedBy: ctx.actor }
       kind = 'execution'
@@ -53,9 +55,12 @@ export function applyIssueAction(
     }
     case 'undo_execute':
       if (!issue.executedAt) throw new Error('not_executed')
+      if (issue.status !== 'executed_awaiting') throw new Error('action_not_allowed')
       next = { ...next, ...clearExecution }
       kind = 'execution'
       break
+    default:
+      throw new Error('unknown_action')
   }
 
   next = { ...next, status: deriveStatus(next) }
