@@ -16,7 +16,8 @@
     "db:migrate-gsc": "tsx db/migrate-gsc-tokens.ts",
     "reparse-probes": "tsx scripts/reparse-probes.ts",
     "replay-citation-split": "tsx scripts/replay-citation-split.ts",
-    "issues:backfill": "tsx scripts/backfill-issues.ts"
+    "issues:backfill": "tsx scripts/backfill-issues.ts",
+    "issues:report": "tsx scripts/issue-report.ts"
   },
   "dependencies": {
     "@inngest/realtime": "^0.4.6",
