@@ -173,6 +173,9 @@ const TEMPLATES_V2 = [
   ...V2_TRUST,
 ]
 
+// 提问模板版本：进协议指纹（lib/runs/protocol.ts）；改模板时同步改这里，旧协议自然失效。
+export const PROMPT_TEMPLATE_VERSION = 'template_v2' as const
+
 export function buildPromptSetV2(input: PromptSetInput): ProbePrompt[] {
   const vars = buildVars(input)
   const zh = input.language === 'zh'
@@ -182,7 +185,7 @@ export function buildPromptSetV2(input: PromptSetInput): ProbePrompt[] {
     return {
       text,
       intent,
-      source: 'template_v2',
+      source: PROMPT_TEMPLATE_VERSION,
       market: input.market,
       language: input.language,
       priority: i,

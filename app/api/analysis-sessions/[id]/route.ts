@@ -3,9 +3,6 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { analysisSessions, projectSettings, projects, runs, workflowArtifacts, workflowStepRuns } from '@/db/schema'
 import { normalizeDomain } from '@/lib/analysis/normalize-domain'
-import { RULES_VERSION } from '@/lib/diagnosis/types'
-import { inngest } from '@/lib/inngest/client'
-import { buildCollectRequestedEvent } from '@/lib/inngest/events'
 import { classifyAnalysis } from '@/lib/knowledge/classifier'
 import {
   completeKnowledgeOnlySession,
@@ -18,6 +15,7 @@ import {
 import type { WorkflowDefinition } from '@/lib/knowledge/workflow'
 import { findActiveRun, getProjectByDomain } from '@/lib/repositories'
 import { resolveSessionRunGate } from '@/lib/runs/gate'
+import { startCheckup } from '@/lib/runs/start-checkup'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -116,26 +114,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ])
       return NextResponse.json({ ...(await getAnalysisSession(id)), steps: await getSessionSteps(id), artifacts: await getSessionArtifacts(id), reusedActiveRun: true })
     }
-    const [run] = await db.insert(runs).values({
-      id: `run_${crypto.randomUUID()}`,
-      projectId: project.id,
-      runType: 'baseline',
-      status: 'collecting',
-      rulesVersion: RULES_VERSION,
-      analysisSessionId: id,
-      startedAt: new Date().toISOString(),
-    }).returning()
-    await db.update(analysisSessions).set({ projectId: project.id, runId: run.id, status: 'running', updatedAt: new Date().toISOString() }).where(eq(analysisSessions.id, id))
-    try {
-      await inngest.send(buildCollectRequestedEvent(run, domain))
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      await Promise.all([
-        db.update(runs).set({ status: 'failed', failureReason: `采集事件派发失败：${message}`, finishedAt: new Date().toISOString() }).where(eq(runs.id, run.id)),
-        db.update(analysisSessions).set({ status: 'failed', updatedAt: new Date().toISOString() }).where(eq(analysisSessions.id, id)),
-      ])
-      return NextResponse.json({ error: 'dispatch_failed', sessionId: id }, { status: 503 })
+    const started = await startCheckup({ projectId: project.id, analysisSessionId: id })
+    if (!started.ok) {
+      await db.update(analysisSessions).set({ status: 'failed', updatedAt: new Date().toISOString() }).where(eq(analysisSessions.id, id))
+      return NextResponse.json({ error: started.error, sessionId: id }, { status: started.status })
     }
+    await db.update(analysisSessions).set({ projectId: project.id, runId: started.run.id, status: 'running', updatedAt: new Date().toISOString() }).where(eq(analysisSessions.id, id))
   }
   return NextResponse.json({ ...(await getAnalysisSession(id)), steps: await getSessionSteps(id), artifacts: await getSessionArtifacts(id) })
 }
