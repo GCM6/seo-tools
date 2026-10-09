@@ -5,18 +5,19 @@ import { inArray } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { issueEvents, projects } from '@/db/schema'
 import { getProjectIssues } from '@/lib/repositories'
-import { renderIssueReport } from '@/lib/issues/report-markdown'
-import type { IssueEventDraft } from '@/lib/issues/types'
+import { renderIssueReportDocument } from '@/lib/issues/report-markdown'
+import type { IssueEventDraft, IssueRecord } from '@/lib/issues/types'
 
 async function main(): Promise<void> {
-  const out: string[] = ['# 问题清单（问题台账验收）', '']
+  const sections: { domain: string; issues: IssueRecord[]; events: IssueEventDraft[] }[] = []
   for (const p of await db.select().from(projects)) {
     const issues = await getProjectIssues(p.id)
-    if (!issues.length) continue
-    const events = (await db.select().from(issueEvents).where(inArray(issueEvents.issueId, issues.map((i) => i.id)))) as unknown as IssueEventDraft[]
-    out.push(renderIssueReport({ domain: p.domain.replace(/^https?:\/\//, '').replace(/\/$/, ''), issues, events }))
+    const events = issues.length
+      ? ((await db.select().from(issueEvents).where(inArray(issueEvents.issueId, issues.map((i) => i.id)))) as unknown as IssueEventDraft[])
+      : []
+    sections.push({ domain: p.domain.replace(/^https?:\/\//, '').replace(/\/$/, ''), issues, events })
   }
-  console.log(out.join('\n'))
+  console.log(renderIssueReportDocument(sections))
 }
 
 main()

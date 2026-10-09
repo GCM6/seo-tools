@@ -9,7 +9,7 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { eq, inArray } from 'drizzle-orm'
 import { findings, issues, projects, recommendations, runs } from '@/db/schema'
-import { replayHistory } from '@/lib/issues/backfill'
+import { backfillEventIds, replayHistory } from '@/lib/issues/backfill'
 
 const args = process.argv.slice(2)
 const flag = (name: string) => args.includes(name)
@@ -30,7 +30,14 @@ function assertRebuildTargetIsNotRealDb(): void {
     console.error(`--rebuild 只允许本地 file: 数据库副本，当前 LIBSQL_URL=${url}`)
     process.exit(1)
   }
-  const raw = url.startsWith('file://') ? fileURLToPath(url) : url.slice('file:'.length).split('?')[0]
+  // libsql 会对 file: 路径做百分号解码（file:./veris%2Edb 打开的就是 veris.db），护栏必须按同一套规则还原路径。
+  let raw: string
+  try {
+    raw = url.startsWith('file://') ? fileURLToPath(url) : decodeURIComponent(url.slice('file:'.length).split('?')[0])
+  } catch {
+    console.error(`--rebuild 无法解析 LIBSQL_URL 的路径（百分号编码不合法），按安全起见拒绝：${url}`)
+    process.exit(1)
+  }
   const target = resolve(process.cwd(), raw)
   const real = resolve(__dirname, '..', 'veris.db')
   const realpath = (p: string) => (existsSync(p) ? realpathSync(p) : p)
@@ -51,6 +58,8 @@ async function main(): Promise<void> {
   const { db } = await import('@/db/client')
   const { getProjectIssues, recomputeRetestDue, saveIssueChanges } = await import('@/lib/repositories')
 
+  // 一次脚本运行一个计数器：同刻写下的多条决定，事件 id 的字典序就是它们的先后（文档靠它排序）。
+  const newEventId = backfillEventIds()
   const only = valueOf('--project')
   const targets = only ? await db.select().from(projects).where(eq(projects.id, only)) : await db.select().from(projects)
   for (const p of targets) {
@@ -69,7 +78,7 @@ async function main(): Promise<void> {
       findings: findingRows,
       recommendations: recRows,
       newIssueId: () => `iss_${crypto.randomUUID()}`,
-      newEventId: () => `iev_${crypto.randomUUID()}`,
+      newEventId,
     })
     // 没有已完成体检的项目没有可回填的内容：不写库，也不去动它的复查提醒。
     if (!plan.issues.length) {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { renderIssueReport } from './report-markdown'
+import { renderIssueReport, renderIssueReportDocument } from './report-markdown'
+import { replayHistory } from './backfill'
 import type { IssueEventDraft, IssueRecord } from './types'
 
 const issue = { id: 'iss_1', title: '不符合 Google 富媒体结果要求', ruleId: 'C05c', status: 'to_execute', decision: 'included', flags: ['unverified'], unverifiedReason: 'history_no_ledger', severity: 'mid' } as unknown as IssueRecord
@@ -46,7 +47,7 @@ describe('renderIssueReport', () => {
     // 反向传入得到完全相同的文档。
     expect(renderIssueReport({ domain: 'a.com', issues: [...issues].reverse(), events: [] })).toBe(md)
     // 计数行与状态顺序一致，零个的状态不出现。
-    expect(md).toContain('共 5 个问题：待处理 1，已修复 3，已关闭（不可比） 1')
+    expect(md).toContain('共 5 个问题：待处理 1；已修复 3；已关闭（不可比） 1')
     expect(md).not.toContain('待执行 0')
   })
 
@@ -93,6 +94,63 @@ describe('renderIssueReport', () => {
     expect(md).not.toContain('受影响 ?')
   })
 
+  it('回填恢复的同刻决定链按生成顺序显示：待处理 → 待执行，再 待执行 → 已排除', () => {
+    // 一次体检里，发现既有被接受的建议、又被忽略：回填在同一时刻写下两条决定，顺序只能靠事件 id 定。
+    let i = 0
+    let e = 0
+    const out = replayHistory({
+      projectId: 'proj_1',
+      runs: [{ id: 'run_a', status: 'reviewing', startedAt: null, finishedAt: '2026-07-12T00:00:00.000Z' }],
+      findings: [{ id: 'a1', runId: 'run_a', fingerprint: 'fp_1', ruleId: 'R1', title: '某问题', pillar: 'P2', side: 'seo', severity: 'mid', status: 'dismissed', dismissReason: '品牌站首页可以这样写', detail: null }],
+      recommendations: [{ id: 'ra1', runId: 'run_a', findingId: 'a1', status: 'accepted', appliedAt: null, appliedNote: null }],
+      newIssueId: () => `iss_${++i}`,
+      newEventId: () => `iev_${String(++e).padStart(6, '0')}`,
+    })
+    const md = renderIssueReport({ domain: 'a.com', issues: out.issues, events: out.events })
+    const include = md.indexOf('决定：待处理 → 待执行')
+    const exclude = md.indexOf('决定：待执行 → 已排除')
+    expect(include).toBeGreaterThan(-1)
+    expect(exclude).toBeGreaterThan(-1)
+    expect(include).toBeLessThan(exclude)
+  })
+
+  it('暂不处理 / 误报的问题在标题下写出理由', () => {
+    const md = renderIssueReport({
+      domain: 'a.com',
+      issues: [
+        mk({ id: 'i1', ruleId: 'A01', title: '甲', status: 'excluded', decision: 'false_positive', decisionReason: '品牌站首页可以这样写' } as Partial<IssueRecord>),
+        mk({ id: 'i2', ruleId: 'A02', title: '乙', status: 'pending', decision: 'deferred', decisionReason: '下个季度再做' } as Partial<IssueRecord>),
+        mk({ id: 'i3', ruleId: 'A03', title: '丙', status: 'to_execute', decision: 'included', decisionReason: null } as Partial<IssueRecord>),
+      ],
+      events: [],
+    })
+    expect(md).toContain('当前：已排除 · 决定：误报（理由：品牌站首页可以这样写） · 标记：无')
+    expect(md).toContain('当前：待处理 · 决定：暂不处理（理由：下个季度再做） · 标记：无')
+    expect(md).toContain('当前：待执行 · 决定：已纳入 · 标记：无')
+  })
+
+  it('规则已下线（没查）与口径变化后查过（关闭）分开写', () => {
+    const md = renderIssueReport({
+      domain: 'a.com',
+      issues: [issue],
+      events: [
+        ev({ id: 'e1', createdAt: '2026-07-01T00:00:00.000Z', checked: false, hit: null, severity: null, affectedCount: null, flags: ['rule_changed'], toStatus: 'retired', note: 'rule_changed' }),
+        ev({ id: 'e2', createdAt: '2026-07-02T00:00:00.000Z', checked: true, hit: false, severity: null, affectedCount: null, flags: ['rule_changed'], toStatus: 'retired', note: 'rule_changed' }),
+      ],
+    })
+    expect(md).toContain('2026-07-01 体检：没查（规则已下线）→ 已关闭（不可比） [规则已更新]')
+    expect(md).toContain('2026-07-02 体检：查过，没查出（规则已更新）→ 已关闭（不可比） [规则已更新]')
+  })
+
+  it('没有括号说明时箭头前留一个空格', () => {
+    const md = renderIssueReport({
+      domain: 'a.com',
+      issues: [issue],
+      events: [ev({ checked: true, hit: false, severity: null, affectedCount: null, flags: [], fromStatus: 'pending', toStatus: 'self_resolved', note: null })],
+    })
+    expect(md).toContain('2026-07-12 体检：查过，没查出 → 自行消失')
+  })
+
   it('部分改善的变化（5 → 2）写进体检行', () => {
     const md = renderIssueReport({
       domain: 'a.com',
@@ -100,5 +158,29 @@ describe('renderIssueReport', () => {
       events: [ev({ flags: ['partial'], note: '5 → 2', affectedCount: 2 })],
     })
     expect(md).toContain('体检：查出（受影响 2，变化 5 → 2）→ 待处理 [部分改善]')
+  })
+})
+
+describe('renderIssueReportDocument', () => {
+  it('标题下有说明；没问题的项目写明尚无问题记录；有问题的项目照常成节', () => {
+    const md = renderIssueReportDocument([
+      { domain: 'metadocu.com', issues: [issue], events: [ev({})] },
+      { domain: 'empty.com', issues: [], events: [] },
+    ])
+    expect(md.startsWith('# 问题清单（问题台账验收）\n')).toBe(true)
+    const legend = md.slice(0, md.indexOf('## metadocu.com'))
+    for (const phrase of ['「待执行」= 旧界面里接受过的建议', '「历史回填」', '那次体检的完成时间', '「没查（历史数据没有台账）」', '「受影响数未记录」', '日期为 UTC']) {
+      expect(legend).toContain(phrase)
+    }
+    expect(md).toContain('## metadocu.com')
+    expect(md).toContain('## empty.com：尚无问题记录')
+    expect(md).not.toContain('所有项目都还没有问题记录')
+  })
+
+  it('所有项目都没有问题时，单独说明一句', () => {
+    const md = renderIssueReportDocument([{ domain: 'empty.com', issues: [], events: [] }])
+    expect(md).toContain('## empty.com：尚无问题记录')
+    expect(md).toContain('所有项目都还没有问题记录')
+    expect(renderIssueReportDocument([])).toContain('所有项目都还没有问题记录')
   })
 })

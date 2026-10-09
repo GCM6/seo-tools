@@ -72,7 +72,9 @@ export function replayHistory(input: ReplayInput): { issues: IssueRecord[]; even
         act(issue, { kind: 'defer', reason: '历史数据：否决时未记录理由' }, decidedAt)
       }
       const current = byFp().get(fp as string)!
-      if (rec.appliedAt && current.decision === 'included') act(current, { kind: 'execute', note: rec.appliedNote ?? undefined }, rec.appliedAt)
+      // 与 retest-delta 同口径：建议自己是已接受 / 已修改，且标过已执行，才算执行过（待确认 / 已否决的建议带着 applied_at 不算）。
+      const gatePassed = rec.status === 'accepted' || rec.status === 'edited'
+      if (gatePassed && rec.appliedAt && current.decision === 'included') act(current, { kind: 'execute', note: rec.appliedNote ?? undefined }, rec.appliedAt)
     }
     for (const f of runFindings.filter((x) => x.status === 'dismissed')) {
       const issue = f.fingerprint ? byFp().get(f.fingerprint) : undefined
@@ -82,4 +84,11 @@ export function replayHistory(input: ReplayInput): { issues: IssueRecord[]; even
     }
   }
   return { issues: [...issues.values()], events }
+}
+
+// 回填专用的事件 id 生成器：同一次回填里严格递增且可按字典序排序（零填充序号 + 随机后缀防撞）。
+// 回填把同一次体检恢复出的多条决定写成同一个 createdAt，文档里只能靠事件 id 还原它们的先后。
+export function backfillEventIds(): () => string {
+  let seq = 0
+  return () => `iev_bf_${String(++seq).padStart(6, '0')}_${crypto.randomUUID().slice(0, 8)}`
 }

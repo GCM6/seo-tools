@@ -26,6 +26,13 @@ const reason = (r: string | null) => (r ? (REASON[r] ?? r) : '原因未记录')
 // 按字符码比较，不依赖运行环境的 locale——同一份数据每次生成的文档必须逐字相同。
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
+// 决定为暂不处理 / 误报时，把当时写下的理由带在后面，核对时不用再去翻。
+function decisionText(i: IssueRecord): string {
+  const label = DECISION[i.decision] ?? i.decision
+  const why = i.decisionReason?.trim()
+  return (i.decision === 'deferred' || i.decision === 'false_positive') && why ? `${label}（理由：${why}）` : label
+}
+
 function flagText(i: IssueRecord): string {
   if (!i.flags.length) return '无'
   return i.flags.map((f) => (f === 'unverified' && i.unverifiedReason ? `${FLAG[f]}（${reason(i.unverifiedReason)}）` : (FLAG[f] ?? f))).join('、')
@@ -37,10 +44,12 @@ function eventLine(e: IssueEventDraft): string {
   const flags = e.flags.length ? ` [${e.flags.map((f) => FLAG[f] ?? f).join('、')}]` : ''
   if (e.kind === 'observed') {
     let seen: string
-    if (!e.checked) seen = `没查（${reason(e.note)}）`
+    // 没查 + rule_changed = 规则已不在台账里（已下线）；查过 + rule_changed 才是「规则版本更新」。
+    if (!e.checked) seen = `没查（${e.note === 'rule_changed' ? '规则已下线' : reason(e.note)}）`
     else if (e.hit) seen = `查出（${e.affectedCount === null ? '受影响数未记录' : `受影响 ${e.affectedCount}`}${e.note ? `，变化 ${e.note}` : ''}）`
     else seen = e.note ? `查过，没查出（${reason(e.note)}）` : '查过，没查出'
-    return `- ${day(e.createdAt)} 体检：${seen}→ ${to}${flags}`
+    // 带括号说明时箭头紧跟右括号；没有括号时前面留一个空格，免得文字和箭头贴在一起。
+    return `- ${day(e.createdAt)} 体检：${seen}${seen.endsWith('）') ? '' : ' '}→ ${to}${flags}`
   }
   const label = e.kind === 'decision' ? '决定' : '执行'
   return `- ${day(e.createdAt)} ${label}：${from ?? '—'} → ${to}${e.note ? `（${e.note}）` : ''}`
@@ -56,11 +65,24 @@ const byIssueOrder = (a: IssueRecord, b: IssueRecord) =>
 export function renderIssueReport(input: { domain: string; issues: IssueRecord[]; events: IssueEventDraft[] }): string {
   const issues = [...input.issues].sort(byIssueOrder)
   const counts = STATUS_ORDER.map((s) => [s, issues.filter((i) => i.status === s).length] as const).filter(([, n]) => n > 0)
-  const lines = [`## ${input.domain}`, '', `共 ${issues.length} 个问题：${counts.map(([s, n]) => `${STATUS[s]} ${n}`).join('，')}`, '']
+  const lines = [`## ${input.domain}`, '', `共 ${issues.length} 个问题：${counts.map(([s, n]) => `${STATUS[s]} ${n}`).join('；')}`, '']
   for (const i of issues) {
-    lines.push(`### ${i.title}（${i.ruleId}）`, '', `当前：${status(i.status)} · 决定：${DECISION[i.decision] ?? i.decision} · 标记：${flagText(i)}`, '')
+    lines.push(`### ${i.title}（${i.ruleId}）`, '', `当前：${status(i.status)} · 决定：${decisionText(i)} · 标记：${flagText(i)}`, '')
     const history = input.events.filter((e) => e.issueId === i.id).sort(byTime)
     lines.push(...history.map(eventLine), '')
   }
   return lines.join('\n')
+}
+
+// 文档开头的说明：验收时容易误读的几个词，一次讲清（这些词都来自历史回填）。
+const LEGEND =
+  '> 说明：「待执行」= 旧界面里接受过的建议；「历史回填」= 根据旧建议状态补的决定，日期是那次体检的完成时间而不是当时做决定的时间；' +
+  '「没查（历史数据没有台账）」= 旧体检没有逐条检查记录，无法区分「没查出」和「没查」；「受影响数未记录」= 历史发现没有记录数量；日期为 UTC。'
+
+// 整份文档：标题 + 说明 + 每个项目一节。没有问题的项目也要写一行，免得读的人以为漏了。
+export function renderIssueReportDocument(projects: { domain: string; issues: IssueRecord[]; events: IssueEventDraft[] }[]): string {
+  const out: string[] = ['# 问题清单（问题台账验收）', '', LEGEND, '']
+  if (!projects.some((p) => p.issues.length)) out.push('所有项目都还没有问题记录。', '')
+  for (const p of projects) out.push(p.issues.length ? renderIssueReport(p) : `## ${p.domain}：尚无问题记录\n`)
+  return out.join('\n')
 }

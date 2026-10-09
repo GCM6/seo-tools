@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { replayHistory, type ReplayInput } from './backfill'
+import { backfillEventIds, replayHistory, type ReplayInput } from './backfill'
 
 const f = (id: string, runId: string, fp: string, over: Record<string, unknown> = {}) => ({
   id, runId, fingerprint: fp, ruleId: `R_${fp}`, title: fp, pillar: 'P2', side: 'seo', severity: 'mid', status: 'open', dismissReason: null, detail: null, ...over,
@@ -61,8 +61,43 @@ describe('replayHistory', () => {
     expect(out.issues.find((x) => x.fingerprint === 'fp_1')).toMatchObject({ executedAt: '2026-07-20T00:00:00.000Z', executedNote: '已改', status: 'not_effective' })
   })
 
+  it('只有建议自己是已接受 / 已修改时才算执行：待确认或已否决的建议带着 applied_at 不执行', () => {
+    for (const status of ['draft', 'rejected']) {
+      const out = replayHistory(input({
+        recommendations: [
+          { id: 'rb1', runId: 'run_b', findingId: 'b1', status: 'accepted', appliedAt: null, appliedNote: null },
+          { id: 'rc1', runId: 'run_c', findingId: 'c1', status, appliedAt: '2026-10-07T00:00:00.000Z', appliedNote: '以前标过' },
+        ],
+      }))
+      const fp1 = out.issues.find((x) => x.fingerprint === 'fp_1')!
+      expect(fp1.executedAt, status).toBeNull()
+      expect(out.events.some((ev) => ev.kind === 'execution'), status).toBe(false)
+    }
+    // 对照：同一条建议是已修改时照常执行。
+    const edited = replayHistory(input({
+      recommendations: [{ id: 'rb1', runId: 'run_b', findingId: 'b1', status: 'edited', appliedAt: '2026-07-20T00:00:00.000Z', appliedNote: null }],
+    }))
+    expect(edited.issues.find((x) => x.fingerprint === 'fp_1')!.executedAt).toBe('2026-07-20T00:00:00.000Z')
+  })
+
   it('回放结果确定：两次回放结构相同', () => {
     const strip = (o: ReturnType<typeof replayHistory>) => o.issues.map((x) => [x.fingerprint, x.status, x.decision, x.flags.join(',')]).sort()
     expect(strip(replayHistory(input()))).toEqual(strip(replayHistory(input())))
+  })
+})
+
+describe('backfillEventIds', () => {
+  it('同一次回填里生成的事件 id 按生成顺序字典序递增（含 9 → 10、99 → 100 的进位）', () => {
+    const next = backfillEventIds()
+    const ids = Array.from({ length: 120 }, () => next())
+    expect([...ids].sort()).toEqual(ids)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids.every((id) => id.startsWith('iev_bf_'))).toBe(true)
+  })
+
+  it('两个生成器各自从头计数，但带随机后缀不会撞 id', () => {
+    const a = backfillEventIds()
+    const b = backfillEventIds()
+    expect(a()).not.toBe(b())
   })
 })
