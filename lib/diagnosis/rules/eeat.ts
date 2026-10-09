@@ -1,4 +1,4 @@
-import type { RuleDef, RuleContext, RuleHitDraft } from '../types'
+import { isNotChecked, notChecked, type NotChecked, type RuleDef, type RuleContext, type RuleEvaluation } from '../types'
 import type { SiteAuditPage } from '@/lib/crawl/site-audit'
 import { registrableDomain, safeDecode, type ArticleSignals } from '@/lib/crawl/article-signals'
 import { readLinkGraph, type LinkGraphView } from '@/lib/crawl/link-graph'
@@ -27,11 +27,11 @@ export function articlePagesOf(pages: SiteAuditPage[] | undefined): ArticlePage[
   return [...out.values()]
 }
 
-function articlesOf(ctx: RuleContext): { auditId: string; articles: ArticlePage[] } | null {
+function articlesOf(ctx: RuleContext): { auditId: string; articles: ArticlePage[] } | NotChecked | null {
   const audit = ctx.siteAudit
   if (!audit) return null
   const articles = articlePagesOf(audit.payload.pages)
-  return articles.length >= MIN_ARTICLES ? { auditId: audit.id, articles } : null
+  return articles.length >= MIN_ARTICLES ? { auditId: audit.id, articles } : notChecked('site_condition', '文章页少于 3 篇，无法评估')
 }
 
 function shareRule(opts: {
@@ -52,11 +52,13 @@ function shareRule(opts: {
     side: 'seo',
     severity: opts.severity,
     claimType: opts.claimType,
-    evaluate(ctx): RuleHitDraft | null {
+    evaluate(ctx): RuleEvaluation {
       const got = articlesOf(ctx)
       if (!got) return null
+      if (isNotChecked(got)) return got
       const population = got.articles.filter((p) => (opts.population ? opts.population(p.article) : true))
-      if (population.length < (opts.minPopulation ?? MIN_ARTICLES)) return null
+      const minPopulation = opts.minPopulation ?? MIN_ARTICLES
+      if (population.length < minPopulation) return notChecked('site_condition', `符合条件的文章少于 ${minPopulation} 篇，无法评估`)
       const bad = population.filter((p) => opts.isBad(p.article))
       if (bad.length / population.length < opts.threshold) return null
       return {
@@ -150,11 +152,14 @@ const pathMatches = (url: string, c: TrustCategory) =>
     return TRUST_TOKENS[c].has(s) || s.split(/[-_]/).some((t) => TRUST_TOKENS[c].has(t))
   })
 
-function graphOf(ctx: RuleContext): { auditId: string; graph: LinkGraphView } | null {
+function graphOf(ctx: RuleContext): { auditId: string; graph: LinkGraphView } | NotChecked | null {
   const audit = ctx.siteAudit
   if (!audit) return null
   const graph = readLinkGraph(audit.payload)
-  if (!graph || (graph.nodeByUrl.get(graph.entryUrl)?.outInternal ?? 0) === 0) return null
+  if (!graph) return notChecked('unsupported', '旧证据没有链接图谱')
+  if ((graph.nodeByUrl.get(graph.entryUrl)?.outInternal ?? 0) === 0) {
+    return notChecked('site_condition', '入口页没有可抓取的站内链接（多为 JS 渲染导航），无法评估')
+  }
   return { auditId: audit.id, graph }
 }
 
@@ -164,9 +169,10 @@ const TR06: RuleDef = {
   side: 'seo',
   severity: 'notice',
   claimType: 'inferred',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = graphOf(ctx)
     if (!got) return null
+    if (isNotChecked(got)) return got
     const { graph } = got
     const anchorsTo = new Map<string, string[]>()
     for (const e of graph.edges) anchorsTo.set(e.to, [...(anchorsTo.get(e.to) ?? []), ...e.anchors])
@@ -217,9 +223,10 @@ const SO01: RuleDef = {
   side: 'geo',
   severity: 'notice',
   claimType: 'inferred',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = graphOf(ctx)
     if (!got) return null
+    if (isNotChecked(got)) return got
     const fetched = got.graph.nodes.filter((n) => n.html).length
     if (fetched === 0 || detectSocialProfiles(got.graph.external, { fetchedPages: fetched }).length > 0) return null
     // 中文站常只在页脚放公众号二维码图片（不是链接）：有这类线索时不报（第三轮独立审查 P1-4）。
@@ -240,9 +247,10 @@ const SO02: RuleDef = {
   side: 'geo',
   severity: 'notice',
   claimType: 'inferred',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = graphOf(ctx)
     if (!got) return null
+    if (isNotChecked(got)) return got
     const orgSchemas = ctx.schemas.filter((s) => s.types.some((t) => (ORG_TYPES as readonly string[]).includes(t)))
     if (orgSchemas.length === 0) return null // 无 Organization schema 由 E01 负责
     const inSchema = new Set(orgSchemas.flatMap((s) => s.sameAs).map(socialPlatformOf).filter((p): p is SocialPlatform => !!p))

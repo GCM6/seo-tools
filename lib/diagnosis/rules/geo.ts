@@ -1,8 +1,10 @@
-import type { RuleDef, RuleContext, RuleHitDraft } from '../types'
+import type { RuleDef, RuleContext, RuleEvaluation, RuleHitDraft } from '../types'
 import { isRenderDependent } from './technical'
 import { parseRobotsAllowed } from '@/lib/collection/robots'
 import { isWebSearchEnabledEngine } from '@/lib/probes/engine-capability'
 import { isUgcPlatform } from '@/lib/probes/citation-platform'
+// 值导入放在最后：vitest 转译后 evaluate 文本里的 __vite_ssr_import_N__ 编号随 import 顺序变化，插在前面会让其他规则的版本快照哈希无谓失配（见 rule-meta.test.ts）。
+import { notChecked } from '../types'
 
 // P5 GEO 规则组：AI 抓取可见性与探针可见度。
 // —— 阈值为启发式经验值，随 RULES_VERSION 版本化 ——
@@ -144,11 +146,11 @@ const G06: RuleDef = {
   side: 'geo',
   severity: 'warning',
   claimType: 'measured_sample',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const { probe, probeEvidenceId } = ctx
     if (!probe || !probeEvidenceId) return null
     const onlineEngines = probe.perEngine.filter((e) => isWebSearchEnabledEngine(probe, e.engine))
-    if (onlineEngines.length === 0) return null
+    if (onlineEngines.length === 0) return notChecked('data_gap', '没有支持联网检索的 AI 引擎')
     const promptsTotal = probe.unbranded.total
     if (promptsTotal <= 0) return null
     const unbrandedPresent = onlineEngines.reduce((sum, e) => sum + e.unbrandedPresent, 0)
@@ -361,7 +363,7 @@ const G10: RuleDef = {
   side: 'geo',
   severity: 'warning',
   claimType: 'inferred',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const { probe, probeEvidenceId } = ctx
     if (!probe || !probeEvidenceId) return null
     const totals = probe.branded.perEngine.reduce(
@@ -375,7 +377,7 @@ const G10: RuleDef = {
       { grounded: 0, speculative: 0, unknown: 0, unverified: 0, undetermined: 0 },
     )
     const total = totals.grounded + totals.speculative + totals.unknown + totals.unverified + totals.undetermined
-    if (total < AI_FABRICATION_MIN_SAMPLES) return null
+    if (total < AI_FABRICATION_MIN_SAMPLES) return notChecked('site_condition', '品牌提问的回答少于 3 条，无法评估')
     const ratio = totals.speculative / total
     if (ratio < AI_FABRICATION_MIN_RATIO) return null
     return {
@@ -408,11 +410,12 @@ const G11: RuleDef = {
   side: 'geo',
   severity: 'warning',
   claimType: 'measured_sample',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const { probe, probeEvidenceId } = ctx
     if (!probe || !probeEvidenceId) return null
     const { ugcCitationShare, citedDomains } = probe
-    if (ugcCitationShare === null || ugcCitationShare < UGC_SHARE_THRESHOLD) return null
+    if (ugcCitationShare === null) return notChecked('data_gap', '本轮 AI 引擎没有返回引用来源')
+    if (ugcCitationShare < UGC_SHARE_THRESHOLD) return null
     const hasOwnedCitation = citedDomains.some((d) => d.origin === 'owned')
     if (hasOwnedCitation) return null
     // 涉及平台：从 citedDomains 取社区/UGC 平台分类（platform !== 'other' 且 isUgcPlatform），

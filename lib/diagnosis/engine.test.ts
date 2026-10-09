@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { evaluateRules, fingerprint } from './engine'
-import type { Rule, RuleContext } from './types'
+import { notChecked, type Rule, type RuleContext } from './types'
 
 function ctx(): RuleContext {
   return {
@@ -79,5 +79,11 @@ describe('evaluateRules', () => {
     expect(hits[1].severity).toBe('error')
     expect(hits[1].claimType).toBe('inferred')
     expect(hits[0].fingerprint).not.toBe(hits[1].fingerprint)
+  })
+
+  it('「未检查」哨兵不产出命中，也不影响其他规则', () => {
+    const skipped = ruleFixture({ id: 'SKIP', evaluate: () => notChecked('site_condition', '文章页少于 3 篇，无法评估') })
+    const ok = ruleFixture({ id: 'OK', evaluate: () => ({ title: 't', description: '', evidenceRefs: ['ev_1'], scope: 'site' }) })
+    expect(evaluateRules(ctx(), [skipped, ok]).map((h) => h.ruleId)).toEqual(['OK'])
   })
 })

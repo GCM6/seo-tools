@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { RuleContext, RuleHitDraft } from '../types'
+import { notChecked, type RuleContext, type RuleHitDraft } from '../types'
 import type { SiteAuditPage, SiteAuditPayload } from '@/lib/crawl/site-audit'
 import type { ExternalCheckResult } from '@/lib/crawl/external-check'
 import type { InternalLinkDetail, ExternalLinkDetail } from '@/lib/crawl/light-check'
@@ -63,6 +63,22 @@ describe('L01 站内断链（spec S2 §3）', () => {
   it('无断链 → null；无图谱 → null', () => {
     expect(rule('L01').evaluate(ctxFor({ '/': { via: 'entry', links: ['/a'] }, '/a': {} }))).toBeNull()
     expect(rule('L01').evaluate({ siteAudit: null } as unknown as RuleContext)).toBeNull()
+  })
+})
+
+describe('L01–L07 守卫：链接图谱不可用 → 未检查而不是没查出', () => {
+  const reason = notChecked('site_condition', '没有链接图谱或入口页零站内出链，无法评估')
+  const ids = ['L01', 'L02', 'L03', 'L04', 'L05', 'L06', 'L07']
+  it('旧证据没有链接图谱', () => {
+    const ctx = ctxFor({ '/': { via: 'entry', links: ['/a'] }, '/a': {} })
+    const payload = { ...ctx.siteAudit!.payload }
+    delete (payload as { linkGraph?: unknown }).linkGraph
+    const oldCtx = { siteAudit: { id: 'sa1', payload } } as unknown as RuleContext
+    for (const id of ids) expect(rule(id).evaluate(oldCtx)).toEqual(reason)
+  })
+  it('入口页零站内出链', () => {
+    const ctx = ctxFor({ '/': { via: 'entry' } })
+    for (const id of ids) expect(rule(id).evaluate(ctx)).toEqual(reason)
   })
 })
 

@@ -1,9 +1,11 @@
 import { parseRobotsAllowed } from '@/lib/collection/robots'
-import type { RuleDef, RuleHitDraft, RuleSeverity } from '../types'
+import type { RuleDef, RuleEvaluation, RuleHitDraft, RuleSeverity } from '../types'
 import { checkHreflang } from './hreflang-codes'
 import { analyzeCwv, lighthouseClues, ttfbConcern, TTFB_SLOW_MS } from '@/lib/collection/psi-analyze'
 import { readLinkGraph } from '@/lib/crawl/link-graph'
 import { isUtilityPage } from '@/lib/crawl/link-integrity'
+// 值导入放在最后：vitest 转译后 evaluate 文本里的 __vite_ssr_import_N__ 编号随 import 顺序变化，插在前面会让其他规则的版本快照哈希无谓失配（见 rule-meta.test.ts）。
+import { notChecked } from '../types'
 
 // P1 技术健康规则组（确定性、纯函数，消费已落库证据）。
 // —— 阈值均为启发式经验值，随 RULES_VERSION 版本化，非行业硬标准 ——
@@ -253,14 +255,16 @@ const T05: RuleDef = {
   side: 'technical',
   severity: 'warning',
   claimType: 'measured_hard',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const audit = ctx.siteAudit
     if (!audit) return null
     const n = audit.payload.stats.orphanPages
     if (n <= 0) return null
     const graph = readLinkGraph(audit.payload)
     // 入口页零站内出链：多为 JS 渲染导航，初始 HTML 抽不到链接，孤岛判定不可信（spec S1 Review Focus 1）。
-    if (graph && (graph.nodeByUrl.get(graph.entryUrl)?.outInternal ?? 0) === 0) return null
+    if (graph && (graph.nodeByUrl.get(graph.entryUrl)?.outInternal ?? 0) === 0) {
+      return notChecked('site_condition', '入口页没有可抓取的站内链接，孤岛判定不可信')
+    }
     const examples = audit.payload.pages
       .filter((p) => p.discoveredVia === 'sitemap' && p.inboundLinkCount === 0 && p.checkStatus === 'checked')
       .map((p) => p.url)
@@ -336,9 +340,10 @@ const T11: RuleDef = {
   side: 'technical',
   severity: 'warning',
   claimType: 'measured_hard',
-  evaluate(ctx): RuleHitDraft[] | null {
+  evaluate(ctx): RuleEvaluation {
     const audit = ctx.siteAudit
     if (!audit) return null
+    if (!audit.payload.pages.some((p) => p.isKeyPage)) return notChecked('site_condition', '没有标记重点页，无法评估')
     const low = audit.payload.pages.filter(
       (p) => p.isKeyPage && p.checkStatus === 'checked' && p.inboundLinkCount < KEY_PAGE_MIN_INBOUND,
     )

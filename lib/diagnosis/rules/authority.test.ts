@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { RuleContext, RuleHitDraft } from '../types'
+import { notChecked, type RuleContext, type RuleHitDraft } from '../types'
 import { authorityRules } from './authority'
 
 const rule = (id: string) => authorityRules.find((r) => r.id === id)!
@@ -93,7 +93,10 @@ describe('A02 anchor over-optimization', () => {
   it('null when no anchors', () => {
     const ctx = baseCtx()
     ctx.dataforseo.backlinks = [bl({ target: 'example.com', anchors: [] })]
-    expect(rule('A02').evaluate(ctx)).toBeNull()
+    expect(rule('A02').evaluate(ctx)).toEqual(notChecked('unsupported', '本期未采集外链锚文本'))
+  })
+  it('null when own backlink evidence is absent (由数据源依赖兜底，不是未检查)', () => {
+    expect(rule('A02').evaluate(baseCtx())).toBeNull()
   })
 })
 
@@ -114,7 +117,10 @@ describe('A03 link velocity', () => {
   it('null when no newLost data', () => {
     const ctx = baseCtx()
     ctx.dataforseo.backlinks = [bl({ target: 'example.com', newLost: null })]
-    expect(rule('A03').evaluate(ctx)).toBeNull()
+    expect(rule('A03').evaluate(ctx)).toEqual(notChecked('unsupported', '本期未采集新增/丢失外链'))
+  })
+  it('null when own backlink evidence is absent (由数据源依赖兜底，不是未检查)', () => {
+    expect(rule('A03').evaluate(baseCtx())).toBeNull()
   })
 })
 

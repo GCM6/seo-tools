@@ -1,21 +1,21 @@
-import type { RuleDef, RuleContext, RuleHitDraft } from '../types'
+import { isNotChecked, notChecked, type NotChecked, type RuleDef, type RuleContext, type RuleEvaluation } from '../types'
 import { analyzeLinkIntegrity, type LinkIntegrity, type TargetRow } from '@/lib/crawl/link-integrity'
 import type { LinkGraphEdge } from '@/lib/crawl/link-graph'
 
 // 链接完整性规则组 L01–L07（spec 2026-09-29-s2-link-integrity §3）。
 // 全部计算在 analyzeLinkIntegrity（与站点结构页同源）；这里只把清单格式化成命中。
-// 公共守卫在分析层：无图谱（历史证据）/ 入口零站内出链 → null，规则整组 no-op。
+// 公共守卫在分析层：无图谱（历史证据）/ 入口零站内出链 → 分析返回 null，规则整组记「未检查」（不是「没查出」）。
 
 const MAX_EXAMPLES = 10
 const MAX_SOURCES = 3
 const SITEWIDE_REGIONS = new Set(['nav', 'header', 'footer'])
 const L01_ERROR_SOURCES = 5 // 单个断链目标被 ≥5 个页面链接 → 升 error
 
-function integrity(ctx: RuleContext): { auditId: string; li: LinkIntegrity } | null {
+function integrity(ctx: RuleContext): { auditId: string; li: LinkIntegrity } | NotChecked | null {
   const audit = ctx.siteAudit
   if (!audit) return null
   const li = analyzeLinkIntegrity(audit.payload)
-  return li ? { auditId: audit.id, li } : null
+  return li ? { auditId: audit.id, li } : notChecked('site_condition', '没有链接图谱或入口页零站内出链，无法评估')
 }
 
 // 经跳转的链接带上页面里实际写的地址（redirectedFrom），否则用户按目标 URL 在源码里找不到（第二轮独立审查 #3）。
@@ -33,9 +33,11 @@ const L01: RuleDef = {
   side: 'technical',
   severity: 'warning',
   claimType: 'measured_hard',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = integrity(ctx)
-    if (!got || got.li.broken.length === 0) return null
+    if (!got) return null
+    if (isNotChecked(got)) return got
+    if (got.li.broken.length === 0) return null
     const { broken, unverifiedTargets, errorTargets } = got.li
     const links = linkTotal(broken)
     const sitewide = broken.some((r) => r.edges.some((e) => e.regions.some((g) => SITEWIDE_REGIONS.has(g))))
@@ -63,9 +65,11 @@ const L02: RuleDef = {
   side: 'technical',
   severity: 'notice',
   claimType: 'measured_hard',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = integrity(ctx)
-    if (!got || got.li.redirects.length === 0) return null
+    if (!got) return null
+    if (isNotChecked(got)) return got
+    if (got.li.redirects.length === 0) return null
     const { redirects } = got.li
     return {
       title: '内链指向会跳转的 URL',
@@ -83,9 +87,11 @@ const L03: RuleDef = {
   side: 'technical',
   severity: 'notice',
   claimType: 'measured_hard',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = integrity(ctx)
-    if (!got || got.li.nonIndexable.length === 0) return null
+    if (!got) return null
+    if (isNotChecked(got)) return got
+    if (got.li.nonIndexable.length === 0) return null
     const rows = got.li.nonIndexable
     return {
       title: '内链指向不可收录的页面（noindex 或 canonical 指向他页）',
@@ -103,9 +109,11 @@ const L04: RuleDef = {
   side: 'technical',
   severity: 'warning',
   claimType: 'measured_hard',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = integrity(ctx)
-    if (!got || got.li.islands.length === 0) return null
+    if (!got) return null
+    if (isNotChecked(got)) return got
+    if (got.li.islands.length === 0) return null
     const { islands, islandsExact } = got.li
     // 抓取未覆盖首页可达的全部页面时，「到不了」只能说「在已抓范围内没找到路径」（spec S2 §3）。
     return {
@@ -127,9 +135,11 @@ const L05: RuleDef = {
   side: 'technical',
   severity: 'notice',
   claimType: 'measured_hard',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = integrity(ctx)
-    if (!got || got.li.nofollowOnly.length === 0) return null
+    if (!got) return null
+    if (isNotChecked(got)) return got
+    if (got.li.nofollowOnly.length === 0) return null
     const { nofollowOnly, nofollowOnlyExact, graph } = got.li
     const examples = nofollowOnly.slice(0, MAX_EXAMPLES).map((url) => ({
       url,
@@ -154,9 +164,11 @@ const L06: RuleDef = {
   side: 'technical',
   severity: 'warning',
   claimType: 'measured_hard',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = integrity(ctx)
-    if (!got || got.li.deadEnds.length === 0) return null
+    if (!got) return null
+    if (isNotChecked(got)) return got
+    if (got.li.deadEnds.length === 0) return null
     const { deadEnds } = got.li
     return {
       title: '存在死胡同页（初始 HTML 中无任何站内链接）',
@@ -174,9 +186,11 @@ const L07: RuleDef = {
   side: 'technical',
   severity: 'warning',
   claimType: 'measured_hard',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = integrity(ctx)
-    if (!got || got.li.externalBroken.length === 0) return null
+    if (!got) return null
+    if (isNotChecked(got)) return got
+    if (got.li.externalBroken.length === 0) return null
     const { externalBroken, externalUnverified } = got.li
     return {
       title: '站外链接失效（404/410）',

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { RuleContext, RuleHitDraft } from '../types'
+import { notChecked, type RuleContext, type RuleHitDraft } from '../types'
 import type { SiteAuditPage, SiteAuditPayload } from '@/lib/crawl/site-audit'
 import type { ArticleSignals } from '@/lib/crawl/article-signals'
 import type { ExternalLinkDetail, LightCheckExtra } from '@/lib/crawl/light-check'
@@ -59,7 +59,32 @@ function blog(articles: Partial<ArticleSignals>[]): Record<string, Spec> {
 describe('AR 规则守卫（Review Focus 5）', () => {
   it('文章页 < 3 → AR 整组不判定', () => {
     const ctx = ctxFor(blog([{ author: null }, { author: null }]))
-    for (const id of ['AR01', 'AR02', 'AR03', 'AR04', 'AR05']) expect(rule(id).evaluate(ctx)).toBeNull()
+    for (const id of ['AR01', 'AR02', 'AR03', 'AR04', 'AR05']) expect(rule(id).evaluate(ctx)).toEqual(notChecked('site_condition', '文章页少于 3 篇，无法评估'))
+  })
+  it('文章页 ≥ 3 但符合条件的文章 < 3 → AR02 / AR05 记未检查而不是没查出', () => {
+    // 4 篇文章里只有 1 篇有署名 → AR02 的总体（有署名的文章）不足 3
+    const fewAuthored = ctxFor(blog([{}, { author: null, authorUrl: null }, { author: null, authorUrl: null }, { author: null, authorUrl: null }]))
+    expect(rule('AR02').evaluate(fewAuthored)).toEqual(notChecked('site_condition', '符合条件的文章少于 3 篇，无法评估'))
+    // 4 篇文章里只有 1 篇带外部引用 → AR05 的总体（带引用的文章）不足 3
+    const noCite = { citations: { total: 0, authoritative: 0 } }
+    const fewCited = ctxFor(blog([{}, noCite, noCite, noCite]))
+    expect(rule('AR05').evaluate(fewCited)).toEqual(notChecked('site_condition', '符合条件的文章少于 3 篇，无法评估'))
+  })
+})
+
+describe('图谱守卫 graphOf（TR06 / SO01 / SO02）', () => {
+  it('旧证据没有链接图谱 → 未检查（unsupported）', () => {
+    const ctx = ctxFor(blog([{}, {}, {}]))
+    const payload = { ...ctx.siteAudit!.payload }
+    delete (payload as { linkGraph?: unknown }).linkGraph
+    const oldCtx = { ...ctx, siteAudit: { id: 'sa1', payload } } as RuleContext
+    for (const id of ['TR06', 'SO01', 'SO02']) expect(rule(id).evaluate(oldCtx)).toEqual(notChecked('unsupported', '旧证据没有链接图谱'))
+  })
+  it('入口页零站内出链（多为 JS 渲染导航）→ 未检查（site_condition）', () => {
+    const ctx = ctxFor({ '/': {} })
+    for (const id of ['TR06', 'SO01', 'SO02']) {
+      expect(rule(id).evaluate(ctx)).toEqual(notChecked('site_condition', '入口页没有可抓取的站内链接（多为 JS 渲染导航），无法评估'))
+    }
   })
 })
 

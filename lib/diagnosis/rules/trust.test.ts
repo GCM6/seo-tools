@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import type { RuleContext } from '../types'
+import type { RuleContext, RuleEvaluation, RuleHitDraft } from '../types'
 import type { SiteAuditPage, SiteAuditPayload } from '@/lib/crawl/site-audit'
 import { allRules } from './index'
 import { detectEcommerce, trustRules } from './trust'
 
 const rule = (id: string) => trustRules.find((item) => item.id === id)!
-const one = <T>(value: T | T[] | null): T | null => (Array.isArray(value) ? value[0] ?? null : value)
+const one = (value: RuleEvaluation): RuleHitDraft | null => (Array.isArray(value) ? value[0] ?? null : (value as RuleHitDraft | null))
 
 function page(url: string, partial: Partial<SiteAuditPage> = {}): SiteAuditPage {
   return {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { RuleContext, RuleHitDraft } from '../types'
-import { RULES_VERSION } from '../types'
+import { RULES_VERSION, notChecked } from '../types'
 import type { ProbeSummary } from '@/lib/probes/summary'
 import { geoRules } from './geo'
 
@@ -241,7 +241,7 @@ describe('G06 zero citation (D5：只评估 webSearchEnabled=true 的检索型�
     const ctx = baseCtx()
     ctx.probe = engineProbe([{ engine: 'deepseek', promptsPresent: 0, promptsTotal: 5, webSearchEnabled: false }])
     ctx.probeEvidenceId = 'pe1'
-    expect(rule('G06').evaluate(ctx)).toBeNull()
+    expect(rule('G06').evaluate(ctx)).toEqual(notChecked('data_gap', '没有支持联网检索的 AI 引擎'))
   })
   it('全部检索型引擎均为零时仍触发，且 detail.engines 只含检索型', () => {
     const ctx = baseCtx()
@@ -329,7 +329,7 @@ describe('G10 AI 疑似在编造品牌事实', () => {
     const ctx = baseCtx()
     ctx.probe = brandedProbe([{ speculative: 2 }]) // 2/2=1.0 但 total=2 < 3
     ctx.probeEvidenceId = 'pe1'
-    expect(rule('G10').evaluate(ctx)).toBeNull()
+    expect(rule('G10').evaluate(ctx)).toEqual(notChecked('site_condition', '品牌提问的回答少于 3 条，无法评估'))
   })
   it('undetermined（记忆型引擎无法判定）计入分母但不计入分子，不会被它拉高比例', () => {
     const ctx = baseCtx()
@@ -342,7 +342,7 @@ describe('G10 AI 疑似在编造品牌事实', () => {
     const ctx = baseCtx()
     ctx.probe = brandedProbe([])
     ctx.probeEvidenceId = 'pe1'
-    expect(rule('G10').evaluate(ctx)).toBeNull()
+    expect(rule('G10').evaluate(ctx)).toEqual(notChecked('site_condition', '品牌提问的回答少于 3 条，无法评估'))
   })
   it('null when no probe or no probeEvidenceId', () => {
     const ctx = baseCtx()
@@ -400,7 +400,7 @@ describe('G11 UGC/社区引用占比过高且未引用本站', () => {
     const ctx = baseCtx()
     ctx.probe = ugcProbe(null, [])
     ctx.probeEvidenceId = 'pe1'
-    expect(rule('G11').evaluate(ctx)).toBeNull()
+    expect(rule('G11').evaluate(ctx)).toEqual(notChecked('data_gap', '本轮 AI 引擎没有返回引用来源'))
   })
   it('null when no probe or no probeEvidenceId', () => {
     const ctx = baseCtx()

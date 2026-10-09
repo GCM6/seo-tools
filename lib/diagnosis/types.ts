@@ -183,6 +183,19 @@ export interface RuleHit extends RuleHitDraft {
   fingerprint: string
 }
 
+// 「未检查」哨兵（spec 2026-10-09 §5.1-1）：规则自身门槛不满足、数据不够判断时显式返回它，
+// 与「返回 null = 在范围内没查出问题」区分开。外层的数据源缺失由引擎按 requiredSources 统一判定。
+export interface NotChecked {
+  notChecked: true
+  kind: 'data_gap' | 'site_condition' | 'unsupported'
+  reason: string
+}
+export const notChecked = (kind: NotChecked['kind'], reason: string): NotChecked => ({ notChecked: true, kind, reason })
+export const isNotChecked = (x: unknown): x is NotChecked =>
+  typeof x === 'object' && x !== null && (x as { notChecked?: unknown }).notChecked === true
+
+export type RuleEvaluation = RuleHitDraft | RuleHitDraft[] | NotChecked | null
+
 export interface Rule {
   id: string
   // 规则判定逻辑版本（spec 2026-10-09 §6.4）：改哪条规则只升那一条，见 rules/rule-meta.ts。
@@ -195,8 +208,9 @@ export interface Rule {
   workflowStepIds?: string[]
   knowledgeVersionRefs?: string[]
   requiredSources: SourceRequirement[]
-  // 确定性代码（非 LLM）：命中返回草稿（可多条），不命中返回 null。抛错由引擎吞掉不沉没整轮。
-  evaluate: (ctx: RuleContext) => RuleHitDraft | RuleHitDraft[] | null
+  // 确定性代码（非 LLM）：命中返回草稿（可多条），范围内没查出问题返回 null，数据不够判断返回 notChecked(...)。
+  // 抛错由引擎吞掉不沉没整轮。
+  evaluate: (ctx: RuleContext) => RuleEvaluation
 }
 
 // 规则文件里手写的规则定义不含 version / requiredSources；这两项由 rules/rule-meta.ts 的 RULE_META 在注册表合并。

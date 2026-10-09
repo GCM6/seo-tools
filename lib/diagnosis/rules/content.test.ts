@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildLinkGraph } from '@/lib/crawl/link-graph'
 import { fetchLightCheck } from '@/lib/crawl/light-check'
-import type { RuleContext, RuleHitDraft } from '../types'
+import type { RuleContext, RuleEvaluation, RuleHitDraft } from '../types'
 import type { SiteAuditPage, SiteAuditPayload, SiteAuditTemplate } from '@/lib/crawl/site-audit'
 import { contentRules } from './content'
 import { buildRuleContext } from '../context'
@@ -10,8 +10,8 @@ import { WOOCOMMERCE_PRODUCT_JSONLD, WOOCOMMERCE_PRODUCT_PAGE_URL, YOAST_ARTICLE
 
 const rule = (id: string) => contentRules.find((r) => r.id === id)!
 
-const asOne = (r: RuleHitDraft | RuleHitDraft[] | null) => (Array.isArray(r) ? r[0] : r) as RuleHitDraft
-const asArr = (r: RuleHitDraft | RuleHitDraft[] | null) => (Array.isArray(r) ? r : r ? [r] : []) as RuleHitDraft[]
+const asOne = (r: RuleEvaluation) => (Array.isArray(r) ? r[0] : r) as RuleHitDraft
+const asArr = (r: RuleEvaluation) => (Array.isArray(r) ? r : r ? [r] : []) as RuleHitDraft[]
 
 const page = (p: Partial<SiteAuditPage>): SiteAuditPage => ({
   url: 'https://example.com/x',

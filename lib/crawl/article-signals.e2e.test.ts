@@ -6,7 +6,7 @@ import { buildSiteAudit, type SiteAuditPage } from './site-audit'
 import { buildRuleContext } from '@/lib/diagnosis/context'
 import { eeatRules } from '@/lib/diagnosis/rules/eeat'
 import { contentRules } from '@/lib/diagnosis/rules/content'
-import type { RuleHitDraft } from '@/lib/diagnosis/types'
+import { notChecked, type RuleHitDraft } from '@/lib/diagnosis/types'
 
 // 端到端（spec S4 Task 5）：假博客站 HTML → 真实 light-check（含文章信号）→ 爬虫 → 图谱 → site_audit → 证据 JSON 往返 → 规则。
 // 5 篇文章：缺作者 3 篇、无数据支撑 3 篇；缺「联系我们」页；页脚链接 LinkedIn 主页，但 schema sameAs 声明的是 YouTube。
@@ -83,10 +83,12 @@ describe('文章级 E-E-A-T / 数据支撑 / 社媒端到端（spec S4）', asyn
     ])
   })
 
-  it('AR01（缺作者 3/5）与 AR04（无数据支撑 3/5）命中；AR02/AR03/AR05 不满足门槛不命中', () => {
+  it('AR01（缺作者 3/5）与 AR04（无数据支撑 3/5）命中；AR03 不满足门槛不命中；AR02/AR05 总体不足 3 篇记未检查', () => {
     expect(hit('AR01')?.detail).toMatchObject({ articleCount: 5, missingCount: 3 })
     expect(hit('AR04')?.detail).toMatchObject({ articleCount: 5, unsupportedCount: 3 })
-    expect([hit('AR02'), hit('AR03'), hit('AR05')]).toEqual([null, null, null])
+    // AR02 的总体（有署名的文章）与 AR05 的总体（带外部引用的文章）各只有 2 篇 < 3：数据不够判断，是「未检查」而非「没查出」。
+    const tooFew = notChecked('site_condition', '符合条件的文章少于 3 篇，无法评估')
+    expect([hit('AR02'), hit('AR03'), hit('AR05')]).toEqual([tooFew, null, tooFew])
   })
 
   it('TR06 报缺联系页；SO01 不命中（页脚有 LinkedIn，分享按钮不算）；SO02 报 sameAs 与站内不一致', () => {

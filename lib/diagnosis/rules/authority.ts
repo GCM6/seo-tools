@@ -1,4 +1,4 @@
-import type { RuleDef, RuleHitDraft } from '../types'
+import { notChecked, type RuleDef, type RuleEvaluation, type RuleHitDraft } from '../types'
 
 // P5 权威/实体规则组（证据源：DataForSEO Backlinks / Bing site: / 品牌词 SERP / Labs 品牌搜索量）。
 // 均为第三方估算（L3）→ claim 上限 measured_sample；对比类规则依赖 ctx.confirmedCompetitors，未确认 → no-op。
@@ -98,11 +98,12 @@ const A02: RuleDef = {
   side: 'seo',
   severity: 'warning',
   claimType: 'measured_sample',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const own = normalizeDomain(ctx.project.domain)
     const brand = sld(ctx.project.domain)
     const ownBl = ctx.dataforseo.backlinks.find((b) => normalizeDomain(b.target) === own)
-    if (!ownBl || ownBl.anchors.length === 0) return null
+    if (!ownBl) return null
+    if (ownBl.anchors.length === 0) return notChecked('unsupported', '本期未采集外链锚文本')
     const total = ownBl.anchors.reduce((sum, a) => sum + a.count, 0)
     if (total === 0) return null
     const isKeywordAnchor = (anchor: string): boolean => {
@@ -142,10 +143,11 @@ const A03: RuleDef = {
   side: 'seo',
   severity: 'notice',
   claimType: 'inferred',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const own = normalizeDomain(ctx.project.domain)
     const ownBl = ctx.dataforseo.backlinks.find((b) => normalizeDomain(b.target) === own)
-    if (!ownBl || !ownBl.newLost) return null
+    if (!ownBl) return null
+    if (!ownBl.newLost) return notChecked('unsupported', '本期未采集新增/丢失外链')
     const nl = ownBl.newLost
     const asym = nl.lost === 0 ? nl.new : nl.new / Math.max(nl.lost, 1)
     const spike = nl.new >= A03_MIN_NEW && asym >= A03_NEW_LOST_RATIO

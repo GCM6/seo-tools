@@ -1,12 +1,12 @@
 import { sha256Hex } from '@/lib/collection/hash'
-import type { Rule, RuleContext, RuleHit, RuleHitDraft } from './types'
+import { isNotChecked, type Rule, type RuleContext, type RuleEvaluation, type RuleHit, type RuleHitDraft } from './types'
 
 // fingerprint = hash(rule_id + 归一化作用域)，跨 run 对齐 finding 身份（spec §5 finding 跨 run 身份）。
 export function fingerprint(ruleId: string, scope: string): string {
   return sha256Hex(`${ruleId}::${scope.trim().toLowerCase()}`)
 }
 
-function stamp(rule: Rule, draft: RuleHitDraft): RuleHit {
+export function stamp(rule: Rule, draft: RuleHitDraft): RuleHit {
   return {
     ...draft,
     ruleId: rule.id,
@@ -24,13 +24,14 @@ function stamp(rule: Rule, draft: RuleHitDraft): RuleHit {
 export function evaluateRules(ctx: RuleContext, rules: Rule[]): RuleHit[] {
   const hits: RuleHit[] = []
   for (const rule of rules) {
-    let out: RuleHitDraft | RuleHitDraft[] | null = null
+    let out: RuleEvaluation = null
     try {
       out = rule.evaluate(ctx)
     } catch {
       out = null
     }
     if (!out) continue
+    if (isNotChecked(out)) continue
     for (const draft of Array.isArray(out) ? out : [out]) {
       const refs = (draft.evidenceRefs ?? []).filter(Boolean)
       if (refs.length === 0) continue

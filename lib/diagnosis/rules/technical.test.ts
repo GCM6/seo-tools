@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { parseLightCheckHtml } from '@/lib/crawl/light-check'
-import type { RuleContext, RuleHitDraft } from '../types'
+import { notChecked, type RuleContext, type RuleHitDraft } from '../types'
 import type { SiteAuditPage, SiteAuditPayload } from '@/lib/crawl/site-audit'
 import { technicalRules, isLanguagePathTemplate } from './technical'
 import { buildLinkGraph, type LinkGraphPageInput } from '@/lib/crawl/link-graph'
@@ -194,6 +194,13 @@ describe('T11 key page low inbound', () => {
     const hits = rule('T11').evaluate(ctx) as RuleHitDraft[]
     expect(hits).toHaveLength(1)
     expect(hits[0].scope).toBe('https://example.com/k1')
+  })
+  it('没有任何重点页 → 未检查（没标记重点页，不能当成没查出问题）', () => {
+    const ctx = baseCtx()
+    ctx.siteAudit = audit({}, [
+      page({ url: 'https://example.com/a', isKeyPage: false, inboundLinkCount: 0 }),
+    ])
+    expect(rule('T11').evaluate(ctx)).toEqual(notChecked('site_condition', '没有标记重点页，无法评估'))
   })
 })
 
@@ -618,7 +625,7 @@ describe('T05 诚信降级（spec S1 §8）', () => {
     ctx.siteAudit = withGraph(audit({ orphanPages: 1, checked: 2 }, [orphan]), [
       gp('/', [], { discoveredVia: 'entry' }), gp('/o', [], { discoveredVia: 'sitemap' }),
     ])
-    expect(rule('T05').evaluate(ctx)).toBeNull()
+    expect(rule('T05').evaluate(ctx)).toEqual(notChecked('site_condition', '入口页没有可抓取的站内链接，孤岛判定不可信'))
   })
 })
 

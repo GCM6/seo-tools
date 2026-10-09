@@ -1,4 +1,4 @@
-import type { RuleDef, RuleContext, RuleHitDraft } from '../types'
+import { isNotChecked, notChecked, type NotChecked, type RuleDef, type RuleContext, type RuleEvaluation } from '../types'
 import { analyzeLinkEquity, isGenericAnchor, type LinkEquity } from '@/lib/crawl/link-equity'
 import type { LinkGraphEdge } from '@/lib/crawl/link-graph'
 
@@ -16,11 +16,11 @@ const W03_GENERIC_SHARE = 0.5
 const W04_MAIN_SHARE = 0.2
 const LOW_COVERAGE = 0.5
 
-function equityOf(ctx: RuleContext): { auditId: string; eq: LinkEquity } | null {
+function equityOf(ctx: RuleContext): { auditId: string; eq: LinkEquity } | NotChecked | null {
   const audit = ctx.siteAudit
   if (!audit) return null
   const eq = analyzeLinkEquity({ payload: audit.payload, queryPageMetrics: ctx.queryPageMetrics })
-  return eq ? { auditId: audit.id, eq } : null
+  return eq ? { auditId: audit.id, eq } : notChecked('site_condition', '没有链接图谱、入口页零出链或已抓 HTML 页少于 10，无法评估')
 }
 
 const coverageNote = (eq: LinkEquity) =>
@@ -36,9 +36,10 @@ const W01: RuleDef = {
   side: 'technical',
   severity: 'warning',
   claimType: 'inferred',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = equityOf(ctx)
     if (!got) return null
+    if (isNotChecked(got)) return got
     const { eq } = got
     const weak = eq.valuePages
       .map((v) => ({ ...v, relative: eq.relative.get(v.url) ?? 0, inFollow: eq.graph.nodeByUrl.get(v.url)?.inFollow ?? 0 }))
@@ -64,9 +65,10 @@ const W02: RuleDef = {
   side: 'technical',
   severity: 'notice',
   claimType: 'inferred',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = equityOf(ctx)
     if (!got) return null
+    if (isNotChecked(got)) return got
     const { eq } = got
     const top = eq.graph.nodes
       .filter((n) => n.html)
@@ -94,9 +96,10 @@ const W03: RuleDef = {
   side: 'technical',
   severity: 'notice',
   claimType: 'measured_hard',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = equityOf(ctx)
     if (!got) return null
+    if (isNotChecked(got)) return got
     const { eq } = got
     const rows = eq.valuePages
       .map((v) => {
@@ -123,9 +126,10 @@ const W04: RuleDef = {
   side: 'technical',
   severity: 'notice',
   claimType: 'inferred',
-  evaluate(ctx): RuleHitDraft | null {
+  evaluate(ctx): RuleEvaluation {
     const got = equityOf(ctx)
     if (!got) return null
+    if (isNotChecked(got)) return got
     const { eq } = got
     const rows = eq.valuePages
       .map((v) => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { RuleContext, RuleHitDraft } from '../types'
+import { notChecked, type RuleContext, type RuleHitDraft } from '../types'
 import type { SiteAuditPage, SiteAuditPayload } from '@/lib/crawl/site-audit'
 import type { InternalLinkDetail } from '@/lib/crawl/light-check'
 import { buildLinkGraph, type LinkGraphPageInput } from '@/lib/crawl/link-graph'
@@ -121,6 +121,26 @@ describe('覆盖率提示（Review Focus 4）', () => {
     const hit = rule('W01').evaluate(ctx) as RuleHitDraft
     expect((hit.detail as { coverage: number }).coverage).toBeLessThan(0.5)
     expect(hit.description).toContain('抓取覆盖不足')
+  })
+})
+
+describe('W01–W04 守卫：权重无法计算 → 未检查而不是没查出', () => {
+  const reason = notChecked('site_condition', '没有链接图谱、入口页零出链或已抓 HTML 页少于 10，无法评估')
+  const ids = ['W01', 'W02', 'W03', 'W04']
+  it('旧证据没有链接图谱', () => {
+    const ctx = ctxFor(base())
+    const payload = { ...ctx.siteAudit!.payload }
+    delete (payload as { linkGraph?: unknown }).linkGraph
+    const oldCtx = { ...ctx, siteAudit: { id: 'sa1', payload } } as unknown as RuleContext
+    for (const id of ids) expect(rule(id).evaluate(oldCtx)).toEqual(reason)
+  })
+  it('入口页零站内出链', () => {
+    const ctx = ctxFor({ '/': {} })
+    for (const id of ids) expect(rule(id).evaluate(ctx)).toEqual(reason)
+  })
+  it('已抓 HTML 页少于 10', () => {
+    const ctx = ctxFor({ '/': { links: ['/a'] }, '/a': { links: ['/'] } })
+    for (const id of ids) expect(rule(id).evaluate(ctx)).toEqual(reason)
   })
 })
 
