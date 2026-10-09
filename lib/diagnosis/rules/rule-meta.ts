@@ -4,12 +4,14 @@ import type { SourceRequirement } from '../sources'
 // version：改哪条规则的判定就只升那一条（rule-meta.test.ts 的快照守卫会拦住忘记升版本）。
 // requiredSources：缺了就无法评估的硬依赖；数组元素为数组时表示「其中任一可用即可」。
 // 依据：2026-10-09 只读代理逐条核对 87 条规则读取的 ctx 字段（见计划 Task 2 说明）。
+// 入口页之外还读抓取数据（site_audit、深检页 schema）的规则同时声明 crawl：抓取没采到时它们只看到入口页，
+// 台账若记「查过」，没被看到的页面上的问题会被判「没了」（终审 F2）。只改依赖声明不改判定，版本不升。
 type Meta = { version: number; requiredSources: SourceRequirement[] }
 const v1 = (...requiredSources: SourceRequirement[]): Meta => ({ version: 1, requiredSources })
 
 export const RULE_META: Record<string, Meta> = {
   // technical.ts
-  T01: v1('entry'),
+  T01: v1('entry', 'crawl'),
   T02: v1('crawl'),
   T03: v1('crawl'),
   T04: { version: 2, requiredSources: ['crawl'] },
@@ -43,13 +45,13 @@ export const RULE_META: Record<string, Meta> = {
   C01: v1('entry'),
   C02: v1('entry'),
   C03: v1('entry'),
-  C05a: v1('entry'),
+  C05a: v1('entry', 'crawl'),
   C04: v1('crawl'),
-  C05b: v1('entry'),
-  C05c: v1('entry'),
+  C05b: v1('entry', 'crawl'),
+  C05c: v1('entry', 'crawl'),
   C05d: v1('render', 'entry'),
-  C06: v1('entry'),
-  C07: { version: 2, requiredSources: ['entry'] },
+  C06: v1('entry', 'crawl'),
+  C07: { version: 2, requiredSources: ['entry', 'crawl'] },
   C08: v1('entry'),
   C10: v1('crawl'),
   C09: v1('crawl'),
@@ -70,7 +72,7 @@ export const RULE_META: Record<string, Meta> = {
   G05: v1('ai_probe'),
   G06: { version: 2, requiredSources: ['ai_probe'] },
   G01: v1('entry'),
-  E01: v1('entry'),
+  E01: v1('entry', 'crawl'),
   G02: v1('ua_probe'),
   G07: v1('third_party:wikipedia', 'third_party:reddit'),
   G08: v1('ua_probe'),
@@ -85,9 +87,9 @@ export const RULE_META: Record<string, Meta> = {
   K04: v1('dataforseo:seed_serp', 'confirmed_competitors'),
   K05: v1('dataforseo:brand_serp'),
   K07: v1('dataforseo:seed_serp', 'dataforseo:labs'),
-  IPF01: v1(['gsc', 'dataforseo:seed_serp']),
-  IPF02: v1('gsc'),
-  IPF03: v1(['gsc', 'dataforseo:seed_serp']),
+  IPF01: v1('crawl', ['gsc', 'dataforseo:seed_serp']),
+  IPF02: v1('crawl', 'gsc'),
+  IPF03: v1('crawl', ['gsc', 'dataforseo:seed_serp']),
   IPF04: v1('crawl', ['gsc', 'dataforseo:seed_serp']),
   // competitors.ts
   Q01: v1('dataforseo:seed_serp', 'confirmed_competitors'),

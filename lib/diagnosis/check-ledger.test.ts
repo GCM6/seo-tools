@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest'
+import fixture from '@/lib/test-fixtures/metadocu-run-d12cceaf.json'
 import { evaluateRulesWithLedger } from './check-ledger'
-import { notChecked, type Rule, type RuleContext, type RuleHitDraft } from './types'
+import { buildRuleContext } from './context'
+import { evaluateRules } from './engine'
+import { allRules } from './rules'
+import { availableSources } from './sources'
+import { notChecked, type DiagnosisEvidenceRow, type Rule, type RuleContext, type RuleHitDraft } from './types'
 import type { SourceKey } from './sources'
 
 const ctx = {} as RuleContext
@@ -62,5 +67,66 @@ describe('evaluateRulesWithLedger', () => {
   it('每条规则恰好一行台账，顺序与规则顺序一致', () => {
     const rules = [rule('A', () => null), rule('B', () => draft()), rule('C', () => null, ['gsc'])]
     expect(evaluateRulesWithLedger(ctx, rules, avail('crawl')).ledger.map((l) => l.ruleId)).toEqual(['A', 'B', 'C'])
+  })
+})
+
+// 读抓取数据的规则（入口页之外还读 site_audit / 深检页 schema）必须声明依赖 crawl：抓取没采到时它们只看到了入口页，
+// 台账若仍记「查过」，没被看到的页面上的问题会被判「没了」（终审 F2）。夹具是 10-03 metadocu 真实运行的证据（只读导出）。
+describe('读抓取数据的规则：抓取不可用 → 没查（真实 metadocu 证据）', () => {
+  const CRAWL_READERS = ['T01', 'C05a', 'C05b', 'C05c', 'C06', 'C07', 'E01', 'IPF01', 'IPF02', 'IPF03']
+  const rules = allRules.filter((r) => CRAWL_READERS.includes(r.id))
+  const evidence = fixture.evidence as unknown as DiagnosisEvidenceRow[]
+  const ctxOf = (rows: DiagnosisEvidenceRow[]) =>
+    buildRuleContext({
+      project: {
+        domain: fixture.project.domain,
+        industry: fixture.project.industry,
+        market: fixture.project.market,
+        language: fixture.project.language,
+        competitors: fixture.project.competitors,
+      },
+      evidence: rows,
+      probe: null,
+      probeEvidenceId: null,
+      robotsText: null,
+    })
+  // 其余数据源都可用，只有 crawl 的状态在变（IPF 组还需要 gsc 或种子词 SERP）。
+  const sourcesWithCrawl = (status: string, capturedEvidenceCount: number) =>
+    availableSources(
+      [
+        { sourceKey: 'crawl', status, capturedEvidenceCount },
+        { sourceKey: 'gsc', status: 'collected', capturedEvidenceCount: 2 },
+        { sourceKey: 'dataforseo:seed_serp', status: 'collected', capturedEvidenceCount: 1 },
+      ],
+      { confirmedCompetitorCount: 0 },
+    )
+
+  it('名单里的规则都存在', () => {
+    expect(rules.map((r) => r.id).sort()).toEqual([...CRAWL_READERS].sort())
+  })
+
+  it.each([
+    ['not_attempted', 0], // 项目关闭了抓取
+    ['failed', 0],
+    ['partial', 0], // partial 但一页没采到也不算可用
+  ])('抓取状态 %s → 这些规则记 not_checked / data_gap（原因写缺 crawl），不执行、不出命中', (status, count) => {
+    // 抓取没跑时不会有 site_audit、sitemap 与深检页（带 sitePageId）的证据，只剩入口页那几条。
+    const entryOnly = evidence.filter((e) => e.type !== 'site_audit' && e.type !== 'sitemap' && !e.sitePageId)
+    const { ledger, hits } = evaluateRulesWithLedger(ctxOf(entryOnly), rules, sourcesWithCrawl(status, count))
+    expect(ledger.map((l) => [l.ruleId, l.outcome, l.reasonKind, l.reason])).toEqual(
+      rules.map((r) => [r.id, 'not_checked', 'data_gap', '缺数据源：crawl']),
+    )
+    expect(hits).toEqual([])
+  })
+
+  it('抓取已采到 → 照常求值：台账只有查出 / 没查出，命中与直接跑规则完全相同', () => {
+    const ctx = ctxOf(evidence)
+    const { ledger, hits } = evaluateRulesWithLedger(ctx, rules, sourcesWithCrawl('collected', 21))
+    expect(ledger.every((l) => l.outcome === 'hit' || l.outcome === 'clear')).toBe(true)
+    expect(hits).toEqual(evaluateRules(ctx, rules))
+    // 深检页的结构化数据确实进了判定：C05c 的缺字段实例里有深检页（不是入口页）的 URL。
+    const deepUrls = new Set(evidence.filter((e) => e.type === 'schema' && e.sitePageId).map((e) => e.source))
+    const c05c = hits.filter((h) => h.ruleId === 'C05c').flatMap((h) => ((h.detail?.examples ?? []) as { url: string }[]).map((e) => e.url))
+    expect(c05c.some((u) => deepUrls.has(u))).toBe(true)
   })
 })
