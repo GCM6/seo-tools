@@ -168,8 +168,8 @@ function ApplySection({
     }
   }
 
-  // A3 补充：已执行可撤销——PATCH applied:false 清空 appliedAt/appliedNote。撤销不重算
-  // 项目的 nextRetestDueAt（回测计划卡的口径说明已向用户交代这一点，不是静默行为）。
+  // A3 补充：已执行可撤销——PATCH applied:false 清空 appliedAt/appliedNote，并同步撤销问题上的执行；
+  // 项目的 nextRetestDueAt 由问题表重算（spec 2026-10-09 §5.4-2，回测计划卡的口径说明已向用户交代）。
   const revoke = async () => {
     setRevoking(true)
     setRevokeError(null)

@@ -27,6 +27,17 @@ export async function issueForRecommendation(recId: string, deps: BridgeDeps = d
 
 const excluded = (i: IssueRecord) => i.decision === 'deferred' || i.decision === 'false_positive'
 
+// 旧界面的写入（建议 / 发现）已经完成；问题动作被拒（action_not_allowed：会覆盖体检核实的结果）时，
+// 问题保持体检核实的状态，镜像静默跳过——只吞这一种错误，其余照常抛出。
+async function tryIssueAction(deps: BridgeDeps, ...args: Parameters<typeof runIssueAction>): Promise<void> {
+  try {
+    await deps.runIssueAction(...args)
+  } catch (err) {
+    if (err instanceof Error && err.message === 'action_not_allowed') return
+    throw err
+  }
+}
+
 export async function mirrorRecommendationStatus(
   recId: string,
   status: 'draft' | 'accepted' | 'edited' | 'rejected',
@@ -35,9 +46,9 @@ export async function mirrorRecommendationStatus(
   const issue = await issueForRecommendation(recId, deps)
   if (!issue) return
   if ((status === 'accepted' || status === 'edited') && issue.decision !== 'included') {
-    await deps.runIssueAction(issue.id, { kind: 'include' }, 'operator', '旧界面：接受建议')
+    await tryIssueAction(deps, issue.id, { kind: 'include' }, 'operator', '旧界面：接受建议')
   } else if (status === 'rejected' && !excluded(issue)) {
-    await deps.runIssueAction(issue.id, { kind: 'defer', reason: '旧界面否决（未记录理由）' }, 'operator', undefined)
+    await tryIssueAction(deps, issue.id, { kind: 'defer', reason: '旧界面否决（未记录理由）' }, 'operator', undefined)
   }
   // draft：旧界面把建议改回待确认，问题上的决定不变。
 }
@@ -46,10 +57,10 @@ export async function mirrorRecommendationApplied(recId: string, applied: boolea
   const issue = await issueForRecommendation(recId, deps)
   if (!issue) return
   if (applied) {
-    if (issue.decision !== 'included') await deps.runIssueAction(issue.id, { kind: 'include' }, 'operator', '旧界面：接受建议')
-    await deps.runIssueAction(issue.id, { kind: 'execute', note }, 'operator', undefined)
+    if (issue.decision !== 'included') await tryIssueAction(deps, issue.id, { kind: 'include' }, 'operator', '旧界面：接受建议')
+    await tryIssueAction(deps, issue.id, { kind: 'execute', note }, 'operator', undefined)
   } else if (issue.executedAt) {
-    await deps.runIssueAction(issue.id, { kind: 'undo_execute' }, 'operator', undefined)
+    await tryIssueAction(deps, issue.id, { kind: 'undo_execute' }, 'operator', undefined)
   }
 }
 
@@ -62,8 +73,8 @@ export async function mirrorFindingStatus(
   const issue = await issueForFinding(findingId, deps)
   if (!issue) return
   if (status === 'dismissed' && issue.decision !== 'false_positive') {
-    await deps.runIssueAction(issue.id, { kind: 'false_positive', reason: reason ?? '旧界面忽略（未记录理由）' }, 'operator', undefined)
+    await tryIssueAction(deps, issue.id, { kind: 'false_positive', reason: reason ?? '旧界面忽略（未记录理由）' }, 'operator', undefined)
   } else if (status === 'open' && excluded(issue)) {
-    await deps.runIssueAction(issue.id, { kind: 'reopen' }, 'operator', undefined)
+    await tryIssueAction(deps, issue.id, { kind: 'reopen' }, 'operator', undefined)
   }
 }

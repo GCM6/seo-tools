@@ -46,8 +46,8 @@ describe('RetestPlanCard', () => {
     render(element)
 
     expect(screen.getByText('2026-08-16')).toBeInTheDocument()
-    // 口径说明：明确交代"每次标记执行都会顺延"，不是静默行为。
-    expect(screen.getByText(/每次标记执行都会把复测日期顺延至该次执行后 28 天/)).toBeInTheDocument()
+    // 口径说明：明确交代"取最早一次待复查的执行 +28 天，撤销或体检复查后重算"，不是静默行为。
+    expect(screen.getByText(/最早一次执行后的 28 天；撤销执行或体检复查后会重新计算/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '发起回测' })).toBeInTheDocument()
     // 手动调整入口的偏离说明必须出现（本次降级为只读）。
     expect(screen.getByText(/手动调整到期日期暂不支持/)).toBeInTheDocument()

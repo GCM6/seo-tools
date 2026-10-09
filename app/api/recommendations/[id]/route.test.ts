@@ -84,6 +84,7 @@ describe('PATCH /api/recommendations/:id', () => {
     it('404 when recommendation missing', async () => {
       const res = await patch('nope', { applied: true, appliedNote: '' })
       expect(res.status).toBe(404)
+      expect(mirrorAppliedMock).not.toHaveBeenCalled()
     })
 
     it('422 not_gated when status is not accepted/edited', async () => {
@@ -92,6 +93,7 @@ describe('PATCH /api/recommendations/:id', () => {
       expect(res.status).toBe(422)
       expect(await res.json()).toEqual({ error: 'not_gated' })
       expect(markRecommendationAppliedMock).not.toHaveBeenCalled()
+      expect(mirrorAppliedMock).not.toHaveBeenCalled()
     })
 
     it('success: marks applied and mirrors execution to the issue (retest due recomputed from issues)', async () => {
@@ -114,6 +116,7 @@ describe('PATCH /api/recommendations/:id', () => {
     it('404 when recommendation missing', async () => {
       const res = await patch('nope', { applied: false })
       expect(res.status).toBe(404)
+      expect(mirrorAppliedMock).not.toHaveBeenCalled()
     })
 
     it('success: clears appliedAt/appliedNote and does NOT recompute nextRetestDueAt', async () => {
