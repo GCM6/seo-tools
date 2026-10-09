@@ -74,6 +74,9 @@ export const runs = sqliteTable('runs', {
   // 回测的基线 run（retest 才有）：原先只在首次派发的事件里，重试回测会丢失、变成不同协议（验收新发现 5）。
   // 基线被删除时置空，回测本身保留。
   baselineRunId: text('baseline_run_id').references((): AnySQLiteColumn => runs.id, { onDelete: 'set null' }),
+  // 协议指纹（spec 2026-10-09 §5.3）：市场、品类、语言、竞品、别名、目标关键词、已确认竞品、引擎、提问模板版本的哈希。
+  // 指纹相同的两次体检，抽样指标才可比；旧体检为空。
+  protocolHash: text('protocol_hash'),
 }, (t) => [
   check('runs_type', sql`${t.runType} in ('baseline','retest')`),
   check('runs_status', sql`${t.status} in ('draft','collecting','collected','diagnosing','reviewing','output','failed')`),
@@ -265,6 +268,20 @@ export const serpAioResults = sqliteTable('serp_aio_results', {
   createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
 })
 
+// 发现明细（spec 2026-10-09 §6.4）：受影响规模 + 最多 20 行「页面 / 字段 / 现在 / 应该」。
+// 规则命中里没有的值如实为 null（关键词、平台类明细没有页面；多数规则没给「应该」），不编造。
+export interface FindingDetailRow {
+  url: string | null
+  field: string
+  current: string | null
+  expected: string | null
+}
+export interface FindingDetailJson {
+  scale: { affected: number | null; total?: number | null }
+  rows: FindingDetailRow[]
+  truncated: boolean
+}
+
 export const findings = sqliteTable('findings', {
   id: text('id').primaryKey(),
   runId: text('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
@@ -293,6 +310,8 @@ export const findings = sqliteTable('findings', {
   knowledgeReleaseVersion: text('knowledge_release_version'),
   workflowVersion: text('workflow_version'),
   ruleConfigVersion: text('rule_config_version'),
+  // 统一明细（spec 2026-10-09 §6.4）；旧发现为空。
+  detail: text('detail', { mode: 'json' }).$type<FindingDetailJson>(),
 }, (t) => [
   check('findings_side', sql`${t.side} in ('seo','geo','technical')`),
   check('findings_claim', sql`${t.claimType} in ('hypothesis','inferred','measured_sample','measured_hard')`),
@@ -328,9 +347,98 @@ export const recommendations = sqliteTable('recommendations', {
   check('rec_outcome', sql`${t.outcome} in ('unknown','effective','ineffective','regressed')`),
 ])
 
+// —— 以问题为中心的闭环：问题台账（spec 2026-10-09 §6）——
+// 项目级问题：项目 + 问题指纹唯一。决定 / 执行由人写，检测由体检对账写，展示状态由二者推出后落库便于筛选。
+export const issues = sqliteTable('issues', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  fingerprint: text('fingerprint').notNull(),
+  ruleId: text('rule_id').notNull(),
+  ruleVersion: integer('rule_version').notNull().default(1),
+  pillar: text('pillar'),
+  side: text('side').notNull(),
+  title: text('title').notNull(),
+  severity: text('severity').notNull(),
+  affectedCount: integer('affected_count'),
+  latestFindingId: text('latest_finding_id').references(() => findings.id, { onDelete: 'set null' }),
+  decision: text('decision').notNull().default('pending'),
+  decisionReason: text('decision_reason'),
+  decidedAt: text('decided_at'),
+  // 预留站主自助（spec D2）：现在只写 operator。
+  decidedBy: text('decided_by'),
+  executedAt: text('executed_at'),
+  executedNote: text('executed_note'),
+  executedBy: text('executed_by'),
+  detection: text('detection').notNull().default('present'),
+  status: text('status').notNull().default('pending'),
+  flags: text('flags', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  unverifiedReason: text('unverified_reason'),
+  retiredReason: text('retired_reason'),
+  protocolHash: text('protocol_hash'),
+  firstSeenRunId: text('first_seen_run_id').references(() => runs.id, { onDelete: 'set null' }),
+  lastSeenRunId: text('last_seen_run_id').references(() => runs.id, { onDelete: 'set null' }),
+  lastCheckedRunId: text('last_checked_run_id').references(() => runs.id, { onDelete: 'set null' }),
+  // 最近一次真正查过本问题的体检的开始时间：判断「执行之后开始的体检」（spec 4.4-2）。
+  lastCheckedAt: text('last_checked_at'),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+  updatedAt: text('updated_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [
+  uniqueIndex('issues_project_fingerprint').on(t.projectId, t.fingerprint),
+  check('issues_severity', sql`${t.severity} in ('high','mid','ok')`),
+  check('issues_decision', sql`${t.decision} in ('pending','included','deferred','false_positive')`),
+  check('issues_detection', sql`${t.detection} in ('present','gone')`),
+  check('issues_status', sql`${t.status} in ('pending','to_execute','executed_awaiting','fixed','not_effective','self_resolved','excluded','retired')`),
+  check('issues_decided_by', sql`${t.decidedBy} is null or ${t.decidedBy} in ('operator','owner')`),
+  check('issues_executed_by', sql`${t.executedBy} is null or ${t.executedBy} in ('operator','owner')`),
+  check('issues_unverified_reason', sql`${t.unverifiedReason} is null or ${t.unverifiedReason} in ('data_gap','site_condition','unsupported','error','history_no_ledger')`),
+  check('issues_retired_reason', sql`${t.retiredReason} is null or ${t.retiredReason} in ('protocol_changed','rule_changed')`),
+  check('issues_reason_required', sql`${t.decision} not in ('deferred','false_positive') or length(trim(coalesce(${t.decisionReason}, ''))) > 0`),
+  check('issues_exec_requires_included', sql`${t.executedAt} is null or ${t.decision} = 'included'`),
+])
+
+// 问题变化记录：只追加（仓储层不提供改删；observed 记录按 id 幂等覆盖，供同一体检的重算使用）。
+export const issueEvents = sqliteTable('issue_events', {
+  id: text('id').primaryKey(),
+  issueId: text('issue_id').notNull().references(() => issues.id, { onDelete: 'cascade' }),
+  runId: text('run_id').references(() => runs.id, { onDelete: 'set null' }),
+  kind: text('kind').notNull(),
+  checked: integer('checked', { mode: 'boolean' }),
+  hit: integer('hit', { mode: 'boolean' }),
+  severity: text('severity'),
+  affectedCount: integer('affected_count'),
+  fromStatus: text('from_status'),
+  toStatus: text('to_status').notNull(),
+  flags: text('flags', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  note: text('note'),
+  actor: text('actor').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+}, (t) => [
+  check('iev_kind', sql`${t.kind} in ('observed','decision','execution')`),
+  check('iev_actor', sql`${t.actor} in ('system','operator','owner')`),
+])
+
+// 检查台账：每次体检每条规则一行（spec 2026-10-09 §5.1-1）。
+export const checkResults = sqliteTable('check_results', {
+  id: text('id').primaryKey(),
+  runId: text('run_id').notNull().references(() => runs.id, { onDelete: 'cascade' }),
+  ruleId: text('rule_id').notNull(),
+  ruleVersion: integer('rule_version').notNull(),
+  outcome: text('outcome').notNull(),
+  reasonKind: text('reason_kind'),
+  reason: text('reason'),
+  hitCount: integer('hit_count').notNull().default(0),
+}, (t) => [
+  uniqueIndex('check_results_run_rule').on(t.runId, t.ruleId),
+  check('chk_outcome', sql`${t.outcome} in ('hit','clear','not_checked','error')`),
+  check('chk_reason_kind', sql`${t.reasonKind} is null or ${t.reasonKind} in ('data_gap','site_condition','unsupported','error')`),
+  check('chk_not_checked_reason', sql`${t.outcome} <> 'not_checked' or ${t.reasonKind} is not null`),
+])
+
 export const generatedPrompts = sqliteTable('generated_prompts', {
   id: text('id').primaryKey(),
   recommendationId: text('recommendation_id').notNull().references(() => recommendations.id, { onDelete: 'cascade' }),
+  // 问题闸门（spec 2026-10-09 §6.4）：提示词归属的问题；旧记录为空。
+  issueId: text('issue_id').references(() => issues.id, { onDelete: 'cascade' }),
   promptType: text('prompt_type').notNull(),
   promptText: text('prompt_text').notNull(),
   inputFactRefs: text('input_fact_refs', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
