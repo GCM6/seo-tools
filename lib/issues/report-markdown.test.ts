@@ -138,8 +138,8 @@ describe('renderIssueReport', () => {
         ev({ id: 'e2', createdAt: '2026-07-02T00:00:00.000Z', checked: true, hit: false, severity: null, affectedCount: null, flags: ['rule_changed'], toStatus: 'retired', note: 'rule_changed' }),
       ],
     })
-    expect(md).toContain('2026-07-01 体检：没查（规则已下线）→ 已关闭（不可比） [规则已更新]')
-    expect(md).toContain('2026-07-02 体检：查过，没查出（规则已更新）→ 已关闭（不可比） [规则已更新]')
+    expect(md).toContain('2026-07-01 体检：没查（规则已下线）→ 已关闭（不可比） [规则已更新或历史版本未知]')
+    expect(md).toContain('2026-07-02 体检：查过，没查出（规则已更新或历史版本未知）→ 已关闭（不可比） [规则已更新或历史版本未知]')
   })
 
   it('没有括号说明时箭头前留一个空格', () => {

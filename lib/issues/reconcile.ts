@@ -28,6 +28,9 @@ export interface ReconcileInput {
   protocolBoundRuleIds: ReadonlySet<string>
   // 台账里没有这条规则时：retire = 规则已下线（关闭）；history = 历史回填，旧体检没有台账（未复查）。
   missingLedger: 'retire' | 'history'
+  // 新建问题时、台账里没有这条规则的版本可记 → 用这个值（只用于新建，默认 1 = 本分支起点的规则逻辑）。
+  // 历史回填传 0 = 版本未知：旧体检出自 rules_v1…v10，首次真实体检时按「规则已更新」关闭而不是判没了（spec 4.4-7）。
+  defaultRuleVersion?: number
   onlyRuleIds?: ReadonlySet<string>
   newIssueId: () => string
   now: string
@@ -216,7 +219,7 @@ function createIssue(input: ReconcileInput, h: ObservedHit, entry: LedgerEntry |
     flags: ['new'],
     firstSeenRunId: input.run.id,
     createdAt: input.now,
-    ...observedFields(input, h, entry?.ruleVersion ?? 1),
+    ...observedFields(input, h, entry?.ruleVersion ?? input.defaultRuleVersion ?? 1),
   })
   return { issue: next, event: event(input, null, next, true, true, null) }
 }

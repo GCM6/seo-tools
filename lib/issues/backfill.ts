@@ -54,6 +54,9 @@ export function replayHistory(input: ReplayInput): { issues: IssueRecord[]; even
       ledger: [],
       protocolBoundRuleIds: new Set(),
       missingLedger: 'history',
+      // 历史观测出自 rules_v1…v10，判定逻辑与本分支起点（版本 1）不一定相同：记为未知（0），
+      // 首次真实体检没命中时关闭为「规则已更新或历史版本未知」，不判自行消失 / 已修复（spec 4.4-7）。
+      defaultRuleVersion: 0,
       newIssueId: input.newIssueId,
       now: run.finishedAt ?? at,
     })

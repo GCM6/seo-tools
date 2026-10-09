@@ -11,12 +11,14 @@ const DECISION: Record<string, string> = { pending: '未决定', included: '已�
 // 台账里「协议已变」的真实含义：回填后的 AI 采样类问题协议指纹为空，首次实测时无法确认口径一致，
 // 所以不能断言考题真的换了（controller 裁定，Task 8）。
 const CHANGED_OR_UNCONFIRMED = '检测口径已变或无法确认一致'
+// 「规则已更新」同样有两种来源：真的升了版本，或问题来自历史回填、版本记为未知（0），首次真实体检时必然不一致。
+const RULE_CHANGED_OR_UNKNOWN = '规则已更新或历史版本未知'
 const FLAG: Record<IssueFlag, string> = {
-  new: '新出现', worse: '变严重', relapse: '复发', partial: '部分改善', unverified: '未复查', protocol_changed: CHANGED_OR_UNCONFIRMED, rule_changed: '规则已更新',
+  new: '新出现', worse: '变严重', relapse: '复发', partial: '部分改善', unverified: '未复查', protocol_changed: CHANGED_OR_UNCONFIRMED, rule_changed: RULE_CHANGED_OR_UNKNOWN,
 }
 const REASON: Record<string, string> = {
   data_gap: '缺数据源', site_condition: '网站条件不满足', unsupported: '工具暂不支持', error: '规则出错', history_no_ledger: '历史数据没有台账',
-  protocol_changed: CHANGED_OR_UNCONFIRMED, rule_changed: '规则已更新',
+  protocol_changed: CHANGED_OR_UNCONFIRMED, rule_changed: RULE_CHANGED_OR_UNKNOWN,
 }
 const KIND_ORDER: Record<IssueEventDraft['kind'], number> = { observed: 0, decision: 1, execution: 2 }
 
@@ -44,7 +46,7 @@ function eventLine(e: IssueEventDraft): string {
   const flags = e.flags.length ? ` [${e.flags.map((f) => FLAG[f] ?? f).join('、')}]` : ''
   if (e.kind === 'observed') {
     let seen: string
-    // 没查 + rule_changed = 规则已不在台账里（已下线）；查过 + rule_changed 才是「规则版本更新」。
+    // 没查 + rule_changed = 规则已不在台账里（已下线）；查过 + rule_changed 才是「规则版本更新或历史版本未知」。
     if (!e.checked) seen = `没查（${e.note === 'rule_changed' ? '规则已下线' : reason(e.note)}）`
     else if (e.hit) seen = `查出（${e.affectedCount === null ? '受影响数未记录' : `受影响 ${e.affectedCount}`}${e.note ? `，变化 ${e.note}` : ''}）`
     else seen = e.note ? `查过，没查出（${reason(e.note)}）` : '查过，没查出'

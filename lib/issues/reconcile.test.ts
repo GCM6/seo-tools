@@ -136,6 +136,15 @@ describe('reconcileIssues', () => {
     expect(out.issues.map((i) => i.fingerprint).sort()).toEqual(['fp_2', 'fp_3'])
   })
 
+  it('defaultRuleVersion 只用于台账里没有这条规则的新命中；台账有版本时以台账为准；不给时仍是 1', () => {
+    const h = hit({ fingerprint: 'fp_9' })
+    expect(only(run({ hits: [h], ledger: [], missingLedger: 'history', defaultRuleVersion: 0 })).i.ruleVersion).toBe(0)
+    expect(only(run({ hits: [h], ledger: [led('C05c', 'hit', { ruleVersion: 3 })], defaultRuleVersion: 0 })).i.ruleVersion).toBe(3)
+    expect(only(run({ hits: [h], ledger: [] })).i.ruleVersion).toBe(1)
+    // 已有问题再命中、台账里没有这条规则 → 沿用问题自己记下的版本，不被默认值改写。
+    expect(only(run({ issues: [issue({ ruleVersion: 0 })], hits: [hit()], ledger: [], missingLedger: 'history', defaultRuleVersion: 5 })).i.ruleVersion).toBe(0)
+  })
+
   it('同一体检对同一问题的变化记录 id 固定（重算时覆盖，不叠加）', () => {
     expect(run({ issues: [issue()], ledger: [led('C05c', 'clear')] }).events[0].id).toBe('iev_obs_run_2_iss_1')
   })
