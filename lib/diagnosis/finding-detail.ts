@@ -16,7 +16,14 @@ const obj = (v: unknown): D => (typeof v === 'object' && v !== null ? (v as D) :
 const strs = (v: unknown): string[] => list(v).map(str).filter((x): x is string => x !== null)
 const row = (url: string | null, field: string, current: string | null = null, expected: string | null = null): FindingDetailRow => ({ url, field, current, expected })
 const urlOrNull = (scope: string): string | null => (/^https?:\/\//i.test(scope) ? scope : null)
-const pct = (v: unknown): string | null => (num(v) === null ? null : `${Math.round((num(v) as number) * 100)}%`)
+// 比例 → 百分比：低于 10% 保留一位小数（CTR 0.004 写 0.4%，不能取整成 0%），10% 及以上取整。
+// 先按一位小数舍入再判断，免得 9.96% 写成「10.0%」。
+const pct = (v: unknown): string | null => {
+  const n = num(v)
+  if (n === null) return null
+  const oneDecimal = Math.round(n * 1000) / 10
+  return Math.abs(oneDecimal) < 10 ? `${oneDecimal.toFixed(1)}%` : `${Math.round(n * 100)}%`
+}
 
 // 页面清单类：examples / sampleUrls 等是字符串数组。
 const urlList = (key: string, field: string, current: string | null = null, affectedKey = 'count'): Extractor => (d) => ({
@@ -107,9 +114,16 @@ const EXTRACTORS: Record<string, Extractor> = {
   W04: (d) => ({ affected: num(d.count), rows: list(d.examples).map((e) => row(str(obj(e).url), '正文入链占比', pct(obj(e).mainShare))) }),
   C01: (d, scope) => ({ affected: 1, rows: [row(urlOrNull(scope), '<title>', str(d.title) ?? '缺失', num(d.max) === null ? null : `≤ ${num(d.max)} 字符`)] }),
   C02: (_d, scope) => ({ affected: 1, rows: [row(urlOrNull(scope), 'meta description')] }),
+  // C03 三种命中：缺 H1 / 多个 H1 → 每页唯一 H1；H1 与 title 完全相同（detail 带 title + h1）→ 规则说这不是错误，
+  // 只是可考虑差异化表达以覆盖更多说法，所以「应该」写差异化而不是唯一。
   C03: (d, scope) => ({
     affected: 1,
-    rows: [row(urlOrNull(scope), 'H1', strs(d.h1Texts).join(' | ') || str(d.h1) || `${num(d.h1Count) ?? 0} 个`, '每页唯一 H1')],
+    rows: [row(
+      urlOrNull(scope),
+      'H1',
+      strs(d.h1Texts).join(' | ') || str(d.h1) || `${num(d.h1Count) ?? 0} 个`,
+      str(d.title) !== null && str(d.h1) !== null ? '与 title 差异化表达（可选，不是错误）' : '每页唯一 H1',
+    )],
   }),
   C04: (d) => ({ affected: num(d.pageCount), rows: [row(str(d.representativeUrl), '正文字符数', str(d.mainTextChars), num(d.threshold) === null ? null : `≥ ${num(d.threshold)}`)] }),
   C05a: (d) => ({ affected: 1, rows: [row(null, '结构化数据类型', (strs(d.foundTypes).length ? strs(d.foundTypes) : strs(d.presentTypes)).join(', ') || null)] }),

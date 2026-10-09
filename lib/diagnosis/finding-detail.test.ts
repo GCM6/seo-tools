@@ -43,6 +43,23 @@ describe('toFindingDetail', () => {
     expect(toFindingDetail(hit('C03', { h1Count: 0 }, 'entry'))?.rows[0].url).toBeNull()
   })
 
+  it('C03：H1 与 title 完全相同时，应该写「与 title 差异化表达」（可选，不是错误），不写每页唯一 H1', () => {
+    expect(toFindingDetail(hit('C03', { title: 'Acme Tools', h1: 'Acme Tools' }, 'https://a.com/'))?.rows[0]).toEqual({
+      url: 'https://a.com/', field: 'H1', current: 'Acme Tools', expected: '与 title 差异化表达（可选，不是错误）',
+    })
+    // 缺 H1 / 多个 H1 仍是每页唯一 H1。
+    expect(toFindingDetail(hit('C03', { h1Count: 0 }, 'https://a.com/'))?.rows[0].expected).toBe('每页唯一 H1')
+  })
+
+  it('百分比：低于 10% 保留一位小数（K02 CTR 0.4% 不再写成 0%），10% 及以上取整', () => {
+    const k02 = (ctr: number) => toFindingDetail(hit('K02', { keywords: [{ text: 'pdf metadata', ctr, position: 8.2 }] }, 'keywords:low-ctr'))?.rows[0].current
+    expect(k02(0.004)).toBe('CTR 0.4%，排名 8.2')
+    expect(k02(0.083)).toBe('CTR 8.3%，排名 8.2')
+    expect(k02(0.0996)).toBe('CTR 10%，排名 8.2')
+    expect(k02(0.254)).toBe('CTR 25%，排名 8.2')
+    expect(toFindingDetail(hit('T10', { ratio: 0.031 }, 'https://a.com/'))?.rows[0].current).toBe('3.1%')
+  })
+
   it('关键词类：没有页面，字段写关键词', () => {
     expect(toFindingDetail(hit('K03', { keywords: [{ text: 'remove pdf metadata', searchVolume: 500, opportunityScore: 3, ourPosition: null }] }, 'keywords:gap-missing'))?.rows[0]).toEqual({
       url: null, field: '关键词：remove pdf metadata', current: '未排名', expected: null,
