@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 import { readFileSync, readdirSync, rmSync } from 'node:fs'
 import { createClient } from '@libsql/client'
 
-const TEST_DB = './veris-test-issues-repo.db'
+const TEST_DB = `./veris-test-issues-repo-${process.pid}.db`
 process.env.LIBSQL_URL = `file:${TEST_DB}`
 rmSync(TEST_DB, { force: true })
 const bootstrap = createClient({ url: `file:${TEST_DB}` })
@@ -119,5 +119,54 @@ describe('问题仓储', () => {
       events: [],
     })
     expect(await repo.getProjectIssueTodos('proj_1')).toEqual({ pending: 2, pendingNew: 1, pendingWorse: 1, notEffective: 1 })
+  })
+
+  it('recomputeRetestDue：处理畸形 executedAt，比对编年顺序不按字符串', async () => {
+    await repo.saveIssueChanges({
+      issues: [
+        issue({ id: 'iss_1', fingerprint: 'fp_1', decision: 'included', executedAt: 'not-a-date', status: 'executed_awaiting' }),
+        issue({ id: 'iss_2', fingerprint: 'fp_2', decision: 'included', executedAt: '2026-10-05T00:00:00.000Z', status: 'executed_awaiting' }),
+      ],
+      events: [],
+    })
+    expect(await repo.recomputeRetestDue('proj_1')).toBe('2026-11-02T00:00:00.000Z')
+    expect((await repo.getProject('proj_1'))?.nextRetestDueAt).toBe('2026-11-02T00:00:00.000Z')
+  })
+
+  it('recomputeRetestDue：仅畸形 executedAt 不抛错，返回 null', async () => {
+    await repo.saveIssueChanges({
+      issues: [
+        issue({ decision: 'included', executedAt: 'not-a-date', status: 'executed_awaiting' }),
+      ],
+      events: [],
+    })
+    expect(await repo.recomputeRetestDue('proj_1')).toBeNull()
+    expect((await repo.getProject('proj_1'))?.nextRetestDueAt).toBeNull()
+  })
+
+  it('issue_events：kind=decision 追加语义，同 id 重新保存不覆盖', async () => {
+    await repo.saveIssueChanges({
+      issues: [issue()],
+      events: [
+        {
+          id: 'iev_dec_1', issueId: 'iss_1', runId: null, kind: 'decision', checked: null, hit: null,
+          severity: null, affectedCount: null, fromStatus: null, toStatus: 'pending', flags: [], note: 'a',
+          actor: 'operator', createdAt: '2026-10-01T00:00:00.000Z',
+        },
+      ],
+    })
+    await repo.saveIssueChanges({
+      issues: [],
+      events: [
+        {
+          id: 'iev_dec_1', issueId: 'iss_1', runId: null, kind: 'decision', checked: null, hit: null,
+          severity: null, affectedCount: null, fromStatus: null, toStatus: 'pending', flags: [], note: 'b',
+          actor: 'operator', createdAt: '2026-10-01T00:00:00.000Z',
+        },
+      ],
+    })
+    const events = await db.select().from(issueEvents)
+    expect(events).toHaveLength(1)
+    expect(events[0].note).toBe('a')
   })
 })

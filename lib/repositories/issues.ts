@@ -29,12 +29,15 @@ export async function saveIssueChanges(changes: { issues: IssueRecord[]; events:
   if (!changes.issues.length && !changes.events.length) return
   await db.transaction(async (tx) => {
     for (const row of changes.issues) {
-      const { id: _id, ...rest } = row
-      await tx.insert(issues).values(row).onConflictDoUpdate({ target: issues.id, set: rest })
+      await tx.insert(issues).values(row).onConflictDoUpdate({ target: issues.id, set: row })
     }
     for (const row of changes.events) {
-      const { id: _id, ...rest } = row
-      await tx.insert(issueEvents).values(row).onConflictDoUpdate({ target: issueEvents.id, set: rest })
+      // spec §6.2：issue_events 追加语义；仅 'observed' 事件幂等覆盖，其他 kind 只插不更新。
+      if (row.kind === 'observed') {
+        await tx.insert(issueEvents).values(row).onConflictDoUpdate({ target: issueEvents.id, set: row })
+      } else {
+        await tx.insert(issueEvents).values(row).onConflictDoNothing({ target: issueEvents.id })
+      }
     }
   })
 }
@@ -66,11 +69,12 @@ export const getRunCheckLedger = (runId: string) => db.select().from(checkResult
 
 // 复查提醒（spec §5.4-2）：最早一条「已执行，待复查」的执行时间 + 28 天；没有则清空。
 export async function recomputeRetestDue(projectId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ earliest: sql<string | null>`min(${issues.executedAt})` })
+  const rows = await db
+    .select({ executedAt: issues.executedAt })
     .from(issues)
     .where(and(eq(issues.projectId, projectId), eq(issues.status, 'executed_awaiting')))
-  const due = row?.earliest ? new Date(Date.parse(row.earliest) + RETEST_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString() : null
+  const times = rows.map((r) => Date.parse(r.executedAt ?? 'invalid')).filter((t) => Number.isFinite(t))
+  const due = times.length ? new Date(Math.min(...times) + RETEST_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString() : null
   await db.update(projects).set({ nextRetestDueAt: due }).where(eq(projects.id, projectId))
   return due
 }
