@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildReport, type DataSourceCoverage, type ReportFinding, type ReportRecommendation, type ReportScope } from './report'
+import { buildReport, buildReportContractInput, type DataSourceCoverage, type ReportFinding, type ReportRecommendation, type ReportScope } from './report'
 
 const now = new Date('2026-07-06T00:00:00Z')
 
@@ -197,5 +197,30 @@ describe('buildReport report contract', () => {
     expect(model.reportContract?.level).toBe('R1')
     expect(model.reportContract?.gaps).toEqual(['crawl', 'ai_probe'])
     expect(model.reportContract?.exclusions).toEqual(['crawl:partial', 'ai_probe:not_attempted'])
+  })
+})
+
+// 复发陷阱「域名带协议」：生产里 project.domain 是 normalizeDomain 输出的完整 URL（https://host/）。
+describe('buildReportContractInput 诊断范围入口地址', () => {
+  const context = (domain: string, evidence: { type: string; source?: string; payload: unknown }[] = []) => ({
+    domain,
+    capturedAt: '2026-07-06T00:00:00Z',
+    evidence,
+    dataSources: [],
+    aiValidSamples: 0,
+    confirmedCompetitors: 0,
+  })
+
+  it('没有 site_audit 证据且 domain 为完整 URL 时，入口地址原样使用，不重复拼协议', () => {
+    expect(buildReportContractInput(context('https://example.com/')).scope?.entryUrl).toBe('https://example.com/')
+  })
+
+  it('没有 site_audit 证据且 domain 为裸域名（旧数据）时，补 https://', () => {
+    expect(buildReportContractInput(context('example.com')).scope?.entryUrl).toBe('https://example.com')
+  })
+
+  it('有 site_audit 证据时优先用其 source', () => {
+    const evidence = [{ type: 'site_audit', source: 'https://example.com/start', payload: {} }]
+    expect(buildReportContractInput(context('https://example.com/', evidence)).scope?.entryUrl).toBe('https://example.com/start')
   })
 })

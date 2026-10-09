@@ -376,7 +376,8 @@ export function buildReportContractInput(context: ReportContractContext): Pick<B
   return {
     scope: {
       domain: context.domain,
-      entryUrl: audit?.source || `https://${context.domain}`,
+      // domain 是 normalizeDomain 输出的完整 URL，也兼容旧数据的裸域名；不要就地无条件拼 https://（陷阱：域名带协议）。
+      entryUrl: audit?.source || (/^https?:\/\//i.test(context.domain) ? context.domain : `https://${context.domain}`),
       targetMarket: context.targetMarket || undefined,
       language: context.language || undefined,
       capturedAt: context.capturedAt,
