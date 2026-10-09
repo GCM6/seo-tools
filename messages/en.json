@@ -628,7 +628,7 @@
       "retestProgress": "{done}/{total} executed",
       "retestPending": "Mark every action executed to start the same-protocol retest (4–6 weeks).",
       "retestReady": "Every action is executed — you can schedule the same-protocol retest.",
-      "retestPlanNoDue": "No retest scheduled yet (no recommendation has been marked executed)",
+      "retestPlanNoDue": "Nothing is currently awaiting recheck.",
       "retestPlanPolicyNote": "Rule: the retest date is 28 days after the earliest execution still awaiting recheck; it is recalculated when an execution is undone or rechecked.",
       "retestPlanManualNote": "Manually adjusting the due date isn't supported yet: the project update API doesn't expose this field, and extending it is outside this change's scope.",
       "factsGateTitle": "Brand fact gate",

@@ -172,6 +172,8 @@ describe('renderIssueReportDocument', () => {
     for (const phrase of ['「待执行」= 旧界面里接受过的建议', '「历史回填」', '那次体检的完成时间', '「没查（历史数据没有台账）」', '「受影响数未记录」', '日期为 UTC']) {
       expect(legend).toContain(phrase)
     }
+    // 回填出的「执行」行日期取旧建议标记已执行的时间，不是体检完成时间：说明里两种日期都要讲清（终审 F5）。
+    expect(legend).toContain('执行的日期是旧建议被标记为已执行的时间')
     expect(md).toContain('## metadocu.com')
     expect(md).toContain('## empty.com：尚无问题记录')
     expect(md).not.toContain('所有项目都还没有问题记录')

@@ -64,7 +64,8 @@ describe('RetestPlanCard', () => {
     })
     render(element)
 
-    expect(screen.getByText('尚未安排复测（暂无标记已执行的建议）')).toBeInTheDocument()
+    // 复查之后到期日会清空，但执行记录还在：只能说「目前没有待复查的」，不能说「没有已执行的」（终审 F5）。
+    expect(screen.getByText('目前没有待复查的已执行问题。')).toBeInTheDocument()
   })
 
   it('点击发起复测按钮会 POST 到 /api/runs/{runId}/retest（复用 RetestButton 既有契约）', async () => {

@@ -628,7 +628,7 @@
       "retestProgress": "已执行 {done}/{total}",
       "retestPending": "全部标记已执行后可发起同协议回测（4–6 周）。",
       "retestReady": "全部动作已执行，可安排同协议回测。",
-      "retestPlanNoDue": "尚未安排复测（暂无标记已执行的建议）",
+      "retestPlanNoDue": "目前没有待复查的已执行问题。",
       "retestPlanPolicyNote": "口径说明：复测日期取「已执行，待复查」的问题里最早一次执行后的 28 天；撤销执行或体检复查后会重新计算。",
       "retestPlanManualNote": "手动调整到期日期暂不支持：项目更新接口尚未开放该字段，需要扩展项目 API 才能支持（超出本次改动范围）。",
       "factsGateTitle": "品牌事实闸门",
