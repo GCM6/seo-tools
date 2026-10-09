@@ -38,3 +38,8 @@ export function isValidKeyword(text: string): boolean {
   const t = text.trim()
   return t.length >= 2 && t.length <= 80 && CATEGORY_CHARS.test(t)
 }
+
+// 问题闸门（spec 2026-10-09 §6.4）：只有已纳入的问题能生成执行提示词。子项目 2 起提示词路由改用它。
+export function assertIssueIncluded(decision: string): void {
+  if (decision !== 'included') throw new Error(`issue decision "${decision}" cannot generate prompt (need included)`)
+}

@@ -169,4 +169,24 @@ describe('问题仓储', () => {
     expect(events).toHaveLength(1)
     expect(events[0].note).toBe('a')
   })
+
+  it('runIssueAction：写问题与变化记录并重算复查提醒；不存在 → not_found', async () => {
+    await repo.saveIssueChanges({ issues: [issue({ decision: 'included', status: 'to_execute', flags: [] })], events: [] })
+    const next = await repo.runIssueAction('iss_1', { kind: 'execute', note: '改好了' })
+    expect(next.status).toBe('executed_awaiting')
+    const events = await db.select().from(issueEvents)
+    expect(events.map((e) => e.kind)).toEqual(['execution'])
+    expect((await repo.getProject('proj_1'))?.nextRetestDueAt).not.toBeNull()
+    await expect(repo.runIssueAction('iss_nope', { kind: 'include' })).rejects.toThrow('not_found')
+  })
+
+  it('includeRemaining：只纳入状态为待处理的问题，返回数量', async () => {
+    await repo.saveIssueChanges({
+      issues: [issue(), issue({ id: 'iss_2', fingerprint: 'fp_2' }), issue({ id: 'iss_3', fingerprint: 'fp_3', decision: 'false_positive', decisionReason: 'x', status: 'excluded' })],
+      events: [],
+    })
+    expect(await repo.includeRemaining('proj_1')).toBe(2)
+    const byId = Object.fromEntries((await repo.getProjectIssues('proj_1')).map((i) => [i.id, i.decision]))
+    expect(byId).toEqual({ iss_1: 'included', iss_2: 'included', iss_3: 'false_positive' })
+  })
 })

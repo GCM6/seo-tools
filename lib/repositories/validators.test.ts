@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { assertCanGeneratePrompt, assertFindingClaimEvidence, assertInputFactsVerified } from '@/lib/repositories/validators'
+import { assertCanGeneratePrompt, assertFindingClaimEvidence, assertInputFactsVerified, assertIssueIncluded } from '@/lib/repositories/validators'
 
 describe('§6.2 invariants', () => {
   it('non accepted/edited recommendation cannot generate prompt', () => {
@@ -40,5 +40,12 @@ describe('品类/关键词校验（SP-A §3.2）', () => {
     expect(isValidKeyword('remove pdf metadata')).toBe(true)
     expect(isValidKeyword('a')).toBe(false)
     expect(isValidKeyword('移除元数据')).toBe(false)
+  })
+})
+
+describe('assertIssueIncluded', () => {
+  it('只有已纳入的问题能生成执行提示词', () => {
+    expect(() => assertIssueIncluded('included')).not.toThrow()
+    for (const d of ['pending', 'deferred', 'false_positive']) expect(() => assertIssueIncluded(d)).toThrow()
   })
 })

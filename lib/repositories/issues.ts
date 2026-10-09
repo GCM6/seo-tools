@@ -2,7 +2,8 @@ import { and, eq, sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { checkResults, issueEvents, issues, projects } from '@/db/schema'
 import type { LedgerRow } from '@/lib/diagnosis/check-ledger'
-import type { IssueEventDraft, IssueRecord, IssueStatus, RetiredReason } from '@/lib/issues/types'
+import type { IssueEventDraft, IssueRecord, IssueStatus, RetiredReason, HumanActor } from '@/lib/issues/types'
+import { applyIssueAction, type IssueAction } from '@/lib/issues/actions'
 
 // 问题台账读写（spec 2026-10-09 §6）。经 lib/repositories/index.ts 的 export * 暴露。
 
@@ -150,4 +151,27 @@ export async function getProjectIssueTodos(projectId: string): Promise<IssueTodo
     pendingWorse: pending.filter((r) => r.flags.includes('worse')).length,
     notEffective: rows.filter((r) => r.status === 'not_effective').length,
   }
+}
+
+// 单个问题的人工动作：写问题 + 变化记录（同一事务），再重算复查提醒。
+export async function runIssueAction(issueId: string, action: IssueAction, actor: HumanActor = 'operator', note?: string): Promise<IssueRecord> {
+  const issue = await getIssue(issueId)
+  if (!issue) throw new Error('not_found')
+  const { issue: next, event } = applyIssueAction(issue, action, { actor, now: new Date().toISOString(), eventId: `iev_${crypto.randomUUID()}`, note })
+  await saveIssueChanges({ issues: [next], events: [event] })
+  await recomputeRetestDue(issue.projectId)
+  return next
+}
+
+// 「剩下的全部纳入」（spec D5）：只处理状态为待处理的问题。
+export async function includeRemaining(projectId: string, actor: HumanActor = 'operator'): Promise<number> {
+  const pending = (await getProjectIssues(projectId)).filter((i) => i.status === 'pending')
+  if (!pending.length) return 0
+  const now = new Date().toISOString()
+  const changes = pending.map((i) =>
+    applyIssueAction(i, { kind: 'include' }, { actor, now, eventId: `iev_${crypto.randomUUID()}`, note: '剩下的全部纳入' }),
+  )
+  await saveIssueChanges({ issues: changes.map((c) => c.issue), events: changes.map((c) => c.event) })
+  await recomputeRetestDue(projectId)
+  return changes.length
 }
