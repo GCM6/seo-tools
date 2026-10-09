@@ -2,8 +2,6 @@ import { describe, it, expect, vi } from 'vitest'
 import { NonRetriableError } from 'inngest'
 import { generateFindingsHandler } from './generate-findings'
 import type { RuleHit } from '@/lib/diagnosis/types'
-import { aggregateRuleStats } from '@/lib/diagnosis/rule-stats'
-import { aggregateAioExposure } from '@/lib/serp/aio-summary'
 
 function makeHit(overrides: Partial<RuleHit> = {}): RuleHit {
   return {
@@ -21,10 +19,6 @@ function makeHit(overrides: Partial<RuleHit> = {}): RuleHit {
   }
 }
 
-// 回测开始时间；基线建议的 appliedAt 早于它才算本次回测的归因对象。
-const RETEST_STARTED_AT = '2026-02-01T00:00:00.000Z'
-const APPLIED_BEFORE = '2026-01-15T00:00:00.000Z'
-
 function makeDeps(overrides: Record<string, unknown> = {}) {
   return {
     getRunEvidence: vi.fn(async () => [
@@ -35,30 +29,32 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     })),
     getRunPrompts: vi.fn(async () => [{ id: 'p_1', text: 'best tool?', priority: 0 }]),
     getRunProbeResults: vi.fn(async () => []),
-    // GEO 新口径回测扩展：默认无 AIO 采集（旧 run / 未配置 DataForSEO 的常见状态）——
-    // 空结果 + 全零 summary，配合 retest-metrics.ts 的「measuredQueries===0 → 无数据」判定。
-    getRunSerpAioResults: vi.fn(async () => []),
-    aggregateAioExposure: vi.fn(() => ({
-      totalQueries: 0, measuredQueries: 0, aioPresentCount: 0, ownedCitedCount: 0, citedDomains: [], perQuery: [],
-    })),
     createFindings: vi.fn(async (rows: unknown[]) => rows),
     createRecommendations: vi.fn(async (rows: unknown[]) => rows),
     markRunStatus: vi.fn(async () => undefined),
-    // 回测收尾依赖：默认无 baseline → 不触达；有 baselineRunId 的用例按需覆盖。
-    getFindings: vi.fn(async () => []),
-    getRecommendations: vi.fn(async () => []),
-    createRetestSnapshots: vi.fn(async (rows: unknown[]) => rows),
-    setRecommendationOutcome: vi.fn(async () => undefined),
-    // 回测 run 本身：startedAt 用来判断基线建议是否在回测开始前已执行。
-    getRun: vi.fn(async (rid: string) => ({ id: rid, runType: 'retest', startedAt: RETEST_STARTED_AT })),
+    // 问题台账（spec 2026-10-09 §5.1）：默认只有 crawl 采集成功、无既有问题、本次体检未对账过。
+    getRunDataSourceStatuses: vi.fn(async () => [{ sourceKey: 'crawl', status: 'collected', capturedEvidenceCount: 21 }]),
+    getRun: vi.fn(async (id: string) => ({ id, startedAt: '2026-11-01T00:00:00.000Z', finishedAt: null, protocolHash: 'P1' })),
+    saveCheckLedger: vi.fn(async () => undefined),
+    getProjectIssues: vi.fn(async () => []),
+    saveIssueChanges: vi.fn(async () => undefined),
+    hasObservedEvents: vi.fn(async () => false),
+    recomputeRetestDue: vi.fn(async () => null),
     // 已确认竞品与关键词缺口（spec §5.4-1）：默认无已确认竞品 → 不算缺口、不落库。
     getConfirmedCompetitors: vi.fn(async () => []),
     upsertKeyword: vi.fn(async () => [{ id: 'kw_1' }]),
     createKeywordGaps: vi.fn(async (rows: unknown[]) => rows),
     computeKeywordGaps: vi.fn(() => []),
-    // 引擎/上下文构造注入 fake：evaluateRules 直接返回预置 hits，忽略 ctx。
+    // 引擎/上下文构造注入 fake：evaluateRulesWithLedger 直接返回预置 hits + 台账，忽略 ctx。
     buildRuleContext: vi.fn(() => ({}) as never),
-    evaluateRules: vi.fn(() => [makeHit(), makeHit({ ruleId: 'C01', side: 'seo', claimType: 'inferred', title: '标题缺失', evidenceRefs: ['ev_1'] })]),
+    evaluateRulesWithLedger: vi.fn(() => ({
+      hits: [makeHit(), makeHit({ ruleId: 'C01', side: 'seo', claimType: 'inferred', title: '标题缺失', evidenceRefs: ['ev_1'], fingerprint: 'fp_2' })],
+      ledger: [
+        { ruleId: 'T01', ruleVersion: 1, outcome: 'hit', reasonKind: null, reason: null, hitCount: 1 },
+        { ruleId: 'C01', ruleVersion: 1, outcome: 'hit', reasonKind: null, reason: null, hitCount: 1 },
+        { ruleId: 'K01', ruleVersion: 1, outcome: 'not_checked', reasonKind: 'data_gap', reason: '缺数据源：gsc', hitCount: 0 },
+      ],
+    })),
     buildIntentPageFitMap: vi.fn(() => ({ rows: [], overbroadPages: [] })),
     buildIntentPageFitArtifactPayload: vi.fn(() => ({
       kind: 'intent_page_fit_map',
@@ -177,7 +173,7 @@ describe('generateFindingsHandler', () => {
   })
 
   it('无命中时不落库任何 finding/recommendation，仍收尾 reviewing', async () => {
-    const deps = makeDeps({ evaluateRules: vi.fn(() => []) })
+    const deps = makeDeps({ evaluateRulesWithLedger: vi.fn(() => ({ hits: [], ledger: [] })) })
     const { args, published } = makeArgs()
 
     const result = await generateFindingsHandler(args, asDeps(deps))
@@ -250,311 +246,89 @@ describe('generateFindingsHandler', () => {
     const probeInput = (deps.aggregateProbeSummary.mock.calls[0] as unknown[])[0] as Record<string, unknown>
     expect(probeInput.domain).toBe('example.com')
   })
+})
 
-  // —— 回测收尾（spec §5.1-3）——
-  const baselineFindings = [
-    { id: 'f_b1', runId: 'run_base', fingerprint: 'fp_1', severity: 'high', pillar: 'P3', title: 'A', side: 'seo', claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'], status: 'open', dismissedAt: null, dismissReason: null, metricTarget: { keywords: ['widget'] } },
-    { id: 'f_b2', runId: 'run_base', fingerprint: 'fp_2', severity: 'high', pillar: 'P5', title: 'B', side: 'geo', claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'], status: 'open', dismissedAt: null, dismissReason: null, metricTarget: null },
-  ]
-  const retestFindings = [
-    { id: 'f_r2', runId: 'run_1', fingerprint: 'fp_2', severity: 'high', pillar: 'P5', title: 'B', side: 'geo', claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'], status: 'open', dismissedAt: null, dismissReason: null, metricTarget: null },
-    { id: 'f_r3', runId: 'run_1', fingerprint: 'fp_3', severity: 'mid', pillar: 'P2', title: 'C', side: 'seo', claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'], status: 'open', dismissedAt: null, dismissReason: null, metricTarget: null },
-  ]
-  // rec_b1(P3/gsc impressions)：目标 widget，baseline 100→retest 300 → effective（真标量压过 fp_1 四态 resolved 也仍 effective）
-  // rec_b2(P5/probe brand_presence)：fp_2 persistent（四态=ineffective），但 presence 2/10→5/10 上升 → effective（真标量翻盘）
-  const baseRecs = [
-    { id: 'rec_b1', runId: 'run_base', findingId: 'f_b1', status: 'accepted', appliedAt: APPLIED_BEFORE, validationSpec: { metricSource: 'gsc', metric: 'impressions', scope: 'keywords', direction: 'increase', windowDays: 28 } },
-    { id: 'rec_b2', runId: 'run_base', findingId: 'f_b2', status: 'accepted', appliedAt: APPLIED_BEFORE, validationSpec: { metricSource: 'probe', metric: 'brand_presence', scope: 'site', direction: 'increase', windowDays: 28 } },
-  ]
-
-  const gscEv = (id: string, impressions: number) => ({
-    id, type: 'gsc', claimLevel: 'L4', source: 'gsc', sitePageId: null, rawText: '',
-    payload: { dimension: 'query', rows: [{ keys: ['widget'], clicks: 1, impressions, ctr: 0.01, position: 6 }] },
+describe('问题台账接入（spec 2026-10-09 §5.1）', () => {
+  it('按本次数据源状态求值：入口页恒可用，collected 的数据源可用', async () => {
+    const deps = makeDeps()
+    await generateFindingsHandler(makeArgs().args, asDeps(deps))
+    const available = (deps.evaluateRulesWithLedger.mock.calls[0] as unknown[])[2] as Set<string>
+    expect([...available].sort()).toEqual(['crawl', 'entry'])
   })
 
-  // overrides：按需覆盖（如缺陷1 守卫用例要改 getRunPrompts 的 branded 标注），
-  // 放在展开末尾，调用方传入的覆盖既有 retest 默认 fixture。
-  function makeRetestDeps(overrides: Record<string, unknown> = {}) {
-    return makeDeps({
-      getFindings: vi.fn(async (rid: string) => (rid === 'run_base' ? baselineFindings : retestFindings)),
-      getRecommendations: vi.fn(async (rid: string) => (rid === 'run_base' ? baseRecs : [])),
-      createRetestSnapshots: vi.fn(async (rows: unknown[]) => rows),
-      setRecommendationOutcome: vi.fn(async () => undefined),
-      // 两轮各自证据（GSC impressions 差异）+ 探针结果（presence 差异）
-      getRunEvidence: vi.fn(async (rid: string) => [rid === 'run_base' ? gscEv('g_base', 100) : gscEv('g_retest', 300)]),
-      getRunProbeResults: vi.fn(async (rid: string) =>
-        (rid === 'run_base' ? [1, 2] : [1, 2, 3, 4, 5]).map((n) => ({
-          promptId: `p${n}`, brandPresent: true, competitorsMentioned: [], evidenceId: `pe${n}`, provider: 'openai', sentiment: 'neutral',
-        })),
-      ),
-      // presence = brandPresent 数 / 10（promptsTotal 固定 10）。D5：retest-metrics 的 brand_presence
-      // 已切到 unbranded.present/total，这里的 fixture 全部当作 unbranded 提问处理（与旧全集口径
-      // 在本用例里数值一致，只是字段搬了个家），故 unbranded 直接沿用同一组 present/total。
-      aggregateProbeSummary: vi.fn((input: { results: unknown[] }) => ({
-        promptsTotal: 10, promptsPresent: input.results.length, totalSamples: input.results.length,
-        perPrompt: [], sov: [], perEngine: [], sentiment: { positive: 0, neutral: 0, negative: 0, comparison: 0, total: 0 }, sampleEvidenceId: null,
-        unbranded: { present: input.results.length, total: 10, wilsonLow: 0 },
-        branded: { perEngine: [] }, citationRate: 0,
-      })),
-      ...overrides,
-    })
-  }
-
-  it('baselineRunId 存在时算 finding 四态 delta 并落 retest_snapshots', async () => {
-    const deps = makeRetestDeps()
-    const { args } = makeArgs({ baselineRunId: 'run_base' })
-
-    await generateFindingsHandler(args, asDeps(deps))
-
-    // 两轮 findings + baseline 建议均被读取
-    expect(deps.getFindings).toHaveBeenCalledWith('run_base')
-    expect(deps.getFindings).toHaveBeenCalledWith('run_1')
-    expect(deps.getRecommendations).toHaveBeenCalledWith('run_base')
-
-    // 快照四态行齐全：fp_1 仅 baseline → resolved；fp_2 两轮同严重度 → persistent；fp_3 仅 retest → new；无 regressed
-    const snapRows = deps.createRetestSnapshots.mock.calls[0][0] as Array<Record<string, string>>
-    const byMetric = Object.fromEntries(snapRows.map((r) => [r.metricName, r]))
-    expect(byMetric['findings.resolved'].retestValue).toBe('1')
-    expect(byMetric['findings.persistent'].retestValue).toBe('1')
-    expect(byMetric['findings.new'].retestValue).toBe('1')
-    expect(byMetric['findings.regressed'].retestValue).toBe('0')
-    // 健康分 delta 行（两轮 overall 均可算）
-    expect(byMetric['health.overall']).toBeDefined()
-    // 插入行携带项目/回测锚点 + 前缀 id
-    snapRows.forEach((r) => {
-      expect(r.projectId).toBe('proj_1')
-      expect(r.baselineRunId).toBe('run_base')
-      expect(r.retestRunId).toBe('run_1')
-      expect(String(r.id)).toMatch(/^rts_/)
-    })
+  it('台账整份落库', async () => {
+    const deps = makeDeps()
+    await generateFindingsHandler(makeArgs().args, asDeps(deps))
+    expect(deps.saveCheckLedger).toHaveBeenCalledWith('run_1', expect.arrayContaining([expect.objectContaining({ ruleId: 'K01', outcome: 'not_checked' })]))
   })
 
-  it('无标量指标时 baseline 建议 outcome 按 fingerprint→四态兜底写入', async () => {
-    // 无 validationSpec + 无 probe/gsc 证据 → buildMetricPair 无从构建，回退纯四态。
-    const deps = makeDeps({
-      getFindings: vi.fn(async (rid: string) => (rid === 'run_base' ? baselineFindings : retestFindings)),
-      getRecommendations: vi.fn(async (rid: string) =>
-        rid === 'run_base'
-          ? [
-              { id: 'rec_b1', runId: 'run_base', findingId: 'f_b1', status: 'accepted', appliedAt: APPLIED_BEFORE, validationSpec: null },
-              { id: 'rec_b2', runId: 'run_base', findingId: 'f_b2', status: 'edited', appliedAt: APPLIED_BEFORE, validationSpec: null },
-            ]
-          : [],
-      ),
-      setRecommendationOutcome: vi.fn(async () => undefined),
-      createRetestSnapshots: vi.fn(async (r: unknown[]) => r),
-    })
-    const { args } = makeArgs({ baselineRunId: 'run_base' })
-
-    await generateFindingsHandler(args, asDeps(deps))
-
-    // rec_b1→f_b1→fp_1 resolved → effective；rec_b2→f_b2→fp_2 persistent → ineffective
-    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b1', 'effective')
-    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b2', 'ineffective')
-    expect(deps.setRecommendationOutcome).toHaveBeenCalledTimes(2)
+  it('对账：两条命中各建一个待处理问题，并重算复查提醒；在标记完成之前', async () => {
+    const deps = makeDeps()
+    await generateFindingsHandler(makeArgs().args, asDeps(deps))
+    const saved = (deps.saveIssueChanges.mock.calls[0] as unknown[])[0] as { issues: { fingerprint: string; status: string; firstSeenRunId: string; lastCheckedAt: string; protocolHash: string }[]; events: unknown[] }
+    expect(saved.issues.map((i) => i.fingerprint).sort()).toEqual(['fp_1', 'fp_2'])
+    expect(saved.issues.every((i) => i.status === 'pending' && i.firstSeenRunId === 'run_1')).toBe(true)
+    expect(saved.issues[0].lastCheckedAt).toBe('2026-11-01T00:00:00.000Z')
+    expect(saved.issues[0].protocolHash).toBe('P1')
+    expect(saved.events).toHaveLength(2)
+    expect(deps.recomputeRetestDue).toHaveBeenCalledWith('proj_1')
+    const reviewingCall = deps.markRunStatus.mock.calls.findIndex((c: unknown[]) => c[1] === 'reviewing')
+    expect(reviewingCall).toBeGreaterThanOrEqual(0)
+    const reviewingOrder = deps.markRunStatus.mock.invocationCallOrder[reviewingCall]
+    // 台账先落库，再对账，再重算复查提醒，最后才标记完成。
+    expect(deps.saveCheckLedger.mock.invocationCallOrder[0]).toBeLessThan(deps.saveIssueChanges.mock.invocationCallOrder[0])
+    expect(deps.saveIssueChanges.mock.invocationCallOrder[0]).toBeLessThan(deps.recomputeRetestDue.mock.invocationCallOrder[0])
+    expect(deps.recomputeRetestDue.mock.invocationCallOrder[0]).toBeLessThan(reviewingOrder)
   })
 
-  it('P3 建议按 finding 关键词 GSC impressions 上升 → effective（真标量压过四态）', async () => {
-    const deps = makeRetestDeps()
-    const { args } = makeArgs({ baselineRunId: 'run_base' })
-    await generateFindingsHandler(args, asDeps(deps))
-    // rec_b1 目标 widget：100→300 增 → effective
-    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b1', 'effective')
+  it('本次体检已对账过（步骤提交后重放）→ 不再写问题，但仍重算复查提醒', async () => {
+    const deps = makeDeps({ hasObservedEvents: vi.fn(async () => true) })
+    await generateFindingsHandler(makeArgs().args, asDeps(deps))
+    expect(deps.saveIssueChanges).not.toHaveBeenCalled()
+    // 重算是独立一步，不被「已对账」守卫跳过：对账提交后重算失败重试时，复查提醒不能停在旧值。
+    expect(deps.recomputeRetestDue).toHaveBeenCalledWith('proj_1')
   })
 
-  it('P3 建议：目标 finding 两轮 persistent(四态=ineffective) 但目标词 impressions 上升 → effective（锁死 GSC 整链）', async () => {
-    // 分叉用例（独立局部 fixtures，不碰共享 baselineFindings/retestFindings/baseRecs）：
-    // 目标 finding 的 fingerprint 两轮都出现 → 四态=persistent → 兜底会给 ineffective；
-    // 但该 finding 的目标词 gizmo 在 GSC 两轮 impressions 100→300 上升。
-    // 断言 outcome=effective——此结果【只可能】来自 GSC 真标量（四态给的是 ineffective），
-    // 故本用例真正锁死 evidence→parseGscKeywordMetrics→buildMetricPair(gsc)→computeOutcome 整链：
-    // 一旦 GSC wiring 静默失效（buildMetricPair 误返 null），outcome 会回退 ineffective，本断言即失败。
-    const targetFinding = (id: string, runId: string) => ({
-      id, runId, fingerprint: 'fp_gsc_lock', severity: 'high', pillar: 'P3', title: 'G', side: 'seo',
-      claimType: 'inferred', confidence: '推断', description: '', evidenceRefs: ['ev_1'],
-      status: 'open', dismissedAt: null, dismissReason: null, metricTarget: { keywords: ['gizmo'] },
-    })
-    const gizmoEv = (id: string, impressions: number) => ({
-      id, type: 'gsc', claimLevel: 'L4', source: 'gsc', sitePageId: null, rawText: '',
-      payload: { dimension: 'query', rows: [{ keys: ['gizmo'], clicks: 1, impressions, ctr: 0.01, position: 6 }] },
-    })
-    const deps = makeDeps({
-      getFindings: vi.fn(async (rid: string) =>
-        rid === 'run_base' ? [targetFinding('f_gb', 'run_base')] : [targetFinding('f_gr', 'run_1')],
-      ),
-      getRecommendations: vi.fn(async (rid: string) =>
-        rid === 'run_base'
-          ? [{ id: 'rec_gsc', runId: 'run_base', findingId: 'f_gb', status: 'accepted', appliedAt: APPLIED_BEFORE, validationSpec: { metricSource: 'gsc', metric: 'impressions', scope: 'keywords', direction: 'increase', windowDays: 28 } }]
-          : [],
-      ),
-      getRunEvidence: vi.fn(async (rid: string) => [rid === 'run_base' ? gizmoEv('g_b', 100) : gizmoEv('g_r', 300)]),
-      setRecommendationOutcome: vi.fn(async () => undefined),
-      createRetestSnapshots: vi.fn(async (rows: unknown[]) => rows),
-    })
-    const { args } = makeArgs({ baselineRunId: 'run_base' })
-
-    await generateFindingsHandler(args, asDeps(deps))
-
-    // effective 只能来自 GSC 标量；四态 persistent 兜底会给 ineffective。
-    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_gsc', 'effective')
+  it('对账失败 → 抛出（交给 Inngest 重试与 onFailure），不标记完成', async () => {
+    const deps = makeDeps({ saveIssueChanges: vi.fn(async () => { throw new Error('db locked') }) })
+    await expect(generateFindingsHandler(makeArgs().args, asDeps(deps))).rejects.toThrow('db locked')
+    expect(deps.markRunStatus.mock.calls.some((c: unknown[]) => c[1] === 'reviewing')).toBe(false)
   })
 
-  it('P5 建议 probe brand_presence 上升 → effective（翻盘 fp_2 persistent 的四态 ineffective）', async () => {
-    const deps = makeRetestDeps()
-    const { args } = makeArgs({ baselineRunId: 'run_base' })
-    await generateFindingsHandler(args, asDeps(deps))
-    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b2', 'effective')
-  })
-
-  it('基线全 branded=false + 回测有 branded=true → probe 口径不可比，rec_b2 outcome=unknown（不再被真标量翻盘为 effective）', async () => {
-    // 缺陷1 守卫延伸（retest-delta.ts computeOutcome 的 comparable 参数）：migration 0008 场景——
-    // 基线 run 的 prompts 全部 branded=false（未回填），回测 run 已正确标注 branded=true。
-    // checkUnbrandedComparability 命中信号 A → computeOutcome 对 probe 口径短路为 'unknown'，
-    // 不再让 presence 2/10→5/10 的表面「上升」翻盘成 effective（对照上面 P5 用例的可比场景）。
-    const deps = makeRetestDeps({
-      getRunPrompts: vi.fn(async (rid: string) =>
-        rid === 'run_base'
-          ? [{ id: 'p_1', text: 'best tool?', priority: 0, branded: false }]
-          : [{ id: 'p_1', text: 'best brand tool?', priority: 0, branded: true }],
-      ),
-    })
-    const { args } = makeArgs({ baselineRunId: 'run_base' })
-
-    await generateFindingsHandler(args, asDeps(deps))
-
-    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b2', 'unknown')
-    // rec_b1（GSC 口径，不受 probe 口径守卫影响）行为不回归，仍是 effective。
-    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b1', 'effective')
-
-    // 验证依据（非臆断）：F3 rule-stats 的 aggregateRuleStats 按 outcome !== 'unknown' 过滤
-    // （lib/diagnosis/rule-stats.ts:76），用真实实现复核——'unknown' 样本不进 ineffective 率统计，
-    // 不会被误判成 modify_threshold 信号。
-    const drafts = aggregateRuleStats(
-      [],
-      [{ id: 'rec_b2', ruleId: 'G_probe_rule', outcome: 'unknown', status: 'accepted', appliedAt: APPLIED_BEFORE }],
-      { nMin: 1 },
-    )
-    expect(drafts).toEqual([])
-  })
-
-  it('探针口径可比时（两轮 branded 计数、parserVersion 均一致）行为不回归：presence 上升仍给 effective', async () => {
-    // 对照用例：显式验证「可比」分支未被新守卫误伤——makeRetestDeps 默认两轮 getRunPrompts
-    // 都不带 branded 标注（均按 0 处理），comparable 恒为 true，与上面的 P5 既有用例同源但独立重申。
-    const deps = makeRetestDeps()
-    const { args } = makeArgs({ baselineRunId: 'run_base' })
-    await generateFindingsHandler(args, asDeps(deps))
-    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_b2', 'effective')
-  })
-
-  it('retest_snapshots 含 probe 品牌指标行', async () => {
-    const deps = makeRetestDeps()
-    const { args } = makeArgs({ baselineRunId: 'run_base' })
-    await generateFindingsHandler(args, asDeps(deps))
-    const snapRows = deps.createRetestSnapshots.mock.calls[0][0] as Array<Record<string, string>>
-    const names = snapRows.map((r) => r.metricName)
-    expect(names).toContain('probe.brand_presence')
-  })
-
-  // —— GEO 新口径回测扩展：citedDomains owned 占比 + AIO 实测曝光 ——
-  it('buildRunMetrics 现在给 aggregateProbeSummary 传 domain（此前遗漏，owned 判定永远算不出）', async () => {
-    const deps = makeRetestDeps()
-    const { args } = makeArgs({ baselineRunId: 'run_base' })
-    await generateFindingsHandler(args, asDeps(deps))
-    const calls = deps.aggregateProbeSummary.mock.calls as unknown as Array<[Record<string, unknown>]>
-    // run-rules 步骤那次调用历史上就不传 domain（未在本任务范围内修复）；
-    // 这里断言 buildRunMetrics 派生的调用里 domain 已补上（去协议、去 www 的裸 host）。
-    expect(calls.some((c) => c[0].domain === 'example.com')).toBe(true)
-  })
-
-  it('两轮都有 serp_aio 数据 → retest_snapshots 含 aio.present_rate / aio.owned_cited_rate 正常涨跌', async () => {
-    const deps = makeRetestDeps({
-      getRunSerpAioResults: vi.fn(async (rid: string) =>
-        rid === 'run_base'
-          ? [{ keyword: 'k1', aioPresent: true, targetDomainCited: false, citedUrls: ['https://other.com/a'] }]
-          : [
-              { keyword: 'k1', aioPresent: true, targetDomainCited: true, citedUrls: ['https://example.com/a'] },
-              { keyword: 'k2', aioPresent: true, targetDomainCited: true, citedUrls: ['https://example.com/b'] },
-            ],
-      ),
-      aggregateAioExposure,
-    })
-    const { args } = makeArgs({ baselineRunId: 'run_base' })
-    await generateFindingsHandler(args, asDeps(deps))
-    const snapRows = deps.createRetestSnapshots.mock.calls[0][0] as Array<Record<string, string>>
-    const byMetric = Object.fromEntries(snapRows.map((r) => [r.metricName, r]))
-    // baseline: 1/1 present(100%) 0/1 owned(0%)；retest: 2/2 present(100%) 2/2 owned(100%)
-    expect(byMetric['aio.present_rate']).toMatchObject({ baselineValue: '100%', retestValue: '100%', delta: '0' })
-    expect(byMetric['aio.owned_cited_rate']).toMatchObject({ baselineValue: '0%', retestValue: '100%', delta: '+100' })
-    expect(byMetric['aio.owned_cited_rate'].interpretation).toContain('上升')
-    expect(byMetric['aio.owned_cited_rate'].interpretation).toContain('实测')
-  })
-
-  it('baseline 无 serp_aio 数据、retest 有 → aio 指标只展示当前值，delta 标不可比', async () => {
-    const deps = makeRetestDeps({
-      // 默认 getRunSerpAioResults 返回 []（见 makeDeps），只覆盖 retest 侧有数据。
-      getRunSerpAioResults: vi.fn(async (rid: string) =>
-        rid === 'run_base' ? [] : [{ keyword: 'k1', aioPresent: true, targetDomainCited: true, citedUrls: ['https://example.com/a'] }],
-      ),
-      aggregateAioExposure,
-    })
-    const { args } = makeArgs({ baselineRunId: 'run_base' })
-    await generateFindingsHandler(args, asDeps(deps))
-    const snapRows = deps.createRetestSnapshots.mock.calls[0][0] as Array<Record<string, string>>
-    const byMetric = Object.fromEntries(snapRows.map((r) => [r.metricName, r]))
-    expect(byMetric['aio.present_rate']).toMatchObject({ baselineValue: '—', retestValue: '100%', delta: '—' })
-    expect(byMetric['aio.present_rate'].interpretation).not.toMatch(/上升|下降/)
-  })
-
-  it('两轮都无 serp_aio 数据（默认兼容态）→ 不产出 aio.* 行', async () => {
-    const deps = makeRetestDeps()
-    const { args } = makeArgs({ baselineRunId: 'run_base' })
-    await generateFindingsHandler(args, asDeps(deps))
-    const snapRows = deps.createRetestSnapshots.mock.calls[0][0] as Array<Record<string, string>>
-    const names = snapRows.map((r) => r.metricName)
-    expect(names).not.toContain('aio.present_rate')
-    expect(names).not.toContain('aio.owned_cited_rate')
-  })
-
-  // 2026-10-08 修复：只有「回测开始前已执行」的建议才判效果；没执行的不能被判「无效」，一律写 unknown，
-  // 同时覆盖掉旧回测留下的判定（每次回测都对基线全部建议重写一遍，口径一致）。
-  it('没执行的基线建议（待确认 / 已接受未执行 / 已否决 / 回测开始后才执行）outcome 一律写 unknown', async () => {
-    const recs = [
-      { id: 'rec_draft', runId: 'run_base', findingId: 'f_b2', status: 'draft', appliedAt: null, validationSpec: null },
-      { id: 'rec_not_applied', runId: 'run_base', findingId: 'f_b2', status: 'accepted', appliedAt: null, validationSpec: null },
-      { id: 'rec_rejected', runId: 'run_base', findingId: 'f_b2', status: 'rejected', appliedAt: APPLIED_BEFORE, validationSpec: null },
-      { id: 'rec_late', runId: 'run_base', findingId: 'f_b2', status: 'accepted', appliedAt: '2026-02-03T00:00:00.000Z', validationSpec: null },
-      { id: 'rec_done', runId: 'run_base', findingId: 'f_b2', status: 'accepted', appliedAt: APPLIED_BEFORE, validationSpec: null },
-    ]
-    const deps = makeDeps({
-      getFindings: vi.fn(async (rid: string) => (rid === 'run_base' ? baselineFindings : retestFindings)),
-      getRecommendations: vi.fn(async (rid: string) => (rid === 'run_base' ? recs : [])),
-      setRecommendationOutcome: vi.fn(async () => undefined),
-      createRetestSnapshots: vi.fn(async (r: unknown[]) => r),
-    })
-    const { args } = makeArgs({ baselineRunId: 'run_base' })
-
-    await generateFindingsHandler(args, asDeps(deps))
-
-    // f_b2 → fp_2 两轮都在（persistent）：只有回测前已执行的 rec_done 被判 ineffective。
-    expect(deps.getRun).toHaveBeenCalledWith('run_1')
-    expect(deps.setRecommendationOutcome).toHaveBeenCalledWith('rec_done', 'ineffective')
-    for (const id of ['rec_draft', 'rec_not_applied', 'rec_rejected', 'rec_late']) {
-      expect(deps.setRecommendationOutcome).toHaveBeenCalledWith(id, 'unknown')
+  it('协议相关规则的编号经 step 结果回放后仍生效：协议哈希变了且这次没命中 → 关闭为「检测口径变了」', async () => {
+    const existing = {
+      id: 'iss_g05', projectId: 'proj_1', fingerprint: 'fp_g05', ruleId: 'G05', ruleVersion: 1, pillar: 'P5', side: 'geo',
+      title: 'AI 提及率低', severity: 'mid', affectedCount: null, latestFindingId: null,
+      decision: 'pending', decisionReason: null, decidedAt: null, decidedBy: null,
+      executedAt: null, executedNote: null, executedBy: null,
+      detection: 'present', status: 'pending', flags: [], unverifiedReason: null, retiredReason: null,
+      protocolHash: 'P0', firstSeenRunId: 'run_0', lastSeenRunId: 'run_0', lastCheckedRunId: 'run_0',
+      lastCheckedAt: '2026-10-01T00:00:00.000Z', createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
     }
-    expect(deps.setRecommendationOutcome).toHaveBeenCalledTimes(5)
+    const deps = makeDeps({
+      allRules: async () => [{ id: 'G05', version: 1, pillar: 'P5', side: 'geo', severity: 'warning', claimType: 'inferred', requiredSources: ['ai_probe'], evaluate: () => null }],
+      evaluateRulesWithLedger: vi.fn(() => ({
+        hits: [],
+        ledger: [{ ruleId: 'G05', ruleVersion: 1, outcome: 'clear', reasonKind: null, reason: null, hitCount: 0 }],
+      })),
+      getProjectIssues: vi.fn(async () => [existing]),
+    })
+    await generateFindingsHandler(makeArgs().args, asDeps(deps))
+    const saved = (deps.saveIssueChanges.mock.calls[0] as unknown[])[0] as { issues: { id: string; status: string; retiredReason: string | null }[] }
+    expect(saved.issues).toHaveLength(1)
+    expect(saved.issues[0]).toMatchObject({ id: 'iss_g05', status: 'retired', retiredReason: 'protocol_changed' })
   })
 
-  it('无 baselineRunId 时不触发回测 delta（保持原行为）', async () => {
-    const deps = makeRetestDeps()
-    const { args } = makeArgs()
-
-    const result = await generateFindingsHandler(args, asDeps(deps))
-
+  it('带 baselineRunId 也不再读基线建议或写回测快照（旧回测对比已停用）', async () => {
+    // 旧回测依赖已不在 makeDeps 里：持有 mock 引用才能断言「没被调用」（类型上 deps 也不再有这些键）。
+    const getRecommendations = vi.fn(async () => [])
+    const createRetestSnapshots = vi.fn(async () => undefined)
+    const setRecommendationOutcome = vi.fn(async () => undefined)
+    const deps = makeDeps({ getRecommendations, createRetestSnapshots, setRecommendationOutcome })
+    const result = await generateFindingsHandler(makeArgs({ baselineRunId: 'run_base' }).args, asDeps(deps))
     expect(result).toEqual({ status: 'reviewing', findings: 2 })
-    expect(deps.createRetestSnapshots).not.toHaveBeenCalled()
-    expect(deps.setRecommendationOutcome).not.toHaveBeenCalled()
-    // 回测专用读取也不应发生
-    expect(deps.getFindings).not.toHaveBeenCalled()
-    expect(deps.getRecommendations).not.toHaveBeenCalled()
+    expect(getRecommendations).not.toHaveBeenCalled()
+    expect(createRetestSnapshots).not.toHaveBeenCalled()
+    expect(setRecommendationOutcome).not.toHaveBeenCalled()
   })
 })

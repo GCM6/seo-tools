@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { reconcileIssues, observedEventId, type ReconcileInput, type ObservedHit, type LedgerEntry } from './reconcile'
+import { reconcileIssues, observedEventId, toObservedHit, type ReconcileInput, type ObservedHit, type LedgerEntry } from './reconcile'
 import type { IssueRecord } from './types'
 
 const RUN = { id: 'run_2', startedAt: '2026-11-01T00:00:00.000Z', protocolHash: 'P1' }
@@ -275,5 +275,16 @@ describe('reconcileIssues', () => {
       expect(only(run({ issues: [byRule], ledger: [], missingLedger: 'history' })).i).toMatchObject({ flags: ['unverified'], unverifiedReason: 'history_no_ledger' })
       expect(only(run({ issues: [byRule], hits: [hit()], ledger: [led('C05c', 'hit')] })).i).toMatchObject({ retiredReason: null, flags: ['new'] })
     })
+  })
+})
+
+describe('toObservedHit', () => {
+  it('发现行 → 本次命中；受影响数取明细的 scale.affected', () => {
+    expect(toObservedHit({ id: 'find_1', fingerprint: 'fp_1', ruleId: 'C05c', title: 't', pillar: 'P2', side: 'seo', severity: 'mid', detail: { scale: { affected: 3 } } }))
+      .toEqual({ findingId: 'find_1', fingerprint: 'fp_1', ruleId: 'C05c', title: 't', pillar: 'P2', side: 'seo', severity: 'mid', affectedCount: 3 })
+  })
+  it('没有指纹或规则编号的旧发现 → null；没有明细 → 受影响数为 null', () => {
+    expect(toObservedHit({ id: 'f', fingerprint: null, ruleId: 'X', title: 't', pillar: null, side: 'seo', severity: 'mid' })).toBeNull()
+    expect(toObservedHit({ id: 'f', fingerprint: 'fp', ruleId: 'X', title: 't', pillar: null, side: 'seo', severity: 'ok', detail: null })?.affectedCount).toBeNull()
   })
 })

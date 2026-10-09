@@ -256,3 +256,27 @@ export function reconcileIssues(input: ReconcileInput): ReconcileOutput {
   }
   return out
 }
+
+// 发现行（buildFindingRows 产出或 DB 行）→ 本次命中。没有指纹 / 规则编号的旧发现没有跨次身份，跳过。
+export function toObservedHit(f: {
+  id: string
+  fingerprint: string | null
+  ruleId: string | null
+  title: string
+  pillar: string | null
+  side: string
+  severity: string
+  detail?: { scale: { affected: number | null } } | null
+}): ObservedHit | null {
+  if (!f.fingerprint || !f.ruleId) return null
+  return {
+    findingId: f.id,
+    fingerprint: f.fingerprint,
+    ruleId: f.ruleId,
+    title: f.title,
+    pillar: f.pillar,
+    side: f.side,
+    severity: f.severity as IssueSeverity,
+    affectedCount: f.detail?.scale.affected ?? null,
+  }
+}

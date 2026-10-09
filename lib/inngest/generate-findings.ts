@@ -2,16 +2,10 @@ import { NonRetriableError } from 'inngest'
 import { inngest } from './client'
 import { DIAGNOSE_REQUESTED_EVENT, type DiagnoseRequestedEventData } from './events'
 import { runProgressChannel, type RunProgressMessage } from './channels'
-import { buildRuleContext, parseGscKeywordMetrics } from '@/lib/diagnosis/context'
-import {
-  buildMetricPair,
-  buildProbeMetricRows,
-  buildAioMetricRows,
-  checkUnbrandedComparability,
-  type RunMetrics,
-  type MetricTarget,
-} from '@/lib/diagnosis/retest-metrics'
-import { evaluateRules } from '@/lib/diagnosis/engine'
+import { buildRuleContext } from '@/lib/diagnosis/context'
+import { evaluateRulesWithLedger, type LedgerRow } from '@/lib/diagnosis/check-ledger'
+import { availableSources, protocolBoundRuleIds } from '@/lib/diagnosis/sources'
+import { reconcileIssues, toObservedHit, type ObservedHit } from '@/lib/issues/reconcile'
 import { computeKeywordGaps, type KeywordGapResult } from '@/lib/diagnosis/keyword-gap'
 import { buildCompetitorInputs, persistKeywordGaps } from '@/lib/diagnosis/competitor-context'
 import {
@@ -22,37 +16,26 @@ import {
 import type { DiagnosisEvidenceRow, Rule, RuleHit } from '@/lib/diagnosis/types'
 import { buildFindingRows, buildRecommendationRows, type RecommendationDraft } from '@/lib/diagnosis/finding-rows'
 import { aggregateProbeSummary, normalizeProjectDomain } from '@/lib/probes/summary'
-import { aggregateAioExposure } from '@/lib/serp/aio-summary'
 import { brandFromDomain } from '@/lib/probes/prompt-set'
 import type { EvidenceLevel, EvidenceType } from '@/lib/types'
-import type { FindingSeverity, Pillar } from '@/lib/diagnosis/types'
-import type { ValidationSpec } from '@/lib/diagnosis/validation-spec'
-import {
-  computeFindingDelta,
-  summarizeFindingDelta,
-  computeOutcome,
-  isRetestAttributable,
-  buildRetestSnapshotRows,
-  type FindingRef,
-} from '@/lib/diagnosis/retest-delta'
-import { computeHealthScore } from '@/lib/diagnosis/health-score'
 import {
   getRunEvidence,
   getProject,
   getRunPrompts,
   getRunProbeResults,
-  getRunSerpAioResults,
   createFindings,
   createRecommendations,
   markRunStatus,
-  getFindings,
-  getRecommendations,
-  createRetestSnapshots,
-  setRecommendationOutcome,
   getRun,
+  getRunDataSourceStatuses,
   getConfirmedCompetitors,
   upsertKeyword,
   createKeywordGaps,
+  saveCheckLedger,
+  getProjectIssues,
+  saveIssueChanges,
+  hasObservedEvents,
+  recomputeRetestDue,
 } from '@/lib/repositories'
 
 interface DiagnoseStep {
@@ -76,26 +59,24 @@ interface GenerateFindingsDeps {
   createFindings: typeof createFindings
   createRecommendations: typeof createRecommendations
   markRunStatus: typeof markRunStatus
-  // 回测收尾（spec §5.1-3）：读两轮 findings/建议、写 delta 快照与建议 outcome。
-  getFindings: typeof getFindings
-  getRecommendations: typeof getRecommendations
-  createRetestSnapshots: typeof createRetestSnapshots
-  setRecommendationOutcome: typeof setRecommendationOutcome
-  // 回测 run 的开始时间：判断基线建议是否在回测开始前已执行（isRetestAttributable）。
+  // 问题台账（spec 2026-10-09 §5.1）：按本次数据源状态求值、写检查台账、对账问题表。
+  evaluateRulesWithLedger: typeof evaluateRulesWithLedger
+  getRunDataSourceStatuses: typeof getRunDataSourceStatuses
   getRun: typeof getRun
+  saveCheckLedger: typeof saveCheckLedger
+  getProjectIssues: typeof getProjectIssues
+  saveIssueChanges: typeof saveIssueChanges
+  hasObservedEvents: typeof hasObservedEvents
+  recomputeRetestDue: typeof recomputeRetestDue
   // 已确认竞品 + 关键词缺口（spec §5.4-1）：主诊断与竞品确认后的再评估共用 buildCompetitorInputs。
   getConfirmedCompetitors: typeof getConfirmedCompetitors
   upsertKeyword: typeof upsertKeyword
   createKeywordGaps: typeof createKeywordGaps
   computeKeywordGaps: typeof computeKeywordGaps
-  evaluateRules: typeof evaluateRules
   buildRuleContext: typeof buildRuleContext
   buildIntentPageFitMap: typeof buildIntentPageFitMap
   buildIntentPageFitArtifactPayload: typeof buildIntentPageFitArtifactPayload
   aggregateProbeSummary: typeof aggregateProbeSummary
-  // GEO 新口径回测扩展：AIO 实测曝光两轮对比所需（retest-metrics.ts buildAioMetricRows）。
-  getRunSerpAioResults: typeof getRunSerpAioResults
-  aggregateAioExposure: typeof aggregateAioExposure
   // 规则注册表与建议生成器由诊断模块（并行开发）提供。用 loader/wrapper 形态注入，
   // 使本文件在这两个模块尚未落地时也能被单测加载（fake 注入，永不走真实 import 路径）。
   allRules: () => Promise<Rule[]> | Rule[]
@@ -118,25 +99,25 @@ function defaultDeps(): GenerateFindingsDeps {
     getProject,
     getRunPrompts,
     getRunProbeResults,
-    getRunSerpAioResults,
     createFindings,
     createRecommendations,
     markRunStatus,
-    getFindings,
-    getRecommendations,
-    createRetestSnapshots,
-    setRecommendationOutcome,
     getRun,
+    getRunDataSourceStatuses,
     getConfirmedCompetitors,
     upsertKeyword,
     createKeywordGaps,
     computeKeywordGaps,
-    evaluateRules,
+    evaluateRulesWithLedger,
+    saveCheckLedger,
+    getProjectIssues,
+    saveIssueChanges,
+    hasObservedEvents,
+    recomputeRetestDue,
     buildRuleContext,
     buildIntentPageFitMap,
     buildIntentPageFitArtifactPayload,
     aggregateProbeSummary,
-    aggregateAioExposure,
     // 动态 import：规则集/建议生成器在最终集成时落地；此处按需加载，不在模块加载期解析。
     allRules: async () => (await import('@/lib/diagnosis/rules')).allRules,
     generateRecommendation: async (hit, opts) =>
@@ -148,7 +129,7 @@ export async function generateFindingsHandler(
   { event, step, publish }: DiagnoseArgs,
   deps: GenerateFindingsDeps = defaultDeps(),
 ): Promise<{ status: 'reviewing'; findings: number }> {
-  const { runId, projectId, baselineRunId } = event.data
+  const { runId, projectId } = event.data
   const channel = runProgressChannel(runId)
   const emit = async (msg: RunProgressMessage) => publish(await channel.progress(msg))
 
@@ -166,15 +147,16 @@ export async function generateFindingsHandler(
   // —— 规则求值 ——（读证据 + 项目 + 探针聚合 → RuleContext → RuleHit[]）。
   // 证据 rawText 可能很大：整个加载+求值裹进一个 step，只把精简的 hits/domain 出参回放，
   // 避免把全站 HTML 塞进 Inngest step 状态往返序列化。
-  const { hits, domain, intentPageFit, gaps, serpEvidenceId, market, language } = await step.run('run-rules', async () => {
+  const { hits, ledger, protocolBound, domain, intentPageFit, gaps, serpEvidenceId, market, language } = await step.run('run-rules', async () => {
     const project = await deps.getProject(projectId)
     if (!project) throw new NonRetriableError(`project_not_found:${projectId}`)
 
-    const [evidenceRaw, prompts, probeResults, confirmed] = await Promise.all([
+    const [evidenceRaw, prompts, probeResults, confirmed, sourceStatuses] = await Promise.all([
       deps.getRunEvidence(runId),
       deps.getRunPrompts(runId),
       deps.getRunProbeResults(runId),
       deps.getConfirmedCompetitors(projectId),
+      deps.getRunDataSourceStatuses(runId),
     ])
 
     const evidence: DiagnosisEvidenceRow[] = evidenceRaw.map((e) => ({
@@ -253,10 +235,15 @@ export async function generateFindingsHandler(
     } catch {
       // 无知识脑会话的历史 run 沿用注册表顺序。
     }
-    const hits = deps.evaluateRules(ctx, rules)
+    // 按本次数据源状态求值：缺数据源的规则不执行、记「未查」，不再沉默成「没问题」（spec 2026-10-09 §5.1-1）。
+    const available = availableSources(sourceStatuses, { confirmedCompetitorCount: confirmed.length })
+    const { hits, ledger } = deps.evaluateRulesWithLedger(ctx, rules, available)
     const fit = deps.buildIntentPageFitArtifactPayload(deps.buildIntentPageFitMap(ctx))
     return {
       hits,
+      ledger,
+      // 数组而非 Set：step 结果要能 JSON 回放。
+      protocolBound: [...protocolBoundRuleIds(rules)],
       domain: project.domain,
       intentPageFit: fit.rowCount > 0 ? fit : null,
       gaps: competitorInputs.gaps,
@@ -265,6 +252,8 @@ export async function generateFindingsHandler(
       language: project.language ?? '',
     } satisfies {
       hits: RuleHit[]
+      ledger: LedgerRow[]
+      protocolBound: string[]
       domain: string
       intentPageFit: IntentPageFitArtifactPayload | null
       gaps: KeywordGapResult[]
@@ -296,6 +285,32 @@ export async function generateFindingsHandler(
     return rows.length
   })
 
+  // —— 问题台账（spec 2026-10-09 §5.1）——：台账落库 → 对账 → 重算复查提醒，全部在标记完成之前。
+  // 失败交给 Inngest 重试，耗尽后 onFailure 把体检标为失败，不会留下「诊断完成但问题表没更新」的状态。
+  await step.run('write-check-ledger', () => deps.saveCheckLedger(runId, ledger))
+  await step.run('reconcile-issues', async () => {
+    // 已对账过（步骤提交后被重放）→ 跳过，避免把「新出现 / 复发」标记冲掉；reconcileIssues 对同一次体检本身也幂等，此为第二道防线。
+    if (await deps.hasObservedEvents(runId)) return { skipped: true }
+    const [run, projectIssues] = await Promise.all([deps.getRun(runId), deps.getProjectIssues(projectId)])
+    const now = new Date().toISOString()
+    const out = reconcileIssues({
+      projectId,
+      run: { id: runId, startedAt: run?.startedAt ?? run?.finishedAt ?? now, protocolHash: run?.protocolHash ?? null },
+      issues: projectIssues,
+      // findingRows 是 create-findings 步骤的记忆化结果：id 与已落库的发现一致（issues.latest_finding_id 外键指向 findings.id）。
+      hits: findingRows.map(toObservedHit).filter((h): h is ObservedHit => h !== null),
+      ledger,
+      protocolBoundRuleIds: new Set(protocolBound),
+      missingLedger: 'retire',
+      newIssueId: () => `iss_${crypto.randomUUID()}`,
+      now,
+    })
+    await deps.saveIssueChanges(out)
+    return { issues: out.issues.length }
+  })
+  // 复查提醒重算单独成步、不受「已对账」守卫跳过：对账提交后若重算失败，重试时仍会重算，nextRetestDueAt 不会停在旧值。
+  await step.run('recompute-retest-due', () => deps.recomputeRetestDue(projectId))
+
   await step.run('mark-reviewing', () =>
     deps.markRunStatus(runId, 'reviewing', { finishedAt: new Date().toISOString(), failureReason: null }),
   )
@@ -309,162 +324,9 @@ export async function generateFindingsHandler(
     }
   })
 
-  // —— 回测收尾（spec §5.1-3）——：仅当本 run 是对 baselineRunId 的同协议重跑时，
-  // 按 fingerprint 对齐两轮 findings 算四态 delta，据此写 baseline 建议 outcome（恒 inferred，
-  // 只由 delta 计算写入）+ 落 retest_snapshots。delta 失败不污染主诊断（reviewing 已落库）。
-  if (baselineRunId) {
-    try {
-      await step.run('compute-retest-delta', () => computeRetestDelta(deps, projectId, baselineRunId, runId))
-    } catch {
-      // 回测 delta 属增值输出；失败仅丢失快照/outcome，不回滚已完成的 reviewing 诊断。
-    }
-  }
-
   await emit({ type: 'done' })
 
   return { status: 'reviewing', findings: hits.length }
-}
-
-// getFindings 行 → FindingRef（回测按 fingerprint 对齐；空 fingerprint 无跨 run 身份，剔除）。
-type FindingRow = Awaited<ReturnType<typeof getFindings>>[number]
-function toFindingRefs(rows: FindingRow[]): FindingRef[] {
-  return rows
-    .filter((r): r is FindingRow & { fingerprint: string } => Boolean(r.fingerprint))
-    .map((r) => ({ fingerprint: r.fingerprint, severity: r.severity as FindingSeverity, title: r.title }))
-}
-
-// pillar 非空的 finding 行 → 健康分入参（affectedRatio 缺省，站级按 1 计）。
-function toHealthFindings(rows: FindingRow[]): { pillar: Pillar; severity: FindingSeverity }[] {
-  return rows
-    .filter((r): r is FindingRow & { pillar: Pillar } => r.pillar !== null)
-    .map((r) => ({ pillar: r.pillar, severity: r.severity as FindingSeverity }))
-}
-
-// 回测 delta 收尾（纯 I/O 编排，纯逻辑委托 retest-delta / health-score 模块）。
-async function computeRetestDelta(
-  deps: GenerateFindingsDeps,
-  projectId: string,
-  baselineRunId: string,
-  retestRunId: string,
-): Promise<{ snapshots: number }> {
-  const [baselineRows, retestRows, baseRecs, retestRun] = await Promise.all([
-    deps.getFindings(baselineRunId),
-    deps.getFindings(retestRunId),
-    deps.getRecommendations(baselineRunId),
-    deps.getRun(retestRunId),
-  ])
-  const retestStartedAt = retestRun?.startedAt ?? null
-
-  // 为一轮 run 构建可比标量来源（probe 品牌级 + GSC query 维关键词 + AIO 实测曝光）。
-  // 域名归一复用 lib/probes/summary.ts 的 normalizeProjectDomain（与 run-rules step 同一份逻辑）。
-  const buildRunMetrics = async (rid: string): Promise<RunMetrics> => {
-    const [evidence, prompts, probeResults, aioResults, project] = await Promise.all([
-      deps.getRunEvidence(rid),
-      deps.getRunPrompts(rid),
-      deps.getRunProbeResults(rid),
-      deps.getRunSerpAioResults(rid),
-      deps.getProject(projectId),
-    ])
-    const rawDomain = project?.domain ?? ''
-    const domain = normalizeProjectDomain(rawDomain)
-    const probe = deps.aggregateProbeSummary({
-      // D5：回测标量（retest-metrics.ts 的 brand_presence）已切到 probe.unbranded.present/total，
-      // 该字段依赖 prompts.branded 正确透传，否则会把所有 prompt 当 unbranded 处理，回测口径失真。
-      prompts: prompts.map((p) => ({ id: p.id, text: p.text, priority: p.priority, branded: p.branded })),
-      results: probeResults.map((r) => ({
-        promptId: r.promptId, brandPresent: r.brandPresent, competitorsMentioned: r.competitorsMentioned,
-        evidenceId: r.evidenceId, provider: r.provider, sentiment: r.sentiment,
-        citedUrls: r.citedUrls, hedged: r.hedged, unknownAdmission: r.unknownAdmission,
-      })),
-      brand: brandFromDomain(rawDomain),
-      competitors: [],
-      // GEO 新口径回测扩展：此前未传 domain，citedDomains 全部保守判 third_party，
-      // probe.cited_owned_share 永远算不出 owned——补齐后 owned/third_party 才能真正区分
-      // （见 lib/probes/summary.ts ProbeSummaryInput.domain 注释）。
-      domain,
-    })
-    const gscKeywords = parseGscKeywordMetrics(
-      evidence.map((e) => ({ id: e.id, type: e.type as EvidenceType, claimLevel: e.claimLevel as EvidenceLevel, source: e.source, payload: e.payload, rawText: e.rawText, sitePageId: e.sitePageId })),
-    ).map((k) => ({ keyText: k.keyText, impressions: k.impressions, position: k.position }))
-    // 缺陷1 守卫所需信号（retest-metrics.ts checkUnbrandedComparability）：该轮 branded 题数 +
-    // 探针解析器版本集合，供判定两轮 unbranded 口径是否可比（migration 0008 背景见 RunMetrics 注释）。
-    const brandedPromptCount = prompts.filter((p) => p.branded).length
-    const parserVersions = [...new Set(probeResults.map((r) => r.parserVersion))]
-    // AIO 实测曝光聚合：totalQueries 语义与 app/[locale]/runs/[id]/page.tsx 的 aioTotalQueries 一致
-    // （本 run 已落 serp_aio 证据的条数，成功+失败）；未配置/未采集时 aioResults 为空，
-    // aggregateAioExposure 仍返回一个全零 summary（不是 null）——由 retest-metrics.ts 的
-    // aioPresentRate/aioOwnedCitedRate 按 measuredQueries/aioPresentCount===0 判「无数据」。
-    const aioTotalQueries = evidence.filter((e) => e.type === 'serp_aio').length
-    const aio = deps.aggregateAioExposure({
-      totalQueries: aioTotalQueries,
-      results: aioResults.map((r) => ({
-        keyword: r.keyword,
-        aioPresent: r.aioPresent,
-        targetDomainCited: r.targetDomainCited,
-        citedUrls: r.citedUrls,
-      })),
-      domain,
-    })
-    return { probe, gscKeywords, brandedPromptCount, parserVersions, aio }
-  }
-
-  const [baselineMetrics, retestMetrics] = await Promise.all([buildRunMetrics(baselineRunId), buildRunMetrics(retestRunId)])
-
-  // ① finding 四态 delta（按 fingerprint 对齐）。
-  const deltas = computeFindingDelta(toFindingRefs(baselineRows), toFindingRefs(retestRows))
-  const summary = summarizeFindingDelta(deltas)
-  const fpToState = new Map(deltas.map((d) => [d.fingerprint, d.state]))
-
-  // ② baseline 建议 outcome：per-rec 取 finding.metricTarget → buildMetricPair；
-  //    有真标量则压过四态，无则回退按 fingerprint→四态兜底（恒 inferred）。
-  //    只给「回测开始前已执行」的建议判效果；其余（待确认 / 已接受未执行 / 已否决 / 回测开始后才执行）
-  //    一律写 unknown，同时覆盖旧回测留下的判定（2026-10-08 修复：没执行不能被判「无效」）。
-  // 缺陷1 守卫延伸：probe 口径（brand_presence/brand_sov）指标若两轮 unbranded 口径不可比，
-  // computeOutcome 会短路为 'unknown'，不产出会误导用户、污染 F3 rule-stats 的 effective/
-  // ineffective/regressed（判定复用 retest-metrics.ts 的 checkUnbrandedComparability，两轮
-  // 只需算一次，不逐条重复）。
-  const unbrandedComparable = checkUnbrandedComparability(baselineMetrics, retestMetrics).comparable
-  const idToFinding = new Map(baselineRows.map((r) => [r.id, r]))
-  await Promise.all(
-    baseRecs.map((rec) => {
-      if (!isRetestAttributable(rec, retestStartedAt)) return deps.setRecommendationOutcome(rec.id, 'unknown')
-      const f = idToFinding.get(rec.findingId)
-      const fp = f?.fingerprint ?? null
-      const state = (fp ? fpToState.get(fp) : undefined) ?? null
-      const spec = (rec.validationSpec as ValidationSpec | null) ?? null
-      const target = (f?.metricTarget as MetricTarget | null) ?? null
-      const pair = spec ? buildMetricPair(spec, target, baselineMetrics, retestMetrics) : null
-      const outcome = computeOutcome(spec, pair, state, unbrandedComparable)
-      return deps.setRecommendationOutcome(rec.id, outcome)
-    }),
-  )
-
-  // ③ 健康分 delta：两轮各自算 overall，pillarsWithData 取两轮出现过的支柱并集（保持可比）。
-  const pillarsWithData = [
-    ...new Set([...toHealthFindings(baselineRows), ...toHealthFindings(retestRows)].map((f) => f.pillar)),
-  ]
-  const baseOverall = computeHealthScore({ findings: toHealthFindings(baselineRows), pillarsWithData }).overall
-  const retestOverall = computeHealthScore({ findings: toHealthFindings(retestRows), pillarsWithData }).overall
-
-  // ④ 落 retest_snapshots：四态/健康分行 + probe 品牌指标行 + AIO 实测曝光行。
-  const snapshotRows = [
-    ...buildRetestSnapshotRows(summary, { baseline: baseOverall, retest: retestOverall }),
-    ...buildProbeMetricRows(baselineMetrics, retestMetrics),
-    ...buildAioMetricRows(baselineMetrics, retestMetrics),
-  ]
-  const rows = snapshotRows.map((row) => ({
-    id: `rts_${crypto.randomUUID()}`,
-    projectId,
-    baselineRunId,
-    retestRunId,
-    metricName: row.metricName,
-    baselineValue: row.baselineValue,
-    retestValue: row.retestValue,
-    delta: row.delta,
-    interpretation: row.interpretation,
-  }))
-  await deps.createRetestSnapshots(rows)
-  return { snapshots: rows.length }
 }
 
 export const generateFindings = inngest.createFunction(
