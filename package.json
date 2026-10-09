@@ -15,7 +15,8 @@
     "db:seed": "tsx db/seed.ts",
     "db:migrate-gsc": "tsx db/migrate-gsc-tokens.ts",
     "reparse-probes": "tsx scripts/reparse-probes.ts",
-    "replay-citation-split": "tsx scripts/replay-citation-split.ts"
+    "replay-citation-split": "tsx scripts/replay-citation-split.ts",
+    "issues:backfill": "tsx scripts/backfill-issues.ts"
   },
   "dependencies": {
     "@inngest/realtime": "^0.4.6",
