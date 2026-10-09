@@ -248,4 +248,32 @@ describe('reconcileIssues', () => {
       expect(byProtocol.i).toMatchObject({ lastCheckedRunId: 'run_2', lastCheckedAt: RUN.startedAt, protocolHash: 'P1' })
     })
   })
+
+  describe('R2：规则已下线、问题早已因此关闭 → 没有新东西可观测，不产出记录', () => {
+    it('第一遍把规则已下线的待执行问题关闭；同一次体检再对账一遍（同台账）→ 第二遍对它不产出问题行也不产出变化记录', () => {
+      const first = run({ issues: [issue({ decision: 'included', decidedBy: 'operator', status: 'to_execute' })], ledger: [] })
+      expect(first.issues[0]).toMatchObject({ status: 'retired', retiredReason: 'rule_changed' })
+      expect(first.events[0]).toMatchObject({ fromStatus: 'to_execute', toStatus: 'retired', checked: false, hit: null })
+      const second = run({ issues: first.issues, ledger: [] })
+      expect(second.issues).toEqual([])
+      expect(second.events).toEqual([])
+    })
+
+    it('早已因规则已更新而关闭的问题，在新的一次体检里规则仍不在台账 → 不产出记录（不再每次体检多一行）', () => {
+      const retired = issue({ retiredReason: 'rule_changed', status: 'retired', flags: ['rule_changed'] })
+      const out = run({ issues: [retired], ledger: [] })
+      expect(out.issues).toEqual([])
+      expect(out.events).toEqual([])
+    })
+
+    it('不在此列：因协议已变关闭的问题规则随后下线 → 仍关闭一次，记为规则已更新；历史回填模式不变；规则还在台账里命中 → 照常新出现', () => {
+      const byProtocol = issue({ ruleId: 'G05', retiredReason: 'protocol_changed', status: 'retired', flags: ['protocol_changed'] })
+      const { i, e } = only(run({ issues: [byProtocol], ledger: [] }))
+      expect(i).toMatchObject({ status: 'retired', retiredReason: 'rule_changed', flags: ['rule_changed'] })
+      expect(e).toMatchObject({ fromStatus: 'retired', toStatus: 'retired', checked: false, hit: null, note: 'rule_changed' })
+      const byRule = issue({ retiredReason: 'rule_changed', status: 'retired', flags: ['rule_changed'] })
+      expect(only(run({ issues: [byRule], ledger: [], missingLedger: 'history' })).i).toMatchObject({ flags: ['unverified'], unverifiedReason: 'history_no_ledger' })
+      expect(only(run({ issues: [byRule], hits: [hit()], ledger: [led('C05c', 'hit')] })).i).toMatchObject({ retiredReason: null, flags: ['new'] })
+    })
+  })
 })

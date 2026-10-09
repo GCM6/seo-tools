@@ -173,9 +173,12 @@ function retire(input: ReconcileInput, issue: IssueRecord, reason: RetiredReason
   return { issue: next, event: event(input, issue, next, checked, checked ? false : null, reason) }
 }
 
-function applyMiss(input: ReconcileInput, issue: IssueRecord, entry: LedgerEntry | undefined) {
+function applyMiss(input: ReconcileInput, issue: IssueRecord, entry: LedgerEntry | undefined): { issue: IssueRecord; event: IssueEventDraft } | null {
   if (!entry) {
-    return input.missingLedger === 'history' ? unverified(input, issue, 'history_no_ledger') : retire(input, issue, 'rule_changed', undefined, false)
+    if (input.missingLedger === 'history') return unverified(input, issue, 'history_no_ledger')
+    // 规则已下线且早已因此关闭：规则不存在，没有新东西可观测，不产出记录（同一次体检再对账也因此是空操作）。
+    if (issue.retiredReason === 'rule_changed') return null
+    return retire(input, issue, 'rule_changed', undefined, false)
   }
   if (entry.outcome === 'not_checked') return unverified(input, issue, entry.reasonKind ?? 'unsupported')
   if (entry.outcome === 'error') return unverified(input, issue, 'error')
@@ -241,11 +244,12 @@ export function reconcileIssues(input: ReconcileInput): ReconcileOutput {
     // 同一次体检里，问题第一次被查过的观测为准：局部对账（竞品确认后重算）与 Inngest 重试会对同一次体检再对账，
     // 第二遍拿到的是这次自己刚写下的值，会让 新出现 / 复发 / 变严重 / 部分改善 消失，并把唯一的观测记录的「来自状态」覆盖成本次结果。
     // 本次没能查的（未复查、规则已下线而关闭）不会移动 lastCheckedRunId，所以仍会被正常观测。
-    // 已知缺口：规则已下线而关闭的问题，第二遍的变化记录「来自状态」会变成已关闭（未复查不改状态，不受影响）。
+    // 规则已下线且早已因此关闭的问题由 applyMiss 返回 null、不产出记录，所以这类问题的第二遍同样是空操作。
     if (issue.lastCheckedRunId === input.run.id) continue
     const h = hitsByFp.get(issue.fingerprint)
     const entry = ledgerByRule.get(issue.ruleId)
-    push(h ? applyHit(input, issue, h, entry) : applyMiss(input, issue, entry))
+    const r = h ? applyHit(input, issue, h, entry) : applyMiss(input, issue, entry)
+    if (r) push(r)
   }
   for (const [fp, h] of hitsByFp) {
     if (!known.has(fp)) push(createIssue(input, h, ledgerByRule.get(h.ruleId)))
