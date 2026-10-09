@@ -51,6 +51,11 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
     setRecommendationOutcome: vi.fn(async () => undefined),
     // 回测 run 本身：startedAt 用来判断基线建议是否在回测开始前已执行。
     getRun: vi.fn(async (rid: string) => ({ id: rid, runType: 'retest', startedAt: RETEST_STARTED_AT })),
+    // 已确认竞品与关键词缺口（spec §5.4-1）：默认无已确认竞品 → 不算缺口、不落库。
+    getConfirmedCompetitors: vi.fn(async () => []),
+    upsertKeyword: vi.fn(async () => [{ id: 'kw_1' }]),
+    createKeywordGaps: vi.fn(async (rows: unknown[]) => rows),
+    computeKeywordGaps: vi.fn(() => []),
     // 引擎/上下文构造注入 fake：evaluateRules 直接返回预置 hits，忽略 ctx。
     buildRuleContext: vi.fn(() => ({}) as never),
     evaluateRules: vi.fn(() => [makeHit(), makeHit({ ruleId: 'C01', side: 'seo', claimType: 'inferred', title: '标题缺失', evidenceRefs: ['ev_1'] })]),
@@ -211,6 +216,25 @@ describe('generateFindingsHandler', () => {
     const ctxInput = (deps.buildRuleContext.mock.calls[0] as unknown[])[0] as { project: { domain: string }; evidence: unknown[] }
     expect(ctxInput.project.domain).toBe('example.com')
     expect(ctxInput.evidence).toHaveLength(1)
+  })
+
+  it('主诊断带上已确认竞品与关键词缺口（spec §5.4-1：竞品类规则不再只在再评估里跑）', async () => {
+    const serp = { id: 'ev_serp', type: 'dataforseo_serp', claimLevel: 'L3', source: 'dataforseo', rawText: '', sitePageId: null, payload: { kind: 'seed_serp', results: [{ keyword: 'k', items: [] }] } }
+    const deps = makeDeps({
+      getRunEvidence: vi.fn(async () => [serp]),
+      getConfirmedCompetitors: vi.fn(async () => [{ id: 'cmp_1', domain: 'rival.com', name: 'Rival' }]),
+      computeKeywordGaps: vi.fn(() => [{ keyword: 'k', gapType: 'missing', ourPosition: null, competitorPositions: [{ domain: 'rival.com', position: 3 }], opportunityScore: 2, searchVolume: 100 }]),
+    })
+    const { args } = makeArgs()
+    await generateFindingsHandler(args, asDeps(deps))
+    const ctxInput = (deps.buildRuleContext.mock.calls[0] as unknown[])[0] as { confirmedCompetitors: unknown[]; keywordGaps: unknown[]; project: { competitors: string[] } }
+    expect(ctxInput.confirmedCompetitors).toEqual([{ domain: 'rival.com', name: 'Rival' }])
+    expect(ctxInput.keywordGaps).toEqual([{ keyword: 'k', gapType: 'missing', ourPosition: null, opportunityScore: 2, searchVolume: 100, evidenceId: 'ev_serp' }])
+    // 规则上下文的项目竞品仍是手填集；只有探针聚合用「手填 ∪ 已确认」。
+    expect(ctxInput.project.competitors).toEqual(['rival.com'])
+    expect(deps.createKeywordGaps).toHaveBeenCalledTimes(1)
+    const probeInput = (deps.aggregateProbeSummary.mock.calls[0] as unknown[])[0] as { competitors: string[] }
+    expect(probeInput.competitors).toEqual(['rival.com', 'Rival'])
   })
 
   it('run-rules 路径下 domain 归一化：project.domain 带协议/www 时 aggregateProbeSummary 收到裸 host', async () => {

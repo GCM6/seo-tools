@@ -12,6 +12,8 @@ import {
   type MetricTarget,
 } from '@/lib/diagnosis/retest-metrics'
 import { evaluateRules } from '@/lib/diagnosis/engine'
+import { computeKeywordGaps, type KeywordGapResult } from '@/lib/diagnosis/keyword-gap'
+import { buildCompetitorInputs, persistKeywordGaps } from '@/lib/diagnosis/competitor-context'
 import {
   buildIntentPageFitArtifactPayload,
   buildIntentPageFitMap,
@@ -48,6 +50,9 @@ import {
   createRetestSnapshots,
   setRecommendationOutcome,
   getRun,
+  getConfirmedCompetitors,
+  upsertKeyword,
+  createKeywordGaps,
 } from '@/lib/repositories'
 
 interface DiagnoseStep {
@@ -78,6 +83,11 @@ interface GenerateFindingsDeps {
   setRecommendationOutcome: typeof setRecommendationOutcome
   // 回测 run 的开始时间：判断基线建议是否在回测开始前已执行（isRetestAttributable）。
   getRun: typeof getRun
+  // 已确认竞品 + 关键词缺口（spec §5.4-1）：主诊断与竞品确认后的再评估共用 buildCompetitorInputs。
+  getConfirmedCompetitors: typeof getConfirmedCompetitors
+  upsertKeyword: typeof upsertKeyword
+  createKeywordGaps: typeof createKeywordGaps
+  computeKeywordGaps: typeof computeKeywordGaps
   evaluateRules: typeof evaluateRules
   buildRuleContext: typeof buildRuleContext
   buildIntentPageFitMap: typeof buildIntentPageFitMap
@@ -117,6 +127,10 @@ function defaultDeps(): GenerateFindingsDeps {
     createRetestSnapshots,
     setRecommendationOutcome,
     getRun,
+    getConfirmedCompetitors,
+    upsertKeyword,
+    createKeywordGaps,
+    computeKeywordGaps,
     evaluateRules,
     buildRuleContext,
     buildIntentPageFitMap,
@@ -152,14 +166,15 @@ export async function generateFindingsHandler(
   // —— 规则求值 ——（读证据 + 项目 + 探针聚合 → RuleContext → RuleHit[]）。
   // 证据 rawText 可能很大：整个加载+求值裹进一个 step，只把精简的 hits/domain 出参回放，
   // 避免把全站 HTML 塞进 Inngest step 状态往返序列化。
-  const { hits, domain, intentPageFit } = await step.run('run-rules', async () => {
+  const { hits, domain, intentPageFit, gaps, serpEvidenceId, market, language } = await step.run('run-rules', async () => {
     const project = await deps.getProject(projectId)
     if (!project) throw new NonRetriableError(`project_not_found:${projectId}`)
 
-    const [evidenceRaw, prompts, probeResults] = await Promise.all([
+    const [evidenceRaw, prompts, probeResults, confirmed] = await Promise.all([
       deps.getRunEvidence(runId),
       deps.getRunPrompts(runId),
       deps.getRunProbeResults(runId),
+      deps.getConfirmedCompetitors(projectId),
     ])
 
     const evidence: DiagnosisEvidenceRow[] = evidenceRaw.map((e) => ({
@@ -172,7 +187,17 @@ export async function generateFindingsHandler(
       sitePageId: e.sitePageId,
     }))
 
-    const competitors = project.competitors ?? []
+    // 已确认竞品 → 竞品类规则（Q01–Q03、K03、K04、E03）的输入；此前只在竞品页点「确认」触发的
+    // 再评估里才有，主诊断每次都空转（spec §5.4-1）。
+    const competitorInputs = buildCompetitorInputs({
+      evidence,
+      confirmed,
+      projectDomain: project.domain,
+      projectCompetitors: project.competitors ?? [],
+      computeKeywordGaps: deps.computeKeywordGaps,
+    })
+    // 仅探针 SoV 聚合用「手填 ∪ 已确认名」；规则上下文的 project.competitors 仍是手填集。
+    const competitors = competitorInputs.probeCompetitors
     // 原始回答文本按 evidenceId 归档，供聚合期对竞品集重解析（SP-A2 #6）。
     const answerByEvidence = new Map(
       evidence.map((e) => [e.id, (e.payload as { answerText?: string } | null)?.answerText]),
@@ -211,12 +236,14 @@ export async function generateFindingsHandler(
         industry: project.industry,
         market: project.market,
         language: project.language,
-        competitors,
+        competitors: project.competitors ?? [],
       },
       evidence,
       probe,
       probeEvidenceId: probe?.sampleEvidenceId ?? null,
       robotsText: null,
+      confirmedCompetitors: competitorInputs.confirmedCompetitors,
+      keywordGaps: competitorInputs.ctxGaps,
     })
 
     let rules = await deps.allRules()
@@ -232,8 +259,25 @@ export async function generateFindingsHandler(
       hits,
       domain: project.domain,
       intentPageFit: fit.rowCount > 0 ? fit : null,
-    } satisfies { hits: RuleHit[]; domain: string; intentPageFit: IntentPageFitArtifactPayload | null }
+      gaps: competitorInputs.gaps,
+      serpEvidenceId: competitorInputs.serpEvidenceId,
+      market: project.market ?? '',
+      language: project.language ?? '',
+    } satisfies {
+      hits: RuleHit[]
+      domain: string
+      intentPageFit: IntentPageFitArtifactPayload | null
+      gaps: KeywordGapResult[]
+      serpEvidenceId: string | null
+      market: string
+      language: string
+    }
   })
+
+  // 关键词缺口落库单独一步：step 记忆化保证重试不重复写（spec §5.4-1）。
+  await step.run('persist-keyword-gaps', () =>
+    persistKeywordGaps(deps, { projectId, runId, market, language, gaps, serpEvidenceId }),
+  )
 
   await emit({ type: 'phase', phase: 'diagnose', findings: hits.length })
 

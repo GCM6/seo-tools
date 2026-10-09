@@ -4,12 +4,13 @@ import { COMPETITORS_CONFIRMED_EVENT, type CompetitorsConfirmedEventData } from 
 import { runProgressChannel, type RunProgressMessage } from './channels'
 import { buildRuleContext } from '@/lib/diagnosis/context'
 import { evaluateRules } from '@/lib/diagnosis/engine'
-import type { DiagnosisEvidenceRow, Rule, RuleContext, RuleHit } from '@/lib/diagnosis/types'
+import type { DiagnosisEvidenceRow, Rule, RuleHit } from '@/lib/diagnosis/types'
 import { buildFindingRows, buildRecommendationRows, type RecommendationDraft } from '@/lib/diagnosis/finding-rows'
 import { computeKeywordGaps } from '@/lib/diagnosis/keyword-gap'
+import { buildCompetitorInputs, persistKeywordGaps } from '@/lib/diagnosis/competitor-context'
 import { aggregateProbeSummary, normalizeProjectDomain } from '@/lib/probes/summary'
 import { brandFromDomain } from '@/lib/probes/prompt-set'
-import type { SeedSerpEntry, LabsKeywordDatum } from '@/lib/dataforseo/types'
+import type { SeedSerpEntry } from '@/lib/dataforseo/types'
 import type { EvidenceLevel, EvidenceType } from '@/lib/types'
 import {
   getProject,
@@ -127,69 +128,20 @@ export async function reevaluateCompetitorsHandler(
       sitePageId: e.sitePageId,
     }))
 
-    const confirmedDomains = confirmed.map((c) => c.domain)
-    const confirmedCompetitors = confirmed.map((c) => ({ domain: c.domain, name: c.name ?? '' }))
-
-    // seed_serp 原始结果 + evidenceId（gap 计算的基础与证据锚）。
-    const serpRow = evidence.find((e) => e.type === 'dataforseo_serp' && (e.payload as { kind?: string } | null)?.kind === 'seed_serp')
-    const serpResults = serpRow ? ((serpRow.payload as { results?: SeedSerpEntry[] }).results ?? []) : []
-    const serpEvidenceId = serpRow?.id ?? null
-
-    // Labs 关键词数据（搜索量/难度/意图）。
-    const labsRow = evidence.find((e) => e.type === 'dataforseo_labs')
-    const keywordData = labsRow ? ((labsRow.payload as { keywords?: LabsKeywordDatum[] }).keywords ?? []) : []
-
-    // gap 计算需 seed_serp + 确认竞品；缺一则空（K03/K04 no-op）。
-    const gaps =
-      serpResults.length && confirmedDomains.length && serpEvidenceId
-        ? deps.computeKeywordGaps({
-            serp: serpResults,
-            ownDomain: project.domain,
-            confirmedCompetitorDomains: confirmedDomains,
-            keywordData,
-          })
-        : []
-
-    // 落 keyword_gaps（upsert keyword 取 id）+ 组 RuleContext.keywordGaps（含 evidenceId 供规则引用）。
-    const ctxGaps: RuleContext['keywordGaps'] = []
-    if (gaps.length && serpEvidenceId) {
-      const gapRows: Parameters<typeof deps.createKeywordGaps>[0] = []
-      for (const g of gaps) {
-        const [kw] = await deps.upsertKeyword({
-          id: `kw_${crypto.randomUUID()}`,
-          projectId,
-          text: g.keyword,
-          market: project.market ?? '',
-          language: project.language ?? '',
-          source: 'dataforseo',
-          intent: '',
-        })
-        gapRows.push({
-          id: `gap_${crypto.randomUUID()}`,
-          runId,
-          keywordId: kw.id,
-          gapType: g.gapType,
-          ourPosition: g.ourPosition === null ? null : String(g.ourPosition),
-          competitorPositions: g.competitorPositions,
-          opportunityScore: String(g.opportunityScore),
-          evidenceId: serpEvidenceId,
-        })
-        ctxGaps.push({
-          keyword: g.keyword,
-          gapType: g.gapType,
-          ourPosition: g.ourPosition,
-          opportunityScore: g.opportunityScore,
-          searchVolume: g.searchVolume,
-          evidenceId: serpEvidenceId,
-        })
-      }
-      await deps.createKeywordGaps(gapRows)
-    }
-
-    // 探针 SoV 竞品集并入确认竞品「名」（优先品牌名、缺名回退域）——名才能被答案原文匹配到，
-    // 配合下方重解析解掉探针期冻结（SP-A2 #6）。Q02 按 s.name===c.name 匹配到位。
-    const confirmedTokens = confirmedCompetitors.map((c) => c.name || c.domain)
-    const competitors = [...new Set([...(project.competitors ?? []), ...confirmedTokens])]
+    // 已确认竞品 + 关键词缺口 + 探针竞品集：与主诊断共用 buildCompetitorInputs（spec §5.4-1）。
+    const inputs = buildCompetitorInputs({
+      evidence,
+      confirmed,
+      projectDomain: project.domain,
+      projectCompetitors: project.competitors ?? [],
+      computeKeywordGaps: deps.computeKeywordGaps,
+    })
+    await persistKeywordGaps(deps, {
+      projectId, runId, market: project.market ?? '', language: project.language ?? '', gaps: inputs.gaps, serpEvidenceId: inputs.serpEvidenceId,
+    })
+    const competitors = inputs.probeCompetitors
+    const confirmedCompetitors = inputs.confirmedCompetitors
+    const ctxGaps = inputs.ctxGaps
     // 原始回答文本按 evidenceId 归档：聚合期对当前竞品集重解析（解冻），无原文者回退冻结值。
     const answerByEvidence = new Map(
       evidence.map((e) => [e.id, (e.payload as { answerText?: string } | null)?.answerText]),
