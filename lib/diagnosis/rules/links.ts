@@ -1,4 +1,4 @@
-import type { Rule, RuleContext, RuleHitDraft } from '../types'
+import type { RuleDef, RuleContext, RuleHitDraft } from '../types'
 import { analyzeLinkIntegrity, type LinkIntegrity, type TargetRow } from '@/lib/crawl/link-integrity'
 import type { LinkGraphEdge } from '@/lib/crawl/link-graph'
 
@@ -27,7 +27,7 @@ const targetExamples = (rows: TargetRow[], extra: (r: TargetRow) => Record<strin
 
 const linkTotal = (rows: TargetRow[]) => rows.reduce((s, r) => s + r.edges.length, 0)
 
-const L01: Rule = {
+const L01: RuleDef = {
   id: 'L01',
   pillar: 'P1',
   side: 'technical',
@@ -57,7 +57,7 @@ const L01: Rule = {
   },
 }
 
-const L02: Rule = {
+const L02: RuleDef = {
   id: 'L02',
   pillar: 'P1',
   side: 'technical',
@@ -77,7 +77,7 @@ const L02: Rule = {
   },
 }
 
-const L03: Rule = {
+const L03: RuleDef = {
   id: 'L03',
   pillar: 'P1',
   side: 'technical',
@@ -97,7 +97,7 @@ const L03: Rule = {
   },
 }
 
-const L04: Rule = {
+const L04: RuleDef = {
   id: 'L04',
   pillar: 'P1',
   side: 'technical',
@@ -121,7 +121,7 @@ const L04: Rule = {
   },
 }
 
-const L05: Rule = {
+const L05: RuleDef = {
   id: 'L05',
   pillar: 'P1',
   side: 'technical',
@@ -148,7 +148,7 @@ const L05: Rule = {
   },
 }
 
-const L06: Rule = {
+const L06: RuleDef = {
   id: 'L06',
   pillar: 'P1',
   side: 'technical',
@@ -168,7 +168,7 @@ const L06: Rule = {
   },
 }
 
-const L07: Rule = {
+const L07: RuleDef = {
   id: 'L07',
   pillar: 'P1',
   side: 'technical',
@@ -195,4 +195,4 @@ const L07: Rule = {
   },
 }
 
-export const linkRules: Rule[] = [L01, L02, L03, L04, L05, L06, L07]
+export const linkRules: RuleDef[] = [L01, L02, L03, L04, L05, L06, L07]

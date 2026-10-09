@@ -1,5 +1,5 @@
 import { parseHTML } from 'linkedom'
-import type { Rule, RuleContext, RuleHitDraft } from '../types'
+import type { RuleDef, RuleContext, RuleHitDraft } from '../types'
 import { SCHEMA_VOCAB_VERSION, buildSchemaIdIndex, hasField, schemaRuleFor } from '../schema-vocab'
 import { pagesWithExtra, C09_ALT_MISSING_RATIO, SCANNABILITY_PARA_WORDS, isLanguagePathTemplate } from './technical'
 import { clusterTemplates } from '@/lib/crawl/template-cluster'
@@ -75,7 +75,7 @@ function parseEntry(html: string): ParsedEntry {
 const entryScope = (ctx: RuleContext): string => ctx.entryPage?.canonicalUrl ?? 'entry'
 
 // C01：入口页标题缺失 / 超长。
-const C01: Rule = {
+const C01: RuleDef = {
   id: 'C01',
   pillar: 'P2',
   side: 'seo',
@@ -108,7 +108,7 @@ const C01: Rule = {
 }
 
 // C02：入口页缺少 meta description。
-const C02: Rule = {
+const C02: RuleDef = {
   id: 'C02',
   pillar: 'P2',
   side: 'seo',
@@ -139,7 +139,7 @@ const C02: Rule = {
 }
 
 // C03：入口页 H1 缺失 / 多个 / 与 title 完全重复。
-const C03: Rule = {
+const C03: RuleDef = {
   id: 'C03',
   pillar: 'P2',
   side: 'seo',
@@ -186,7 +186,7 @@ const C03: Rule = {
 
 // C05a：JSON-LD 存在性与类型选择。
 // 冲突处理（spec §4.2）：FAQ/HowTo 无富摘要收益，绝不为富摘要目的推荐新增。
-const C05a: Rule = {
+const C05a: RuleDef = {
   id: 'C05a',
   pillar: 'P2',
   side: 'seo',
@@ -310,7 +310,7 @@ function contextIsSchemaOrg(root: Record<string, unknown>): boolean {
 }
 
 // C04：薄内容（模板代表页正文过薄且模板承载商业意图）。
-const C04: Rule = {
+const C04: RuleDef = {
   id: 'C04',
   pillar: 'P2',
   side: 'seo',
@@ -350,7 +350,7 @@ const SCHEMA_LIST_MAX = 5 // 描述里最多列出的条目数
 const SCHEMA_EXAMPLES_MAX = 20 // detail 列表上限（总数另记）
 
 // C05b：JSON-LD 语法 / @context 词汇校验（块解析失败或根对象 @context 非 schema.org）。
-const C05b: Rule = {
+const C05b: RuleDef = {
   id: 'C05b',
   pillar: 'P2',
   side: 'seo',
@@ -424,7 +424,7 @@ function schemaGapDraft(gaps: SchemaFieldGap[], kind: 'required' | 'recommended'
   }
 }
 
-const C05c: Rule = {
+const C05c: RuleDef = {
   id: 'C05c',
   pillar: 'P2',
   side: 'seo',
@@ -460,7 +460,7 @@ const C05c: Rule = {
 
 // C05d：结构化数据与前端渲染后正文不一致（Google 规范违反，有处罚风险）。
 // 依赖渲染证据（renderedText）；无 renderChecks 无从校验 → 返回 null。
-const C05d: Rule = {
+const C05d: RuleDef = {
   id: 'C05d',
   pillar: 'P2',
   side: 'seo',
@@ -528,7 +528,7 @@ function collectNestedTextValues(node: unknown, out: { field: string; value: str
 
 // C06：E-E-A-T 代理信号缺失（作者署名 / 可见日期 / 关于·联系页）。
 // 注意：这些是可信度的「代理指标」，非 Google 官方排名因子——描述必须明示。
-const C06: Rule = {
+const C06: RuleDef = {
   id: 'C06',
   pillar: 'P2',
   side: 'seo',
@@ -581,7 +581,7 @@ const C06: Rule = {
 }
 
 // C07：GEO 内容特征缺失（统计数据 / 来源引用外链 / 引述）——KDD 2024 三强项启发式。
-const C07: Rule = {
+const C07: RuleDef = {
   id: 'C07',
   pillar: 'P2',
   side: 'seo',
@@ -625,7 +625,7 @@ const C07: Rule = {
 }
 
 // C08：答案未前置——正文前 ~30% 无可独立成答段落（启发式，hypothesis）。
-const C08: Rule = {
+const C08: RuleDef = {
   id: 'C08',
   pillar: 'P2',
   side: 'geo',
@@ -656,7 +656,7 @@ const C08: Rule = {
 }
 
 // C10：内容精确重复（contentHash 逐字相同，≥2 页共享同一哈希）。
-const C10: Rule = {
+const C10: RuleDef = {
   id: 'C10',
   pillar: 'P2',
   side: 'seo',
@@ -697,7 +697,7 @@ const C10: Rule = {
 
 // —— 轻检扩展字段规则（图片 alt / 结构可扫描性）：证据同为 site_audit，取数逻辑复用 technical ——
 // C09：图片 alt 缺失率过高（站级聚合）。
-const C09: Rule = {
+const C09: RuleDef = {
   id: 'C09',
   pillar: 'P2',
   side: 'seo',
@@ -730,7 +730,7 @@ const C09: Rule = {
 }
 
 // C11：内容结构可扫描性不足（无列表无表格且平均段落过长）——AI 检索取段偏好结构化段落（机制推断，无对照实验）。
-const C11: Rule = {
+const C11: RuleDef = {
   id: 'C11',
   pillar: 'P2',
   side: 'seo',
@@ -799,7 +799,7 @@ const isTemplated = (pattern: string) => /\{(slug|id|date|uuid)\}/.test(pattern)
 
 // TA01：主题覆盖浅/话题群割裂。用 clusterTemplates 从页面 URL 重建话题群（排除语言路径群），
 // 群内密度用忠实群内有向邻接（历史证据回退站内入度近似）。恒结构性建议、不作排名断言。
-const TA01: Rule = {
+const TA01: RuleDef = {
   id: 'TA01',
   pillar: 'P2',
   side: 'seo',
@@ -890,7 +890,7 @@ function hasSectionHub(members: SiteAuditPage[], all: SiteAuditPage[]): boolean 
 
 // TA02：话题群缺 Hub 页（Pillar-Cluster 结构缺失）。群内最大群内邻接入度 < 阈值即判缺中心页
 // （历史证据回退站内入度近似）。「主题权威」系行业经验框架、非官方排名因子，恒结构性建议、不作排名断言。
-const TA02: Rule = {
+const TA02: RuleDef = {
   id: 'TA02',
   pillar: 'P2',
   side: 'seo',
@@ -926,4 +926,4 @@ const TA02: Rule = {
   },
 }
 
-export const contentRules: Rule[] = [C01, C02, C03, C05a, C04, C05b, C05c, C05d, C06, C07, C08, C09, C10, C11, TA01, TA02]
+export const contentRules: RuleDef[] = [C01, C02, C03, C05a, C04, C05b, C05c, C05d, C06, C07, C08, C09, C10, C11, TA01, TA02]

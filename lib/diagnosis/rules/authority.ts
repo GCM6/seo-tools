@@ -1,4 +1,4 @@
-import type { Rule, RuleHitDraft } from '../types'
+import type { RuleDef, RuleHitDraft } from '../types'
 
 // P5 权威/实体规则组（证据源：DataForSEO Backlinks / Bing site: / 品牌词 SERP / Labs 品牌搜索量）。
 // 均为第三方估算（L3）→ claim 上限 measured_sample；对比类规则依赖 ctx.confirmedCompetitors，未确认 → no-op。
@@ -44,7 +44,7 @@ function median(nums: number[]): number {
 }
 
 // A01 外链概况：本站引荐域数对比确认竞品中位数（measured_sample）。无竞品 backlinks → 仅出本站概况（notice）。
-const A01: Rule = {
+const A01: RuleDef = {
   id: 'A01',
   pillar: 'P5',
   side: 'seo',
@@ -92,7 +92,7 @@ const A01: Rule = {
 }
 
 // A02 锚文本过度优化：精准关键词锚占比或单一关键词锚占比过高 → 过度优化画像（有处罚风险）。warning，measured_sample。
-const A02: Rule = {
+const A02: RuleDef = {
   id: 'A02',
   pillar: 'P5',
   side: 'seo',
@@ -136,7 +136,7 @@ const A02: Rule = {
 }
 
 // A03 外链增长节奏异常：短窗口内新增外链激增且明显不对称（new >> lost），提示非自然增长风险。notice，inferred。无 newLost → null。
-const A03: Rule = {
+const A03: RuleDef = {
   id: 'A03',
   pillar: 'P5',
   side: 'seo',
@@ -161,7 +161,7 @@ const A03: Rule = {
 }
 
 // G04 Bing 收录缺失：Bing site: 收录数为 0 或极低 → 影响 ChatGPT（默认走 Bing 检索）可发现性。warning，measured_sample，side='geo'。
-const G04: Rule = {
+const G04: RuleDef = {
   id: 'G04',
   pillar: 'P5',
   side: 'geo',
@@ -186,7 +186,7 @@ const G04: Rule = {
 }
 
 // E02 品牌 Knowledge Panel 缺失：品牌词 SERP 无 knowledge_graph → 仅提示实体建设方向，不作处罚结论。notice，measured_sample，side='geo'。
-const E02: Rule = {
+const E02: RuleDef = {
   id: 'E02',
   pillar: 'P5',
   side: 'geo',
@@ -217,7 +217,7 @@ function matchesBrand(keyword: string, token: string, domainNorm: string): boole
 
 // E03 品牌搜索量对比（GEO 信任代理指标）：本站品牌词月均搜索量 vs 确认竞品。对比类（notice），measured_sample，side='geo'。
 // 只做度量与对比展示，不下因果结论（品牌提及与 AI 可见性相关 §2 r=0.664，仅相关非因果）。
-const E03: Rule = {
+const E03: RuleDef = {
   id: 'E03',
   pillar: 'P5',
   side: 'geo',
@@ -258,4 +258,4 @@ const E03: Rule = {
   },
 }
 
-export const authorityRules: Rule[] = [A01, A02, A03, G04, E02, E03]
+export const authorityRules: RuleDef[] = [A01, A02, A03, G04, E02, E03]

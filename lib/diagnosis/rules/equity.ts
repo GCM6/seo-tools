@@ -1,4 +1,4 @@
-import type { Rule, RuleContext, RuleHitDraft } from '../types'
+import type { RuleDef, RuleContext, RuleHitDraft } from '../types'
 import { analyzeLinkEquity, isGenericAnchor, type LinkEquity } from '@/lib/crawl/link-equity'
 import type { LinkGraphEdge } from '@/lib/crawl/link-graph'
 
@@ -30,7 +30,7 @@ function followableInbound(eq: LinkEquity, url: string): LinkGraphEdge[] {
   return eq.graph.edges.filter((e) => e.to === url && e.followable)
 }
 
-const W01: Rule = {
+const W01: RuleDef = {
   id: 'W01',
   pillar: 'P1',
   side: 'technical',
@@ -58,7 +58,7 @@ const W01: Rule = {
   },
 }
 
-const W02: Rule = {
+const W02: RuleDef = {
   id: 'W02',
   pillar: 'P1',
   side: 'technical',
@@ -88,7 +88,7 @@ const W02: Rule = {
   },
 }
 
-const W03: Rule = {
+const W03: RuleDef = {
   id: 'W03',
   pillar: 'P1',
   side: 'technical',
@@ -117,7 +117,7 @@ const W03: Rule = {
   },
 }
 
-const W04: Rule = {
+const W04: RuleDef = {
   id: 'W04',
   pillar: 'P1',
   side: 'technical',
@@ -145,4 +145,4 @@ const W04: Rule = {
   },
 }
 
-export const equityRules: Rule[] = [W01, W02, W03, W04]
+export const equityRules: RuleDef[] = [W01, W02, W03, W04]

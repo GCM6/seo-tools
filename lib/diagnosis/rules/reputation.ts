@@ -1,4 +1,4 @@
-import type { Rule, RuleHitDraft } from '../types'
+import type { RuleDef, RuleHitDraft } from '../types'
 
 // P5 社媒/第三方评价站声誉规则组。消费 ctx.socialPresence（social_presence 证据，L2，前台检索结果，
 // 非平台 API 全量数据）。未采集（ctx.socialPresence === null）时两条规则整组 no-op（全仓约定，
@@ -10,7 +10,7 @@ import type { Rule, RuleHitDraft } from '../types'
 
 // SP01：前台检索未发现品牌相关 YouTube 内容。只在「确实检索过 youtube」时判定——platforms 里找不到
 // youtube 条目视为未采集该维度，no-op（不能把「没查」当成「查了发现没有」）。
-const SP01: Rule = {
+const SP01: RuleDef = {
   id: 'SP01',
   pillar: 'P5',
   side: 'geo',
@@ -37,7 +37,7 @@ const SP01: Rule = {
 // （platforms 中都存在对应条目）且结果数全为 0 才判定；任一未检索/未配置则 no-op。
 const SP02_PLATFORMS = ['g2', 'trustpilot', 'capterra'] as const
 
-const SP02: Rule = {
+const SP02: RuleDef = {
   id: 'SP02',
   pillar: 'P5',
   side: 'geo',
@@ -60,4 +60,4 @@ const SP02: Rule = {
   },
 }
 
-export const reputationRules: Rule[] = [SP01, SP02]
+export const reputationRules: RuleDef[] = [SP01, SP02]

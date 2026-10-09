@@ -1,4 +1,4 @@
-import type { Rule, RuleHitDraft } from '../types'
+import type { RuleDef, RuleHitDraft } from '../types'
 
 // P4 竞品对比规则组（证据源：DataForSEO SERP + 既有 AI 探针聚合 + 缺口词）。
 // 人在环闸门：只有 ctx.confirmedCompetitors（status=confirmed）非空才进对比；首轮为空 → 整组 no-op。
@@ -23,7 +23,7 @@ function normalizeDomain(input: string): string {
 }
 
 // Q01 竞品 Share of SERP 对比：统计本站 vs 各确认竞品在种子词集的 Top10 占位数。对比类（notice），measured_sample。
-const Q01: Rule = {
+const Q01: RuleDef = {
   id: 'Q01',
   pillar: 'P4',
   side: 'seo',
@@ -69,7 +69,7 @@ const Q01: Rule = {
 
 // Q02 竞品 AI SoV 对比：复用既有探针 SoV，本站 vs 确认竞品在 AI 答案中的出现占比。measured_sample，小样本方向性（n 见探针协议）。
 // SP-A2 #6：SoV 现按确认竞品集重解析原文（解冻探针期匹配）+ 分引擎分列（引擎不可互推，§7.3）。
-const Q02: Rule = {
+const Q02: RuleDef = {
   id: 'Q02',
   pillar: 'P4',
   side: 'geo',
@@ -117,7 +117,7 @@ const Q02: Rule = {
 }
 
 // Q03 竞品缺口词内容形态：有确认竞品 + 缺口词时，提示参照竞品代表页归纳页型/字数/schema。notice，inferred。
-const Q03: Rule = {
+const Q03: RuleDef = {
   id: 'Q03',
   pillar: 'P4',
   side: 'seo',
@@ -147,4 +147,4 @@ const Q03: Rule = {
   },
 }
 
-export const competitorRules: Rule[] = [Q01, Q02, Q03]
+export const competitorRules: RuleDef[] = [Q01, Q02, Q03]

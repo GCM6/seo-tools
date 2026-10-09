@@ -1,5 +1,5 @@
 import { parseRobotsAllowed } from '@/lib/collection/robots'
-import type { Rule, RuleHitDraft, RuleSeverity } from '../types'
+import type { RuleDef, RuleHitDraft, RuleSeverity } from '../types'
 import { checkHreflang } from './hreflang-codes'
 import { analyzeCwv, lighthouseClues, ttfbConcern, TTFB_SLOW_MS } from '@/lib/collection/psi-analyze'
 import { readLinkGraph } from '@/lib/crawl/link-graph'
@@ -77,7 +77,7 @@ function hostOf(u: string): string | null {
 }
 
 // T01：入口/关键页被 robots.txt 屏蔽（Googlebot 不可抓）。
-const T01: Rule = {
+const T01: RuleDef = {
   id: 'T01',
   pillar: 'P1',
   side: 'technical',
@@ -154,7 +154,7 @@ const T01: Rule = {
 }
 
 // T02：4xx/5xx 错误比例超阈值（比例升级 severity）。
-const T02: Rule = {
+const T02: RuleDef = {
   id: 'T02',
   pillar: 'P1',
   side: 'technical',
@@ -187,7 +187,7 @@ const T02: Rule = {
 }
 
 // T03：noindex 误用。
-const T03: Rule = {
+const T03: RuleDef = {
   id: 'T03',
   pillar: 'P1',
   side: 'technical',
@@ -216,7 +216,7 @@ const T03: Rule = {
 }
 
 // T04：canonical 指向站外。
-const T04: Rule = {
+const T04: RuleDef = {
   id: 'T04',
   pillar: 'P1',
   side: 'technical',
@@ -247,7 +247,7 @@ const T04: Rule = {
 }
 
 // T05：孤岛页（sitemap 声明但内链入度 0）。
-const T05: Rule = {
+const T05: RuleDef = {
   id: 'T05',
   pillar: 'P1',
   side: 'technical',
@@ -281,7 +281,7 @@ const T05: Rule = {
 }
 
 // T07：sitemap 缺失/偏差（保守启发式：全站多页却无一页来自 sitemap）。
-const T07: Rule = {
+const T07: RuleDef = {
   id: 'T07',
   pillar: 'P1',
   side: 'technical',
@@ -307,7 +307,7 @@ const T07: Rule = {
 }
 
 // T10：渲染依赖——初始 HTML 正文占渲染后 <30%（每受影响页一条）。
-const T10: Rule = {
+const T10: RuleDef = {
   id: 'T10',
   pillar: 'P1',
   side: 'technical',
@@ -330,7 +330,7 @@ const T10: Rule = {
 }
 
 // T11：关键/聚合页内链支撑不足（每页一条）。
-const T11: Rule = {
+const T11: RuleDef = {
   id: 'T11',
   pillar: 'P1',
   side: 'technical',
@@ -354,7 +354,7 @@ const T11: Rule = {
 }
 
 // T12：点击深度过深（depth > 3，聚合计数 + 样例）。
-const T12: Rule = {
+const T12: RuleDef = {
   id: 'T12',
   pillar: 'P1',
   side: 'technical',
@@ -414,14 +414,14 @@ const SCANNABILITY_PARA_WORDS = 150 // 平均段落词数上限，超过判为�
 
 // 逐页内容规则只看成功返回的 HTML 页：PDF/图片/feed 与 404/429 等错误页没有 viewport、alt 可言
 // （2026-10-03 真实站点冒烟：PDF 与限流页被报成缺 viewport）。历史证据无 contentKind/httpStatus 时照旧计入。
-const pagesWithExtra = (ctx: Parameters<Rule['evaluate']>[0]) =>
+const pagesWithExtra = (ctx: Parameters<RuleDef['evaluate']>[0]) =>
   (ctx.siteAudit?.payload.pages ?? [])
     .filter((p) => p.checkStatus === 'checked' && p.lightCheckExtra)
     .filter((p) => (p.lightCheckExtra!.contentKind ?? 'html') === 'html' && (p.httpStatus == null || (p.httpStatus >= 200 && p.httpStatus < 300)))
     .map((p) => ({ url: p.url, x: p.lightCheckExtra! }))
 
 // T06：重定向（跳转链/循环的方向性信号——本期仅凭 redirected 标志，非完整链路追踪）。
-const T06: Rule = {
+const T06: RuleDef = {
   id: 'T06',
   pillar: 'P1',
   side: 'technical',
@@ -443,7 +443,7 @@ const T06: Rule = {
 }
 
 // T08：HTTPS / 混合内容（http 页或 https 页上引用 http:// 资源）。
-const T08: Rule = {
+const T08: RuleDef = {
   id: 'T08',
   pillar: 'P1',
   side: 'technical',
@@ -466,7 +466,7 @@ const T08: Rule = {
 }
 
 // T13：移动端适配缺失（viewport meta 缺失）——移动优先索引下为必查项。
-const T13: Rule = {
+const T13: RuleDef = {
   id: 'T13',
   pillar: 'P1',
   side: 'technical',
@@ -488,7 +488,7 @@ const T13: Rule = {
 }
 
 // T14：hreflang 检查组（仅在存在 hreflang 声明的多语言站触发；单语言站跳过）。
-const T14: Rule = {
+const T14: RuleDef = {
   id: 'T14',
   pillar: 'P1',
   side: 'technical',
@@ -530,7 +530,7 @@ const T14: Rule = {
 
 // T15：低价值语言页泛滥（语言路径模板 × GSC 零展示交叉）。
 // 「低价值」核心证据是 GSC 零展示实测，无 GSC 不可验证 → 整条 no-op（宁缺毋滥）。
-const T15: Rule = {
+const T15: RuleDef = {
   id: 'T15',
   pillar: 'P1',
   side: 'technical',
@@ -586,7 +586,7 @@ function fmtCwv(metric: string, value: number): string {
 }
 
 // T09a：CWV 字段数据（CrUX，真实用户）未达标。仅在有字段数据时产出 → measured_hard（L4）。
-const T09a: Rule = {
+const T09a: RuleDef = {
   id: 'T09a',
   pillar: 'P1',
   side: 'technical',
@@ -616,7 +616,7 @@ const T09a: Rule = {
 }
 
 // T09b：Lighthouse 实验室修复线索。恒标「实验室模拟，非排名输入」→ notice / inferred。
-const T09b: Rule = {
+const T09b: RuleDef = {
   id: 'T09b',
   pillar: 'P1',
   side: 'technical',
@@ -651,7 +651,7 @@ const T09b: Rule = {
 }
 
 // T09c：服务器响应过慢（TTFB > 阈值）影响抓取效率。有 CrUX 时 measured_hard，否则降 inferred（spec 降级链）。
-const T09c: Rule = {
+const T09c: RuleDef = {
   id: 'T09c',
   pillar: 'P1',
   side: 'technical',
@@ -682,7 +682,7 @@ const T09c: Rule = {
   },
 }
 
-export const technicalRules: Rule[] = [T01, T02, T03, T04, T05, T06, T07, T08, T10, T11, T12, T13, T14, T15, T09a, T09b, T09c]
+export const technicalRules: RuleDef[] = [T01, T02, T03, T04, T05, T06, T07, T08, T10, T11, T12, T13, T14, T15, T09a, T09b, T09c]
 
 // C09/C11 复用轻检扩展的取数逻辑（内容支柱，但证据同为 site_audit 轻检）。
 export { pagesWithExtra, C09_ALT_MISSING_RATIO, SCANNABILITY_PARA_WORDS }

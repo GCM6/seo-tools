@@ -1,4 +1,4 @@
-import type { Rule, RuleContext, RuleHitDraft } from '../types'
+import type { RuleDef, RuleContext, RuleHitDraft } from '../types'
 import type { SiteAuditPage } from '@/lib/crawl/site-audit'
 import { registrableDomain, safeDecode, type ArticleSignals } from '@/lib/crawl/article-signals'
 import { readLinkGraph, type LinkGraphView } from '@/lib/crawl/link-graph'
@@ -45,7 +45,7 @@ function shareRule(opts: {
   title: string
   describe: (bad: number, total: number) => string
   extraDetail?: (bad: ArticlePage[]) => Record<string, unknown>
-}): Rule {
+}): RuleDef {
   return {
     id: opts.id,
     pillar: 'P2',
@@ -158,7 +158,7 @@ function graphOf(ctx: RuleContext): { auditId: string; graph: LinkGraphView } | 
   return { auditId: audit.id, graph }
 }
 
-const TR06: Rule = {
+const TR06: RuleDef = {
   id: 'TR06',
   pillar: 'P2',
   side: 'seo',
@@ -211,7 +211,7 @@ const TR06: Rule = {
 const label = (c: string) => ({ about: '关于我们', contact: '联系方式', privacy: '隐私政策', terms: '服务条款' })[c] ?? c
 
 // —— SO01 / SO02：站内社媒主页链接 ——
-const SO01: Rule = {
+const SO01: RuleDef = {
   id: 'SO01',
   pillar: 'P5',
   side: 'geo',
@@ -234,7 +234,7 @@ const SO01: Rule = {
   },
 }
 
-const SO02: Rule = {
+const SO02: RuleDef = {
   id: 'SO02',
   pillar: 'P5',
   side: 'geo',
@@ -261,4 +261,4 @@ const SO02: Rule = {
   },
 }
 
-export const eeatRules: Rule[] = [AR01, AR02, AR03, AR04, AR05, TR06, SO01, SO02]
+export const eeatRules: RuleDef[] = [AR01, AR02, AR03, AR04, AR05, TR06, SO01, SO02]

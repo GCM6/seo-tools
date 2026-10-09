@@ -1,4 +1,4 @@
-import type { Rule, RuleContext, RuleHitDraft } from '../types'
+import type { RuleDef, RuleContext, RuleHitDraft } from '../types'
 import { isRenderDependent } from './technical'
 import { parseRobotsAllowed } from '@/lib/collection/robots'
 import { isWebSearchEnabledEngine } from '@/lib/probes/engine-capability'
@@ -66,7 +66,7 @@ function isAuthoritySameAs(u: string): boolean {
 }
 
 // G03：渲染依赖内容对不执行 JS 的 AI 抓取链路不可见（与 T10 同证据，GEO 措辞）。
-const G03: Rule = {
+const G03: RuleDef = {
   id: 'G03',
   pillar: 'P5',
   side: 'geo',
@@ -90,7 +90,7 @@ const G03: Rule = {
 // 命中品牌名，导致 unbranded.total 恒为 0——旧实现直接 return null，让整组 GEO 可见度诊断静默
 // 消失。只要探针确实跑过（promptsTotal>0），改为降级产出一条 inferred 说明（不伪造召回数字，
 // 只说明"当前无法评估"），而不是无声消失。
-const G05: Rule = {
+const G05: RuleDef = {
   id: 'G05',
   pillar: 'P5',
   side: 'geo',
@@ -138,7 +138,7 @@ const G05: Rule = {
 // 缺陷2修复：分母改用去重后的问题数（probe.unbranded.total，问题级去重），不是把各联网引擎的
 // promptsTotal 相加（引擎×问题配对数会把分母膨胀成 N倍，如 3 引擎×30 题=90，但描述却写"全部 90 个
 // 探针问题"）；引擎×问题配对数如需追溯放 detail.enginePromptPairs，不进描述文案。
-const G06: Rule = {
+const G06: RuleDef = {
   id: 'G06',
   pillar: 'P5',
   side: 'geo',
@@ -165,7 +165,7 @@ const G06: Rule = {
 }
 
 // G01：搜索型 AI 爬虫被 robots 屏蔽（检索型=error 放弃引用资格；训练型=notice 仅说明）。
-const G01: Rule = {
+const G01: RuleDef = {
   id: 'G01',
   pillar: 'P5',
   side: 'geo',
@@ -207,7 +207,7 @@ const G01: Rule = {
 }
 
 // E01：Organization/品牌 schema 缺 sameAs 或未指向权威消歧节点（notice）。
-const E01: Rule = {
+const E01: RuleDef = {
   id: 'E01',
   pillar: 'P5',
   side: 'geo',
@@ -236,7 +236,7 @@ const E01: Rule = {
 // G02：CDN/WAF 层误封搜索型 AI 爬虫（用各爬虫 UA 实测状态码，403/429/challenge=blocked）。
 // 与 G01 区分：G01 是 robots.txt 声明性屏蔽；G02 是传输层（CDN/WAF）状态码封禁——即使 robots 放行也可能命中。
 // 训练型爬虫被封是品牌合理选择，不报（与 G01 训练型仅 notice 的取向一致，此处直接忽略以免噪音）。
-const G02: Rule = {
+const G02: RuleDef = {
   id: 'G02',
   pillar: 'P5',
   side: 'geo',
@@ -264,7 +264,7 @@ const G02: Rule = {
 
 // G07：第三方语料缺失——没有同名英文维基词条「且」Reddit 自然讨论不足（品牌提及与 AI 可见性相关 0.664，§2）。
 // 决策：两路都测到且都不达标才报；任一达标或任一采集失败即 null（避免噪音，也不把失败当缺失）。
-const G07: Rule = {
+const G07: RuleDef = {
   id: 'G07',
   pillar: 'P5',
   side: 'geo',
@@ -297,7 +297,7 @@ const G07: Rule = {
 
 // G08：llms.txt 存在性——只记录不建议。存在性是硬事实（measured_hard），但有效性无证据。
 // 决策：只有「检测到」才出一条 notice 记录；未检测到返回 null（避免对全站普遍不存在的项刷噪音）。
-const G08: Rule = {
+const G08: RuleDef = {
   id: 'G08',
   pillar: 'P5',
   side: 'geo',
@@ -319,7 +319,7 @@ const G08: Rule = {
 
 // G09：AI 引用情感方向——含品牌样本中负面占比偏高（分类器为测量层解析器，可抽查原文，非 agent 结论）。
 // claim=inferred：负面「方向」在小样本（n 见探针协议）下只作方向性推断，不下硬结论。
-const G09: Rule = {
+const G09: RuleDef = {
   id: 'G09',
   pillar: 'P5',
   side: 'geo',
@@ -355,7 +355,7 @@ const G09: Rule = {
 // 实例）。跨引擎合计口径（含记忆型引擎 undetermined 计入分母但不计入分子，天然不会被它拉高比例）。
 // claim=inferred：判定基于确定性词表（hedged 词表），非 LLM 结论，但词表查全率未知（无先例可校准），
 // 模型「自信编造却不带猜测措辞」时无法识别——本规则只能标「疑似」，不能反向证明「无编造」。
-const G10: Rule = {
+const G10: RuleDef = {
   id: 'G10',
   pillar: 'P5',
   side: 'geo',
@@ -402,7 +402,7 @@ const G10: Rule = {
 // 触发要求「同时」满足两条：① unbranded 子集下社区/UGC 引用占比达标（ugcCitationShare，见
 // summary.ts 口径注释）；② citedDomains 中不存在 owned 归属条目——即便社区占比高，只要本站
 // 自身也被引用就不算「品类答案被社区取代」，避免与「已有一定引用」的站点重复报噪音。
-const G11: Rule = {
+const G11: RuleDef = {
   id: 'G11',
   pillar: 'P5',
   side: 'geo',
@@ -434,4 +434,4 @@ const G11: Rule = {
   },
 }
 
-export const geoRules: Rule[] = [G03, G05, G06, G01, E01, G02, G07, G08, G09, G10, G11]
+export const geoRules: RuleDef[] = [G03, G05, G06, G01, E01, G02, G07, G08, G09, G10, G11]

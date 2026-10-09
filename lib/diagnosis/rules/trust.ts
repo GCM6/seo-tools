@@ -1,5 +1,5 @@
 import { parseHTML } from 'linkedom'
-import type { Rule, RuleContext, RuleHitDraft } from '../types'
+import type { RuleDef, RuleContext, RuleHitDraft } from '../types'
 
 // 交易可信度规则组。当前版本只判断「是否有可达的政策页」，不从页面存在推断商家真实可靠。
 // 配送/退货只适用于有明确购买链路的电商站，B2B 产品目录和询盘站不触发。
@@ -59,7 +59,7 @@ function ecommerceEvidence(ctx: RuleContext): string[] {
   return refs
 }
 
-const TR04: Rule = {
+const TR04: RuleDef = {
   id: 'TR04',
   pillar: 'P2',
   side: 'seo',
@@ -79,7 +79,7 @@ const TR04: Rule = {
   },
 }
 
-const TR05: Rule = {
+const TR05: RuleDef = {
   id: 'TR05',
   pillar: 'P2',
   side: 'seo',
@@ -99,4 +99,4 @@ const TR05: Rule = {
   },
 }
 
-export const trustRules: Rule[] = [TR04, TR05]
+export const trustRules: RuleDef[] = [TR04, TR05]

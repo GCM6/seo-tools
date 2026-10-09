@@ -25,6 +25,8 @@ function ctx(): RuleContext {
 }
 
 const ruleFixture = (over: Partial<Rule> & Pick<Rule, 'id' | 'evaluate'>): Rule => ({
+  version: 1,
+  requiredSources: ['crawl'],
   pillar: 'P1',
   side: 'technical',
   severity: 'warning',

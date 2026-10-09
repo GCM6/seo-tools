@@ -4,6 +4,7 @@ import type { SiteAuditPayload } from '@/lib/crawl/site-audit'
 import type { ProbeSummary } from '@/lib/probes/summary'
 import type { PsiResult } from '@/lib/collection/psi'
 import type { GscDimension } from '@/lib/gsc/search-analytics'
+import type { SourceRequirement } from './sources'
 
 // 规则库版本：随规则/阈值变更单调递增，钉进 run 协议保证同协议回测可比（spec §11.3）。
 // v1 → v2：G05/G06 改为 unbranded 层口径 + 新增全 branded 降级 finding，新增 G10（GEO branded/
@@ -184,6 +185,8 @@ export interface RuleHit extends RuleHitDraft {
 
 export interface Rule {
   id: string
+  // 规则判定逻辑版本（spec 2026-10-09 §6.4）：改哪条规则只升那一条，见 rules/rule-meta.ts。
+  version: number
   pillar: Pillar
   side: FindingSide
   severity: RuleSeverity
@@ -191,10 +194,13 @@ export interface Rule {
   // 知识脑元数据：复杂确定性检查仍由 TypeScript 执行，但由版本化工作流负责路由与溯源。
   workflowStepIds?: string[]
   knowledgeVersionRefs?: string[]
-  requiredSources?: string[]
+  requiredSources: SourceRequirement[]
   // 确定性代码（非 LLM）：命中返回草稿（可多条），不命中返回 null。抛错由引擎吞掉不沉没整轮。
   evaluate: (ctx: RuleContext) => RuleHitDraft | RuleHitDraft[] | null
 }
+
+// 规则文件里手写的规则定义不含 version / requiredSources；这两项由 rules/rule-meta.ts 的 RULE_META 在注册表合并。
+export type RuleDef = Omit<Rule, 'version' | 'requiredSources'>
 
 // finding 严重度落库枚举（对齐 lib/types.Finding.severity 与 UI 的 sev class）。
 export type FindingSeverity = 'high' | 'mid' | 'ok'

@@ -1,4 +1,4 @@
-import type { Rule, RuleHitDraft } from '../types'
+import type { RuleDef, RuleHitDraft } from '../types'
 import { buildIntentPageFitMap, type IntentPageFitRow } from '../intent-page-fit'
 
 // P3 关键词规则组（证据源：GSC Search Analytics）。规则读 RuleContext 的 keywordMetrics（query 维）
@@ -36,7 +36,7 @@ function normalizeDomain(input: string): string {
 const KGAP_LIMIT = 20
 
 // K01 机会词：GSC 排名 4-20 且展示量高 → 投产比最高的增长点。非问题，作机会提示（notice）。
-const K01: Rule = {
+const K01: RuleDef = {
   id: 'K01',
   pillar: 'P3',
   side: 'seo',
@@ -65,7 +65,7 @@ const K01: Rule = {
 }
 
 // K02 低 CTR 异常：排名 ≤5 但 CTR 低于位置基准 50% → 疑似受 SERP 特性挤压。恒为 hypothesis 起步。
-const K02: Rule = {
+const K02: RuleDef = {
   id: 'K02',
   pillar: 'P3',
   side: 'seo',
@@ -100,7 +100,7 @@ const K02: Rule = {
 }
 
 // K06 关键词蚕食：同一 query 有 ≥2 个 page 均获展示 → 页面互相竞争、分散权重。
-const K06: Rule = {
+const K06: RuleDef = {
   id: 'K06',
   pillar: 'P3',
   side: 'seo',
@@ -144,7 +144,7 @@ const K06: Rule = {
 
 // K03 缺口词（missing）：≥2 个确认竞品进 Top10 而本站无排名（gapType==='missing'）。
 // 由 keyword-gap 计算后经 ctx.keywordGaps 传入；首轮无 gap → null。机会类（notice），第三方估算 → measured_sample。
-const K03: Rule = {
+const K03: RuleDef = {
   id: 'K03',
   pillar: 'P3',
   side: 'seo',
@@ -177,7 +177,7 @@ const K03: Rule = {
 }
 
 // K04 弱势词（weak）：本站 11-30 名、竞品 Top10（gapType==='weak'）。机会类（notice），measured_sample。
-const K04: Rule = {
+const K04: RuleDef = {
   id: 'K04',
   pillar: 'P3',
   side: 'seo',
@@ -210,7 +210,7 @@ const K04: Rule = {
 }
 
 // K05 品牌词覆盖：品牌 SERP 本站缺席，或首位被第三方占位 → warning（measured_sample）。无 brandSerp 证据 → null。
-const K05: Rule = {
+const K05: RuleDef = {
   id: 'K05',
   pillar: 'P3',
   side: 'seo',
@@ -270,7 +270,7 @@ function intentClass(intent: string | null): 'informational' | 'transactional' |
 }
 
 // K07 搜索意图错位：目标词主导意图与本站承接页型不匹配（如交易意图词却用博客文承接）。warning，inferred。
-const K07: Rule = {
+const K07: RuleDef = {
   id: 'K07',
   pillar: 'P3',
   side: 'seo',
@@ -327,7 +327,7 @@ function fitKeyword(row: IntentPageFitRow) {
 }
 
 // IPF01：有明确需求，但当前抓取/抽样证据里没有可指派的主承接页。
-const IPF01: Rule = {
+const IPF01: RuleDef = {
   id: 'IPF01',
   pillar: 'P3',
   side: 'seo',
@@ -352,7 +352,7 @@ const IPF01: Rule = {
 }
 
 // IPF02：GSC query×page 证据显示当前承接页角色与搜索意图不匹配。
-const IPF02: Rule = {
+const IPF02: RuleDef = {
   id: 'IPF02',
   pillar: 'P3',
   side: 'seo',
@@ -377,7 +377,7 @@ const IPF02: Rule = {
 }
 
 // IPF03：同一泛页面承接多个不同意图，说明页面架构可能太粗。
-const IPF03: Rule = {
+const IPF03: RuleDef = {
   id: 'IPF03',
   pillar: 'P3',
   side: 'seo',
@@ -406,7 +406,7 @@ const IPF03: Rule = {
 }
 
 // IPF04：承接页方向基本正确，但内链/层级支撑弱。
-const IPF04: Rule = {
+const IPF04: RuleDef = {
   id: 'IPF04',
   pillar: 'P3',
   side: 'seo',
@@ -435,4 +435,4 @@ const IPF04: Rule = {
   },
 }
 
-export const keywordRules: Rule[] = [K01, K02, K06, K03, K04, K05, K07, IPF01, IPF02, IPF03, IPF04]
+export const keywordRules: RuleDef[] = [K01, K02, K06, K03, K04, K05, K07, IPF01, IPF02, IPF03, IPF04]
