@@ -74,7 +74,7 @@ describe('reconcileIssues', () => {
     const executed = issue({ decision: 'included', executedAt: '2026-10-15T00:00:00.000Z', status: 'executed_awaiting' })
     const { i, e } = only(run({ issues: [executed], ledger: [entry] }))
     expect(i).toMatchObject({ detection: 'present', lastCheckedRunId: 'run_1', lastCheckedAt: '2026-10-01T00:00:00.000Z', status: 'executed_awaiting', flags: ['unverified'], unverifiedReason: reason })
-    expect(e).toMatchObject({ checked: false, hit: false, note: reason })
+    expect(e).toMatchObject({ checked: false, hit: null, note: reason })
   })
 
   it('规则版本变了且没命中 → 关闭（规则已更新），不算修复', () => {
@@ -138,5 +138,114 @@ describe('reconcileIssues', () => {
 
   it('同一体检对同一问题的变化记录 id 固定（重算时覆盖，不叠加）', () => {
     expect(run({ issues: [issue()], ledger: [led('C05c', 'clear')] }).events[0].id).toBe('iev_obs_run_2_iss_1')
+  })
+
+  describe('F1：复发要求问题此前是已修复 / 自行消失（4.4-5）', () => {
+    it('改了之后、那次体检还在跑时才点的已执行：那次判没了仍是已执行待复查；下一次体检命中 → 改了没生效，执行记录保留，不算复发', () => {
+      const next = { id: 'run_3', startedAt: '2026-11-01T02:00:00.000Z', protocolHash: 'P1' }
+      const raced = issue({
+        decision: 'included', decidedBy: 'operator', executedAt: '2026-11-01T00:30:00.000Z', executedNote: '改了标题', executedBy: 'operator',
+        detection: 'gone', status: 'executed_awaiting', lastCheckedRunId: 'run_2', lastCheckedAt: '2026-11-01T00:00:00.000Z',
+      })
+      const { i } = only(run({ run: next, issues: [raced], hits: [hit()], ledger: [led('C05c', 'hit')] }))
+      expect(i).toMatchObject({ status: 'not_effective', executedAt: '2026-11-01T00:30:00.000Z', executedNote: '改了标题', executedBy: 'operator', flags: [] })
+    })
+
+    it('暂不处理的问题此前判没了、再命中且严重度不变 → 仍是已排除，不加复发', () => {
+      const d = issue({ decision: 'deferred', decisionReason: '先做 Google', decidedBy: 'operator', detection: 'gone', status: 'excluded' })
+      expect(only(run({ issues: [d], hits: [hit()], ledger: [led('C05c', 'hit')] })).i).toMatchObject({ decision: 'deferred', decisionReason: '先做 Google', status: 'excluded', flags: [] })
+    })
+  })
+
+  describe('F2：数值比较只在同一口径下进行（4.3、4.4-4/6/7/10/11）', () => {
+    it('暂不处理 + 已关闭的问题在新口径下再命中且严重度更高 → 只算新出现，决定仍是暂不处理', () => {
+      const d = issue({ decision: 'deferred', decisionReason: '先做 Google', decidedBy: 'operator', retiredReason: 'rule_changed', status: 'excluded' })
+      expect(only(run({ issues: [d], hits: [hit({ severity: 'high' })], ledger: [led('C05c', 'hit')] })).i).toMatchObject({
+        decision: 'deferred', decisionReason: '先做 Google', status: 'excluded', flags: ['new'],
+      })
+    })
+
+    it('规则版本变了的命中：不比严重度与受影响数，只加规则已更新；暂不处理的决定不被退回', () => {
+      const d = issue({ decision: 'deferred', decisionReason: '先做 Google', decidedBy: 'operator', status: 'excluded' })
+      const { i } = only(run({ issues: [d], hits: [hit({ severity: 'high', affectedCount: 1 })], ledger: [led('C05c', 'hit', { ruleVersion: 2 })] }))
+      expect(i).toMatchObject({ decision: 'deferred', decisionReason: '先做 Google', status: 'excluded', flags: ['rule_changed'], ruleVersion: 2, severity: 'high', affectedCount: 1 })
+    })
+
+    it('受协议约束的规则协议变了的命中：不比严重度与受影响数，只加协议已变，记录新协议指纹', () => {
+      const ai = issue({ ruleId: 'G05', protocolHash: 'P0' })
+      const { i } = only(run({ issues: [ai], hits: [hit({ ruleId: 'G05', severity: 'high', affectedCount: 1 })], ledger: [led('G05', 'hit')] }))
+      expect(i).toMatchObject({ flags: ['protocol_changed'], protocolHash: 'P1', severity: 'high', affectedCount: 1 })
+    })
+
+    it('协议指纹两边都为空算同一口径，一边为空一边有值算变了（未知与已知不可比）', () => {
+      const h = hit({ ruleId: 'G05', severity: 'high' })
+      const nullRun = { id: 'run_2', startedAt: RUN.startedAt, protocolHash: null }
+      expect(only(run({ run: nullRun, issues: [issue({ ruleId: 'G05', protocolHash: null })], hits: [h], ledger: [led('G05', 'hit')] })).i.flags).toEqual(['worse'])
+      expect(only(run({ issues: [issue({ ruleId: 'G05', protocolHash: null })], hits: [h], ledger: [led('G05', 'hit')] })).i.flags).toEqual(['protocol_changed'])
+    })
+
+    it('同一口径下受影响数 5 → 2 → 部分改善，变化记录写「5 → 2」；其他命中的变化记录没有备注', () => {
+      const out = only(run({ issues: [issue({ affectedCount: 5 })], hits: [hit({ affectedCount: 2 })], ledger: [led('C05c', 'hit')] }))
+      expect(out.i.flags).toEqual(['partial'])
+      expect(out.e.note).toBe('5 → 2')
+      expect(only(run({ issues: [issue()], hits: [hit({ severity: 'high' })], ledger: [led('C05c', 'hit')] })).e.note).toBeNull()
+    })
+
+    it('受协议约束的规则协议与版本都变了且没命中 → 先认协议已变（5.1-3：协议先于版本）', () => {
+      const ai = issue({ ruleId: 'G05', protocolHash: 'P0' })
+      expect(only(run({ issues: [ai], ledger: [led('G05', 'clear', { ruleVersion: 2 })] })).i).toMatchObject({ status: 'retired', retiredReason: 'protocol_changed', flags: ['protocol_changed'] })
+    })
+  })
+
+  describe('F3：同一次体检里，问题第一次被查过的观测为准（对账可重复执行）', () => {
+    const issues = [
+      issue(), // fp_1：命中且变严重
+      issue({ id: 'iss_2', fingerprint: 'fp_2', ruleId: 'Q01' }), // 查过没命中 → gone
+      issue({ id: 'iss_3', fingerprint: 'fp_3', ruleId: 'Q02' }), // 没查 → unverified
+    ]
+    const shared = {
+      hits: [hit({ severity: 'high' }), hit({ fingerprint: 'fp_9' })],
+      ledger: [led('C05c', 'hit'), led('Q01', 'clear'), led('Q02', 'not_checked', { reasonKind: 'data_gap' as const })],
+    }
+
+    it('对账两遍：第二遍只剩没查的那条，且它的变化记录与第一遍一致；查过的不重复观测、不重复新建', () => {
+      const first = run({ issues, ...shared })
+      expect(first.issues.map((i) => [i.fingerprint, i.flags])).toEqual([['fp_1', ['worse']], ['fp_2', []], ['fp_3', ['unverified']], ['fp_9', ['new']]])
+      const second = run({ issues: first.issues, ...shared })
+      expect(second.issues).toEqual(first.issues.filter((i) => i.id === 'iss_3'))
+      expect(second.events).toEqual(first.events.filter((e) => e.issueId === 'iss_3'))
+    })
+
+    it('先没查、同一体检补查（局部对账）后命中 → 按补查前的状态观测：变严重，已查，来自补查前的状态', () => {
+      const pre = issue({ severity: 'mid' })
+      const first = run({ issues: [pre], ledger: [led('C05c', 'not_checked', { reasonKind: 'data_gap' })] })
+      expect(first.issues[0]).toMatchObject({ flags: ['unverified'], lastCheckedRunId: 'run_1' })
+      const second = run({ issues: first.issues, hits: [hit({ severity: 'high' })], ledger: [led('C05c', 'hit')], onlyRuleIds: new Set(['C05c']) })
+      const { i, e } = only(second)
+      expect(i).toMatchObject({ lastCheckedRunId: 'run_2', flags: ['worse'], severity: 'high' })
+      expect(e).toMatchObject({ checked: true, hit: true, fromStatus: pre.status, toStatus: 'pending' })
+    })
+  })
+
+  describe('F4：变化记录不声称没做过的检查（4.4-3、6.1、6.2）', () => {
+    it('台账里没有这条规则而关闭 → 没评估：记未查（checked false、hit null），检查时间、协议、版本都不动', () => {
+      const { i, e } = only(run({ issues: [issue({ protocolHash: 'P0' })], ledger: [] }))
+      expect(i).toMatchObject({ status: 'retired', retiredReason: 'rule_changed', flags: ['rule_changed'], lastCheckedRunId: 'run_1', lastCheckedAt: '2026-10-01T00:00:00.000Z', protocolHash: 'P0', ruleVersion: 1 })
+      expect(e).toMatchObject({ checked: false, hit: null, severity: null, affectedCount: null, note: 'rule_changed' })
+    })
+
+    it('历史回填没有台账 → 未复查，变化记录同样是 checked false、hit null', () => {
+      const { e } = only(run({ issues: [issue()], ledger: [], missingLedger: 'history' }))
+      expect(e).toMatchObject({ checked: false, hit: null, note: 'history_no_ledger' })
+    })
+
+    it('规则评估过后因版本 / 协议变了而关闭 → 仍是查过没命中：checked true、hit false，检查时间移到本次', () => {
+      const byVersion = only(run({ issues: [issue()], ledger: [led('C05c', 'clear', { ruleVersion: 2 })] }))
+      expect(byVersion.e).toMatchObject({ checked: true, hit: false, note: 'rule_changed' })
+      expect(byVersion.i).toMatchObject({ lastCheckedRunId: 'run_2', lastCheckedAt: RUN.startedAt, ruleVersion: 2 })
+      const byProtocol = only(run({ issues: [issue({ ruleId: 'G05', protocolHash: 'P0' })], ledger: [led('G05', 'clear')] }))
+      expect(byProtocol.e).toMatchObject({ checked: true, hit: false, note: 'protocol_changed' })
+      expect(byProtocol.i).toMatchObject({ lastCheckedRunId: 'run_2', lastCheckedAt: RUN.startedAt, protocolHash: 'P1' })
+    })
   })
 })
