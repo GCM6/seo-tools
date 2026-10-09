@@ -280,3 +280,12 @@ export function toObservedHit(f: {
     affectedCount: f.detail?.scale.affected ?? null,
   }
 }
+
+const COMPLETED = new Set(['reviewing', 'output'])
+const when = (r: { startedAt: string | null; finishedAt: string | null }) => Date.parse(r.startedAt ?? r.finishedAt ?? '') || 0
+
+// 项目最近一次完成的体检：局部对账只允许作用于它，旧体检上的竞品确认不能用旧观测覆盖新状态。
+export function latestCompletedRunId(runs: { id: string; status: string; startedAt: string | null; finishedAt: string | null }[]): string | null {
+  const done = runs.filter((r) => COMPLETED.has(r.status)).sort((a, b) => when(b) - when(a))
+  return done[0]?.id ?? null
+}

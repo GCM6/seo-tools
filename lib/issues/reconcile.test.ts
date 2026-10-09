@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { reconcileIssues, observedEventId, toObservedHit, type ReconcileInput, type ObservedHit, type LedgerEntry } from './reconcile'
+import { reconcileIssues, observedEventId, toObservedHit, latestCompletedRunId, type ReconcileInput, type ObservedHit, type LedgerEntry } from './reconcile'
 import type { IssueRecord } from './types'
 
 const RUN = { id: 'run_2', startedAt: '2026-11-01T00:00:00.000Z', protocolHash: 'P1' }
@@ -286,5 +286,16 @@ describe('toObservedHit', () => {
   it('没有指纹或规则编号的旧发现 → null；没有明细 → 受影响数为 null', () => {
     expect(toObservedHit({ id: 'f', fingerprint: null, ruleId: 'X', title: 't', pillar: null, side: 'seo', severity: 'mid' })).toBeNull()
     expect(toObservedHit({ id: 'f', fingerprint: 'fp', ruleId: 'X', title: 't', pillar: null, side: 'seo', severity: 'ok', detail: null })?.affectedCount).toBeNull()
+  })
+})
+
+describe('latestCompletedRunId', () => {
+  it('取已完成（reviewing / output）里开始时间最晚的一次；开始时间为空回落完成时间', () => {
+    expect(latestCompletedRunId([
+      { id: 'a', status: 'output', startedAt: '2026-10-01T00:00:00.000Z', finishedAt: null },
+      { id: 'b', status: 'reviewing', startedAt: null, finishedAt: '2026-10-05T00:00:00.000Z' },
+      { id: 'c', status: 'collecting', startedAt: '2026-10-09T00:00:00.000Z', finishedAt: null },
+    ])).toBe('b')
+    expect(latestCompletedRunId([{ id: 'x', status: 'failed', startedAt: null, finishedAt: null }])).toBeNull()
   })
 })

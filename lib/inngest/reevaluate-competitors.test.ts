@@ -21,6 +21,11 @@ const labsEvidence = {
   rawText: '', payload: { kind: 'keyword_data', keywords: [{ keyword: 'best crm', searchVolume: 500, difficulty: 30, cpc: 2, intent: 'commercial' }] },
 }
 
+// 已落库的发现行（getFindings 的返回形状）：对账只用到这几列。
+function findingRow(over: Record<string, unknown> = {}) {
+  return { id: 'find_1', fingerprint: 'fp_1', ruleId: 'Q01', title: '竞品占位', pillar: 'P3', side: 'seo', severity: 'notice', detail: null, ...over }
+}
+
 function makeDeps(over: Record<string, unknown> = {}) {
   return {
     getProject: vi.fn(async () => ({ id: 'proj_1', domain: 'example.com', industry: '', market: 'de', language: 'de', competitors: ['manual.com'] })),
@@ -28,7 +33,7 @@ function makeDeps(over: Record<string, unknown> = {}) {
     getRunEvidence: vi.fn(async () => [seedSerpEvidence, labsEvidence]),
     getRunPrompts: vi.fn(async () => []),
     getRunProbeResults: vi.fn(async () => []),
-    getFindings: vi.fn(async () => [{ fingerprint: 'fp_existing' }]),
+    getFindings: vi.fn(async () => [findingRow({ id: 'find_existing', ruleId: 'T01', fingerprint: 'fp_existing' })]),
     upsertKeyword: vi.fn(async () => [{ id: 'kw_1' }]),
     createKeywordGaps: vi.fn(async (rows: unknown[]) => rows),
     createFindings: vi.fn(async (rows: unknown[]) => rows),
@@ -39,8 +44,25 @@ function makeDeps(over: Record<string, unknown> = {}) {
       { keyword: 'best crm', gapType: 'missing' as const, ourPosition: null, competitorPositions: [{ domain: 'rival.com', position: 1 }], opportunityScore: 80, searchVolume: 500 },
       ]
     }),
-    // 两条命中：一条 fingerprint 已存在（应被过滤），一条新的。
-    evaluateRules: vi.fn(() => [makeHit({ fingerprint: 'fp_new' }), makeHit({ ruleId: 'T01', fingerprint: 'fp_existing' })]),
+    // 两条命中：一条 fingerprint 已存在（应被过滤），一条新的；台账：Q01 现在命中、T02 没问题。
+    evaluateRulesWithLedger: vi.fn(() => ({
+      hits: [makeHit({ fingerprint: 'fp_new' }), makeHit({ ruleId: 'T01', fingerprint: 'fp_existing' })],
+      ledger: [
+        { ruleId: 'Q01', ruleVersion: 1, outcome: 'hit', reasonKind: null, reason: null, hitCount: 1 },
+        { ruleId: 'T02', ruleVersion: 1, outcome: 'clear', reasonKind: null, reason: null, hitCount: 0 },
+      ],
+    })),
+    getRunDataSourceStatuses: vi.fn(async () => [{ sourceKey: 'dataforseo:seed_serp', status: 'collected', capturedEvidenceCount: 1 }]),
+    // 首轮诊断时缺已确认竞品：Q01 没查；T02 查过且没问题。
+    getRunCheckLedger: vi.fn(async () => [
+      { ruleId: 'Q01', ruleVersion: 1, outcome: 'not_checked', reasonKind: 'data_gap', reason: '缺数据源：confirmed_competitors', hitCount: 0 },
+      { ruleId: 'T02', ruleVersion: 1, outcome: 'clear', reasonKind: null, reason: null, hitCount: 0 },
+    ]),
+    saveCheckLedger: vi.fn(async (runId: string, rows: unknown[]) => { void runId; void rows }),
+    getProjectRuns: vi.fn(async () => [{ id: 'run_1', status: 'reviewing', startedAt: '2026-11-01T00:00:00.000Z', finishedAt: null, protocolHash: 'P1' }]),
+    getProjectIssues: vi.fn(async () => []),
+    saveIssueChanges: vi.fn(async (changes: unknown) => { void changes }),
+    recomputeRetestDue: vi.fn(async (projectId: string) => { void projectId; return null }),
     buildRuleContext: vi.fn((input: unknown) => {
       void input
       return {} as never
@@ -173,5 +195,96 @@ describe('reevaluateCompetitorsHandler', () => {
     const { args } = makeArgs()
     await expect(reevaluateCompetitorsHandler(args, asDeps(deps))).rejects.toThrow()
     expect(deps.createFindings).not.toHaveBeenCalled()
+  })
+})
+
+describe('竞品确认后的局部对账（spec 2026-10-09 §5.1）', () => {
+  const ledgerRow = (ruleId: string, outcome: string, over: Record<string, unknown> = {}) => ({
+    ruleId, ruleVersion: 1, outcome, reasonKind: outcome === 'not_checked' ? 'data_gap' : null,
+    reason: outcome === 'not_checked' ? '缺数据源：confirmed_competitors' : null, hitCount: outcome === 'hit' ? 1 : 0, ...over,
+  })
+  // 评估结果：Q01 命中 n 条、T02 没问题。
+  const evaluated = (q01HitCount = 1) => vi.fn(() => ({
+    hits: [makeHit({ fingerprint: 'fp_new' })],
+    ledger: [ledgerRow('Q01', 'hit', { hitCount: q01HitCount }), ledgerRow('T02', 'clear')],
+  }))
+
+  it('只改写台账里结果变了的规则，并只对这些规则对账', async () => {
+    // Q01 的发现已落库（对账读库里的发现）；T01 的发现不在本次改写范围，对账必须忽略它。
+    const deps = makeDeps({
+      getFindings: vi.fn(async () => [
+        findingRow({ id: 'find_q01', ruleId: 'Q01', fingerprint: 'fp_q01', severity: 'high' }),
+        findingRow({ id: 'find_existing', ruleId: 'T01', fingerprint: 'fp_existing' }),
+      ]),
+    })
+    await reevaluateCompetitorsHandler(makeArgs().args, asDeps(deps))
+    expect(deps.saveCheckLedger).toHaveBeenCalledWith('run_1', [expect.objectContaining({ ruleId: 'Q01', outcome: 'hit' })])
+    expect(deps.saveIssueChanges).toHaveBeenCalledTimes(1)
+    const saved = deps.saveIssueChanges.mock.calls[0][0] as { issues: { ruleId: string; latestFindingId: string }[] }
+    expect(saved.issues).toHaveLength(1)
+    expect(saved.issues.every((i) => i.ruleId === 'Q01')).toBe(true)
+    expect(saved.issues[0].latestFindingId).toBe('find_q01')
+    expect(deps.recomputeRetestDue).toHaveBeenCalledWith('proj_1')
+    // 先写问题表、台账放最后：问题保存失败重试时，台账行仍显示「变了」，会再对账一次。
+    expect(deps.saveIssueChanges.mock.invocationCallOrder[0]).toBeLessThan(deps.saveCheckLedger.mock.invocationCallOrder[0])
+  })
+
+  it('台账没有变化 → 不写台账、不对账、不重算复查提醒', async () => {
+    const deps = makeDeps({ getRunCheckLedger: vi.fn(async () => [ledgerRow('Q01', 'hit'), ledgerRow('T02', 'clear')]) })
+    await reevaluateCompetitorsHandler(makeArgs().args, asDeps(deps))
+    expect(deps.saveCheckLedger).not.toHaveBeenCalled()
+    expect(deps.saveIssueChanges).not.toHaveBeenCalled()
+    expect(deps.recomputeRetestDue).not.toHaveBeenCalled()
+  })
+
+  it('不是项目最近一次完成的体检 → 台账照写，但不对账、不重算复查提醒（Review Focus 4）', async () => {
+    const deps = makeDeps({
+      getProjectRuns: vi.fn(async () => [
+        { id: 'run_1', status: 'output', startedAt: '2026-10-01T00:00:00.000Z', finishedAt: null, protocolHash: 'P1' },
+        { id: 'run_newer', status: 'reviewing', startedAt: '2026-11-01T00:00:00.000Z', finishedAt: null, protocolHash: 'P1' },
+      ]),
+    })
+    await reevaluateCompetitorsHandler(makeArgs().args, asDeps(deps))
+    expect(deps.saveCheckLedger).toHaveBeenCalled()
+    expect(deps.saveIssueChanges).not.toHaveBeenCalled()
+    expect(deps.recomputeRetestDue).not.toHaveBeenCalled()
+  })
+
+  it('首轮已查过（命中 / 没问题）的规则，哪怕数量变了也保持首轮记录：不改写台账、不动问题', async () => {
+    const deps = makeDeps({
+      getRunCheckLedger: vi.fn(async () => [ledgerRow('Q01', 'hit', { hitCount: 1 }), ledgerRow('T02', 'clear')]),
+      evaluateRulesWithLedger: evaluated(2),
+    })
+    await reevaluateCompetitorsHandler(makeArgs().args, asDeps(deps))
+    expect(deps.saveCheckLedger).not.toHaveBeenCalled()
+    expect(deps.saveIssueChanges).not.toHaveBeenCalled()
+    expect(deps.recomputeRetestDue).not.toHaveBeenCalled()
+  })
+
+  it('首轮台账里根本没有这条规则 → 跳过（可能是部署间规则集变了），不改写、不对账', async () => {
+    const deps = makeDeps({ getRunCheckLedger: vi.fn(async () => [ledgerRow('T02', 'clear')]) })
+    await reevaluateCompetitorsHandler(makeArgs().args, asDeps(deps))
+    expect(deps.saveCheckLedger).not.toHaveBeenCalled()
+    expect(deps.saveIssueChanges).not.toHaveBeenCalled()
+    expect(deps.recomputeRetestDue).not.toHaveBeenCalled()
+  })
+
+  it('首轮是「出错」的规则现在查得出结果 → 同样改写并对账', async () => {
+    const deps = makeDeps({
+      getRunCheckLedger: vi.fn(async () => [ledgerRow('Q01', 'error', { reasonKind: 'error', reason: 'boom' }), ledgerRow('T02', 'clear')]),
+      getFindings: vi.fn(async () => [findingRow({ id: 'find_q01', ruleId: 'Q01', fingerprint: 'fp_q01' })]),
+    })
+    await reevaluateCompetitorsHandler(makeArgs().args, asDeps(deps))
+    expect(deps.saveCheckLedger).toHaveBeenCalledWith('run_1', [expect.objectContaining({ ruleId: 'Q01', outcome: 'hit' })])
+    expect(deps.saveIssueChanges).toHaveBeenCalledTimes(1)
+    expect(deps.recomputeRetestDue).toHaveBeenCalledWith('proj_1')
+  })
+
+  it('按本次数据源状态求值：已确认竞品数与数据源状态一并传给 evaluateRulesWithLedger', async () => {
+    const deps = makeDeps()
+    await reevaluateCompetitorsHandler(makeArgs().args, asDeps(deps))
+    expect(deps.getRunDataSourceStatuses).toHaveBeenCalledWith('run_1')
+    const available = (deps.evaluateRulesWithLedger.mock.calls[0] as unknown[])[2] as Set<string>
+    expect(available.has('confirmed_competitors')).toBe(true)
   })
 })

@@ -3,7 +3,9 @@ import { inngest } from './client'
 import { COMPETITORS_CONFIRMED_EVENT, type CompetitorsConfirmedEventData } from './events'
 import { runProgressChannel, type RunProgressMessage } from './channels'
 import { buildRuleContext } from '@/lib/diagnosis/context'
-import { evaluateRules } from '@/lib/diagnosis/engine'
+import { evaluateRulesWithLedger } from '@/lib/diagnosis/check-ledger'
+import { availableSources, protocolBoundRuleIds } from '@/lib/diagnosis/sources'
+import { latestCompletedRunId, reconcileIssues, toObservedHit, type ObservedHit } from '@/lib/issues/reconcile'
 import type { DiagnosisEvidenceRow, Rule, RuleHit } from '@/lib/diagnosis/types'
 import { buildFindingRows, buildRecommendationRows, type RecommendationDraft } from '@/lib/diagnosis/finding-rows'
 import { computeKeywordGaps } from '@/lib/diagnosis/keyword-gap'
@@ -24,6 +26,13 @@ import {
   createFindings,
   createRecommendations,
   createEvidenceArtifact,
+  getRunDataSourceStatuses,
+  getRunCheckLedger,
+  saveCheckLedger,
+  getProjectRuns,
+  getProjectIssues,
+  saveIssueChanges,
+  recomputeRetestDue,
 } from '@/lib/repositories'
 import { fetchLightCheck } from '@/lib/crawl/light-check'
 import { sha256Hex } from '@/lib/collection/hash'
@@ -33,6 +42,8 @@ import { selectCompetitorFormTargets, collectCompetitorForm } from '@/lib/collec
 // 触发：用户在 competitors 页确认/驳回竞品后（COMPETITORS_CONFIRMED_EVENT）。
 // 只重算竞品依赖规则（K03-05/Q01-03/A01 对比/E03 等），按 fingerprint 只落**新增** finding，
 // 不重跑采集、不改 run 状态（保持 reviewing）。确认动作幂等——同 fingerprint 不重复落库。
+// 问题台账（spec 2026-10-09 §5.1）：首轮因缺已确认竞品而「没查 / 出错」的规则，在这里补查后改写台账行，
+// 并只对这些规则对账（只作用于项目最近一次完成的体检）。
 
 interface ReevalStep {
   run<T>(id: string, fn: () => Promise<T> | T): Promise<T>
@@ -56,7 +67,15 @@ interface ReevaluateDeps {
   createFindings: typeof createFindings
   createRecommendations: typeof createRecommendations
   computeKeywordGaps: typeof computeKeywordGaps
-  evaluateRules: typeof evaluateRules
+  evaluateRulesWithLedger: typeof evaluateRulesWithLedger
+  // 局部对账（spec 2026-10-09 §5.1）：读首轮台账、改写变了的行、对账问题表、重算复查提醒。
+  getRunDataSourceStatuses: typeof getRunDataSourceStatuses
+  getRunCheckLedger: typeof getRunCheckLedger
+  saveCheckLedger: typeof saveCheckLedger
+  getProjectRuns: typeof getProjectRuns
+  getProjectIssues: typeof getProjectIssues
+  saveIssueChanges: typeof saveIssueChanges
+  recomputeRetestDue: typeof recomputeRetestDue
   buildRuleContext: typeof buildRuleContext
   aggregateProbeSummary: typeof aggregateProbeSummary
   createEvidenceArtifact: typeof createEvidenceArtifact
@@ -85,7 +104,14 @@ function defaultDeps(): ReevaluateDeps {
     createFindings,
     createRecommendations,
     computeKeywordGaps,
-    evaluateRules,
+    evaluateRulesWithLedger,
+    getRunDataSourceStatuses,
+    getRunCheckLedger,
+    saveCheckLedger,
+    getProjectRuns,
+    getProjectIssues,
+    saveIssueChanges,
+    recomputeRetestDue,
     buildRuleContext,
     aggregateProbeSummary,
     createEvidenceArtifact,
@@ -106,16 +132,17 @@ export async function reevaluateCompetitorsHandler(
   await emit({ type: 'phase', phase: 'diagnose' })
 
   // 证据 rawText 可能很大：整个加载+算 gap+求值裹进一个 step，只回放精简 newHits/domain。
-  const { newHits, domain } = await step.run('reeval-rules', async () => {
+  const { newHits, ledger, protocolBound, domain } = await step.run('reeval-rules', async () => {
     const project = await deps.getProject(projectId)
     if (!project) throw new NonRetriableError(`project_not_found:${projectId}`)
 
-    const [confirmed, evidenceRaw, prompts, probeResults, existing] = await Promise.all([
+    const [confirmed, evidenceRaw, prompts, probeResults, existing, sourceStatuses] = await Promise.all([
       deps.getConfirmedCompetitors(projectId),
       deps.getRunEvidence(runId),
       deps.getRunPrompts(runId),
       deps.getRunProbeResults(runId),
       deps.getFindings(runId),
+      deps.getRunDataSourceStatuses(runId),
     ])
 
     const evidence: DiagnosisEvidenceRow[] = evidenceRaw.map((e) => ({
@@ -188,11 +215,14 @@ export async function reevaluateCompetitorsHandler(
     })
 
     const rules = await deps.allRules()
-    const hits = deps.evaluateRules(ctx, rules)
+    // 按本次数据源状态求值（含刚确认的竞品数）：竞品类规则不再是「缺已确认竞品 → 没查」。
+    const available = availableSources(sourceStatuses, { confirmedCompetitorCount: confirmed.length })
+    const { hits, ledger } = deps.evaluateRulesWithLedger(ctx, rules, available)
     // 按 fingerprint 只保留当前 run 尚不存在的命中（增量并入；确认幂等）。
     const existingFps = new Set(existing.map((f) => f.fingerprint).filter(Boolean))
     const newHits = hits.filter((h) => !existingFps.has(h.fingerprint))
-    return { newHits, domain: project.domain }
+    // protocolBound 用数组而非 Set：step 结果要能 JSON 回放。
+    return { newHits, ledger, protocolBound: [...protocolBoundRuleIds(rules)], domain: project.domain }
   })
 
   await emit({ type: 'phase', phase: 'diagnose', findings: newHits.length })
@@ -208,6 +238,51 @@ export async function reevaluateCompetitorsHandler(
     await deps.createRecommendations(rows)
     return rows.length
   })
+
+  // —— 局部对账（spec 2026-10-09 §5.1）——
+  // 只处理首轮在台账里「没查 / 出错」、现在结果变了的规则：首轮已查过（命中 / 没问题）的规则保持首轮记录
+  // （确认竞品属于协议，换了竞品集重测同一条规则是下一次体检的事）；首轮台账里没有的规则也跳过
+  // （规则集在两次部署间变了，在这里观测会撤销首轮的「规则已下线」关闭、清掉执行记录）。
+  // 只作用于项目最近一次完成的体检，旧体检上的竞品确认不能用旧观测覆盖新状态。
+  const reconcile = await step.run('reeval-reconcile', async () => {
+    const before = new Map((await deps.getRunCheckLedger(runId)).map((r) => [r.ruleId, r]))
+    const changed = ledger.filter((r) => {
+      const b = before.get(r.ruleId)
+      if (!b || (b.outcome !== 'not_checked' && b.outcome !== 'error')) return false
+      return b.outcome !== r.outcome || b.ruleVersion !== r.ruleVersion || b.hitCount !== r.hitCount || b.reasonKind !== r.reasonKind
+    })
+    if (!changed.length) return { changed: 0, reconciled: false }
+
+    const runs = await deps.getProjectRuns(projectId)
+    if (latestCompletedRunId(runs) !== runId) {
+      // 不是最近一次完成的体检：只把这次体检自己的台账补写完整，不碰问题表。
+      await deps.saveCheckLedger(runId, changed)
+      return { changed: changed.length, reconciled: false }
+    }
+
+    const run = runs.find((r) => r.id === runId)
+    const [projectIssues, runFindings] = await Promise.all([deps.getProjectIssues(projectId), deps.getFindings(runId)])
+    const now = new Date().toISOString()
+    const out = reconcileIssues({
+      projectId,
+      run: { id: runId, startedAt: run?.startedAt ?? run?.finishedAt ?? now, protocolHash: run?.protocolHash ?? null },
+      issues: projectIssues,
+      // 读库里的发现：上一步刚落的新发现与首轮的旧发现都在；onlyRuleIds 把对账限定在改写的规则内。
+      hits: runFindings.map(toObservedHit).filter((h): h is ObservedHit => h !== null),
+      ledger: changed,
+      protocolBoundRuleIds: new Set(protocolBound),
+      missingLedger: 'retire',
+      onlyRuleIds: new Set(changed.map((r) => r.ruleId)),
+      newIssueId: () => `iss_${crypto.randomUUID()}`,
+      now,
+    })
+    await deps.saveIssueChanges(out)
+    // 台账放最后写：问题表保存失败重试时，这些行仍显示「变了」会再对账一次（同一体检内已观测过的问题会被跳过，不会重复）。
+    await deps.saveCheckLedger(runId, changed)
+    return { changed: changed.length, reconciled: true }
+  })
+  // 复查提醒重算单独成步：对账已提交后重算失败，重试时仍会重算，nextRetestDueAt 不会停在旧值。
+  if (reconcile.reconciled) await step.run('reeval-recompute-retest-due', () => deps.recomputeRetestDue(projectId))
 
   // —— Q03 竞品内容形态轻检（SP-A2）：确认竞品在种子词的排名页轻检，落 competitor_content_form
   // 证据（复用 dataforseo_serp + payload.kind，免 migration），供 content_brief 第 2 段消费。
