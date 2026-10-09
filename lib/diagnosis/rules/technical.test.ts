@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { parseLightCheckHtml } from '@/lib/crawl/light-check'
 import { notChecked, type RuleContext, type RuleHitDraft } from '../types'
 import type { SiteAuditPage, SiteAuditPayload } from '@/lib/crawl/site-audit'
-import { technicalRules, isLanguagePathTemplate } from './technical'
+import { technicalRules, isLanguagePathTemplate, projectHost } from './technical'
 import { buildLinkGraph, type LinkGraphPageInput } from '@/lib/crawl/link-graph'
 
 const rule = (id: string) => technicalRules.find((r) => r.id === id)!
@@ -136,6 +136,19 @@ describe('T04 canonical offsite', () => {
     const hit = rule('T04').evaluate(ctx) as RuleHitDraft
     expect(hit.detail!.count).toBe(1)
     expect((hit.detail!.examples as { canonical: string }[])[0].canonical).toBe('https://other.com/a')
+  })
+  // 复发陷阱「域名带协议」：生产里 project.domain 是 normalizeDomain 输出的完整 URL（https://host/）。
+  it('project.domain 为完整 URL 时，同站 canonical 不进样例，count 与样例数一致', () => {
+    const ctx = baseCtx()
+    ctx.project.domain = 'https://example.com/'
+    ctx.siteAudit = audit({ canonicalOffsite: 1 }, [
+      page({ url: 'https://example.com/a', canonicalUrl: 'https://example.com/a' }),
+      page({ url: 'https://example.com/b', canonicalUrl: 'https://other.com/a' }),
+    ])
+    const hit = rule('T04').evaluate(ctx) as RuleHitDraft
+    const examples = hit.detail!.examples as { url: string; canonical: string }[]
+    expect(examples).toEqual([{ url: 'https://example.com/b', canonical: 'https://other.com/a' }])
+    expect(hit.detail!.count).toBe(examples.length)
   })
 })
 
@@ -672,5 +685,13 @@ describe('真实站点冒烟修复（2026-10-03）', () => {
       page({ url: 'https://example.com/old', lightCheckExtra: ext({ hasViewport: false }) }),
     ])
     expect((rule('T13').evaluate(ctx) as RuleHitDraft).detail).toMatchObject({ count: 1, examples: ['https://example.com/old'] })
+  })
+})
+
+describe('projectHost / T04 本站域名（复发陷阱：域名带协议）', () => {
+  it('兼容 normalizeDomain 输出的完整 URL 与裸域名', () => {
+    expect(projectHost('https://metadocu.com/')).toBe('metadocu.com')
+    expect(projectHost('https://www.metadocu.com/')).toBe('metadocu.com')
+    expect(projectHost('metadocu.com')).toBe('metadocu.com')
   })
 })

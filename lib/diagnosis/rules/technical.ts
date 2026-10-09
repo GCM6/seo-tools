@@ -78,6 +78,12 @@ function hostOf(u: string): string | null {
   }
 }
 
+// 本站 host：project.domain 是 normalizeDomain 输出的完整 URL（https://host/），也兼容旧数据的裸域名。
+// 规则里求本站 host 一律用它，不要就地拼 `https://`（陷阱：域名带协议，K03 / T04 / C07 三次复发）。
+export function projectHost(domain: string): string {
+  return hostOf(/^https?:\/\//i.test(domain) ? domain : `https://${domain}`) ?? domain
+}
+
 // T01：入口/关键页被 robots.txt 屏蔽（Googlebot 不可抓）。
 const T01: RuleDef = {
   id: 'T01',
@@ -229,7 +235,7 @@ const T04: RuleDef = {
     if (!audit) return null
     const n = audit.payload.stats.canonicalOffsite
     if (n <= 0) return null
-    const domainHost = hostOf(`https://${ctx.project.domain}`) ?? ctx.project.domain
+    const domainHost = projectHost(ctx.project.domain)
     const examples = audit.payload.pages
       .filter((p) => {
         if (!p.canonicalUrl) return false

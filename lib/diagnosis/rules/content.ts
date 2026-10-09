@@ -1,7 +1,7 @@
 import { parseHTML } from 'linkedom'
 import type { RuleDef, RuleContext, RuleHitDraft } from '../types'
 import { SCHEMA_VOCAB_VERSION, buildSchemaIdIndex, hasField, schemaRuleFor } from '../schema-vocab'
-import { pagesWithExtra, C09_ALT_MISSING_RATIO, SCANNABILITY_PARA_WORDS, isLanguagePathTemplate } from './technical'
+import { pagesWithExtra, C09_ALT_MISSING_RATIO, SCANNABILITY_PARA_WORDS, isLanguagePathTemplate, projectHost } from './technical'
 import { clusterTemplates } from '@/lib/crawl/template-cluster'
 import type { SiteAuditPage } from '@/lib/crawl/site-audit'
 import { articlePagesOf } from './eeat'
@@ -594,7 +594,7 @@ const C07: RuleDef = {
     const text = bodyText(document)
 
     const statsCount = (text.match(/\d+(?:[.,]\d+)?%?/g) ?? []).length
-    const domainHost = hostOf(`https://${ctx.project.domain}`) ?? ctx.project.domain
+    const domainHost = projectHost(ctx.project.domain)
     const externalLinks = [...document.querySelectorAll('a[href]')].filter((a) => {
       const h = hostOf(a.getAttribute('href') ?? '')
       return h !== null && h !== domainHost

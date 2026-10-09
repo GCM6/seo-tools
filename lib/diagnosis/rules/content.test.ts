@@ -436,6 +436,15 @@ describe('C07 GEO content features', () => {
       '<a href="https://other.example/report">source</a>'
     expect(rule('C07').evaluate(withEntry(html))).toBeNull()
   })
+  // 复发陷阱「域名带协议」：生产里 project.domain 是 normalizeDomain 输出的完整 URL（https://host/）。
+  it('project.domain 为完整 URL 时，本站链接不算外链', () => {
+    const ctx = withEntry(
+      '<p>plain prose</p><a href="https://example.com/x">本站</a><a href="https://other.com/y">站外</a>',
+    )
+    ctx.project.domain = 'https://example.com/'
+    const hit = asOne(rule('C07').evaluate(ctx))
+    expect(hit.detail!.externalLinks).toBe(1)
+  })
 })
 
 describe('C06/C07 让位给文章级规则（spec S4 §5；Review Focus 5）', () => {
