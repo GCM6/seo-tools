@@ -66,6 +66,21 @@ LIBSQL_URL="file:$PWD/veris.db" LIBSQL_AUTH_TOKEN=local pnpm exec drizzle-kit mi
 
 已知遗留：原库本来就有 60 条 `ai_probe_results` 指向已不存在的证据（`pragma foreign_key_check` 可见），迁移前后数量一致，与迁移无关。
 
+### 2026-10 问题台账（0019）
+
+新代码的诊断流水线会写 `check_results` / `issues` / `issue_events`，所以**升级代码后、发起任何新体检之前**，先把下面 1–3 步连续做完：回填只处理还没有问题记录的项目，若在迁移和回填之间跑了新体检，该项目的历史就再也不会被回填。
+
+1. 备份（文件名以 `.db` 结尾才会被 `.gitignore` 忽略）：`cp veris.db veris.$(date +%Y-%m-%d)-pre-0019.db`
+2. 迁移：`node scripts/apply-local-migrations.mjs "$PWD/veris.db" 0019 --record`
+3. 回填（先 dry-run 看数字，再正式执行；可重复执行，已有问题的项目会跳过）：
+   `LIBSQL_URL=file:./veris.db pnpm -s issues:backfill --dry-run`，确认后去掉 `--dry-run` 再跑一次。
+4. 核对：`LIBSQL_URL=file:./veris.db pnpm -s issues:report > /tmp/issues.md`，逐条看一遍（文档开头有图例）。
+
+- `--rebuild`（删掉项目问题后重放）只允许对库副本使用，指向 `veris.db` 时脚本会直接拒绝。
+- 回填是纯重放：历史体检没有逐条检查台账，没再出现的问题记「未复查（历史数据没有台账）」，不会判「已修复」；旧建议的接受 / 否决、旧发现的忽略会补成决定（标「历史回填」）。
+- 回填后的第一次真实体检：历史问题的协议指纹为空，抽样类（AI 引用等）问题无法确认口径一致，未命中时会关闭为「已关闭（检测口径已变或无法确认一致）」，不会判「已修复」；本分支升过版本的规则同理关闭为「规则已更新」。这是预期行为。
+- 线上库如已部署，同样执行 1–3。
+
 ## 3. 数据源凭据（BYOK）
 
 设置页录入的凭据加密存在 `provider_credentials` 表里，优先级高于 `.env`。DataForSEO 由主采集、AIO、预检统一经 `resolveDataforseoCredentials` 解析。
