@@ -81,6 +81,13 @@ LIBSQL_URL="file:$PWD/veris.db" LIBSQL_AUTH_TOKEN=local pnpm exec drizzle-kit mi
 - 回填后的第一次真实体检：历史问题的协议指纹为空，抽样类（AI 引用等）问题无法确认口径一致，未命中时会关闭为「已关闭（检测口径已变或无法确认一致）」，不会判「已修复」；回填出的问题规则版本记为未知（历史体检出自 rules_v1…v10），所以第一次真实体检时没再查出的问题会关闭为「已关闭（不可比）·规则已更新或历史版本未知」，不会判「自行消失 / 已修复」；仍查出的问题保留原来的决定继续跟踪（标「规则已更新或历史版本未知」，不与历史数值比较）。这是预期行为。
 - 线上库如已部署，同样执行 1–3。
 
+**执行记录（2026-10-10）**：本地 `veris.db` 已完成 0019 迁移与回填（代码 `feat/issue-centric-loop@55fb1f5`）。
+- 备份：`veris.2026-10-10-pre-0019.db`（libsql `VACUUM INTO` 一致性快照，`integrity_check` 为 ok；项目 2、体检 5、发现 63、建议 62、证据 232）。
+- 执行前确认无进程占用库文件；回填数字先在副本上演练、并由终审独立复现，与 dry-run、正式执行一致。
+- 执行后：迁移表 20 行，`integrity_check` ok；metadocu 问题 19 个（已纳入 15、待处理 4），规则版本全部为 0（未知），没有任何问题判为「已修复 / 自行消失」；变化记录 91 条（观测 76，其中查出 63；决定 15）；aichiplink 没有已完成体检，跳过；复查提醒前后均为空。
+- `pragma foreign_key_check` 仍是迁移前就有的 60 行（`ai_probe_results`），与本次无关；再次执行回填全部跳过。
+- 回滚：停掉 dev 服务后，用备份文件覆盖 `veris.db`。
+
 ## 3. 数据源凭据（BYOK）
 
 设置页录入的凭据加密存在 `provider_credentials` 表里，优先级高于 `.env`。DataForSEO 由主采集、AIO、预检统一经 `resolveDataforseoCredentials` 解析。
